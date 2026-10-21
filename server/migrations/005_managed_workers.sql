@@ -185,4 +185,3 @@ CREATE TABLE browser_leases (
  lease_id TEXT NOT NULL,
  expires_at TEXT NOT NULL
 );
-
