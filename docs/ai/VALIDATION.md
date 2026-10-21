@@ -37,9 +37,11 @@
 
 ## Trạng thái vận hành hiện tại
 
-Web có trang `/accounts`; hai account Antigravity có proxy hoạt động. Server dự án chính giữ `WORKER_MODE=legacy` do video job #27 đang được worker Claude giữ và gửi heartbeat tại thời điểm triển khai. Managed smoke chạy riêng đã xác nhận code path hoạt động.
+Web có trang `/accounts`; hai account Antigravity có proxy hoạt động. Sau khi xác nhận hàng đợi trống, đã chuyển server dự án chính sang `WORKER_MODE=managed`, dừng poller Claude cũ và chạy `antigravity-worker-1`. Antigravity 01 dùng trước, 02 dự phòng; cả hai chọn `gemini-3-flash`. Bài smoke phân tích trên API/DB tạm chạy thành công sau khi chuyển chế độ.
 
-Khi đã drain/đối soát công việc cũ, đặt `WORKER_MODE=managed`, restart server, chạy `npm run ai:pool` và `npm run worker:start`. Nếu dùng browser, đăng nhập ChatGPT/Flow trong profile media riêng trước; xem `OPERATIONS.md`. Chưa bật managed browser tự tạo video trên dự án đang chạy.
+Người dùng đã đăng nhập ChatGPT và Flow trong profile media riêng. Kiểm tra đọc trang xác nhận ChatGPT có menu profile, Flow mở được trang project; cả hai có ô nhập nội dung và chụp screenshot thành công qua kết nối browser của worker. Không bấm Generate. Flow hiện dùng `https://flow.google.com`; worker nhận cả domain này lẫn entrypoint `labs.google/fx/` cũ. Cấu hình local đã bật cả `storyboard,video` và restart worker. Sau sửa domain: **243 tests pass**, typecheck/build pass. Đây là kiểm tra kết nối/đăng nhập, chưa nghiệm thu tạo, upload hay tải ảnh/video thật bằng managed worker.
+
+Khi khởi động lại máy, chạy server/web, `npm run ai:pool` và `npm run worker:start`. Mở browser bằng `npm run ai:browser` nếu chưa có CDP trên cổng 9222; xem `OPERATIONS.md`. Cấu hình local `.env` giữ chế độ managed và danh sách job đã bật.
 
 ## Bổ sung thanh quota
 
