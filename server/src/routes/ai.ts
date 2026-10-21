@@ -7,6 +7,7 @@ import { intParam, parse } from '../lib/validate.js';
 import { accountBody, createAccount, listAccounts, policyBody, projectPolicy, account } from '../services/ai/accounts.js';
 import { probeAccount } from '../services/ai/router.js';
 import { getProject } from '../services/repo.js';
+import { refreshQuota } from '../services/ai/quota.js';
 
 /** Admin credentials are process-local, short-lived and never provider credentials. */
 export function registerAiRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -51,6 +52,15 @@ export function registerAiRoutes(app: FastifyInstance, ctx: AppContext) {
       return { ok: true, credentials_revoked: false };
     });
     a.post('/api/ai/accounts/:id/probe', async (req) => probeAccount(ctx, intParam((req.params as { id: string }).id)));
+    a.post('/api/ai/accounts/:id/quota', async (req) => {
+      const id = intParam((req.params as { id: string }).id); await refreshQuota(ctx, id);
+      return listAccounts(ctx).find((a) => a.id === id);
+    });
+    a.post('/api/ai/quotas/refresh', async () => {
+      const rows = listAccounts(ctx).filter((a) => a.enabled);
+      for (let i = 0; i < rows.length; i += 2) await Promise.all(rows.slice(i, i + 2).map((a) => refreshQuota(ctx, a.id)));
+      return listAccounts(ctx);
+    });
     a.get('/api/projects/:id/ai-policy', async (req) => { const id = intParam((req.params as { id: string }).id); getProject(ctx, id); return projectPolicy(ctx, id); });
     a.patch('/api/projects/:id/ai-policy', async (req) => {
       const id = intParam((req.params as { id: string }).id); getProject(ctx, id);

@@ -68,7 +68,7 @@ describe('runner migration', () => {
       events: db.prepare('SELECT * FROM events').all(),
     };
 
-    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity']);
+    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota']);
     expect(runMigrations(db)).toEqual([]);
 
     expect(db.prepare('SELECT * FROM jobs ORDER BY id').all().map((row: any) => Object.fromEntries(Object.keys(jobsBefore[0] as object).map((key) => [key, row[key]])))).toEqual(jobsBefore);
@@ -156,9 +156,9 @@ UPDATE assets SET scene_id = 999 WHERE id = 1;
     db = openDb(file);
     const db2 = openDb(file);
     try {
-      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity']);
+      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota']);
       expect(runMigrations(db2)).toEqual([]);
-      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(6);
+      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(7);
     } finally {
       db2.close();
     }
