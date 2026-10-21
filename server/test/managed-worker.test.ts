@@ -32,6 +32,37 @@ function add(alias: string, base_url: string, extra = {}) {
 const request = { messages: [{ role: 'user', content: 'Một cảnh' }], tools: [], capabilities: ['text'] };
 
 describe('managed worker: account failover and durable ownership', () => {
+  it('forwards a reference-image context larger than 8MB and checkpoints it for resume', async () => {
+    let received = 0;
+    const s = http.createServer((req, res) => {
+      req.on('data', (chunk) => { received += chunk.length; });
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }));
+      });
+    });
+    servers.push(s);
+    await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
+    add('A', `http://127.0.0.1:${(s.address() as any).port}/v1`);
+    const j = await job(), w = worker('A', j.lease_id);
+    const messages = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,' + 'A'.repeat(9 * 1024 * 1024) } }] }];
+    expect((await w.post(`/api/worker/jobs/${j.id}/infer`, { messages, capabilities: ['vision'] })).status).toBe(200);
+    expect(received).toBeGreaterThan(8 * 1024 * 1024);
+    expect((await w.post(`/api/worker/jobs/${j.id}/checkpoint`, { step: 'inference', messages })).status).toBe(200);
+    expect(JSON.stringify((await client(env.app).get(`/api/jobs/${j.id}`)).body)).not.toContain('data:image');
+    env.clock.advance(6 * 60000); sweepStaleJobs(env.ctx);
+    const resumed = (await worker('B').get('/api/worker/next?mode=managed')).body;
+    expect(resumed.checkpoint.messages).toEqual(messages);
+  });
+  it('keeps inference/checkpoint context bounded and ordinary writes at the existing limit', async () => {
+    const j = await job(), w = worker('A', j.lease_id);
+    for (const endpoint of ['infer', 'checkpoint']) {
+      const r = await w.post(`/api/worker/jobs/${j.id}/${endpoint}`, {}, { 'content-length': String(32 * 1024 * 1024 + 1) });
+      expect(r.status).toBe(413);
+      expect(r.body.error.code).toBe('BODY_TOO_LARGE');
+    }
+    expect((await client(env.app).post('/api/projects', { name: 'Large ordinary request', brief: 'A'.repeat(3 * 1024 * 1024) })).status).toBe(413);
+  });
   it('A hết quota → B tiếp tục request, cooldown A và ghi attribution, không lộ credential', async () => {
     let callsA = 0, callsB = 0;
     const a = add('A', await gateway(429, { error: { code: 'quota_exhausted' } }, () => callsA++));

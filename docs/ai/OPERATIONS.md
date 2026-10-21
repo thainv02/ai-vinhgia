@@ -86,6 +86,7 @@ Collector chỉ phục vụ hiển thị, không thay đổi policy chọn tài 
 - Mọi mutation job thêm X-Job-Lease. Upsert scenes/comments thêm X-Job-Id và phải thuộc phạm vi job.
 - Heartbeat supervisor mỗi 20s, độc lập với inference.
 - Checkpoint: `POST /api/worker/jobs/:id/checkpoint`.
+- Inference và checkpoint nhận tối đa 32 MiB JSON để chứa nhiều ảnh tham chiếu base64; các API ghi thông thường vẫn giữ giới hạn 2 MiB. Giới hạn này áp dụng cho toàn bộ context, không phải từng ảnh.
 - Wait: `POST /api/worker/jobs/:id/wait`, reason `ai_quota|needs_reconciliation|browser_offline`, retry_at là ISO tương lai hoặc NULL để chờ xử lý thủ công.
 - Tool dùng browser-lease và actions API. Intent được ghi trước submit; mất phản hồi không có nghĩa chưa submit.
 - Complete cần Idempotency-Key. Cùng key/body trả kết quả cũ; body/key khác bị từ chối, không ghi asset/ledger lần nữa.
