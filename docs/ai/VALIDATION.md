@@ -40,3 +40,11 @@
 Web có trang `/accounts`; hai account Antigravity có proxy hoạt động. Server dự án chính giữ `WORKER_MODE=legacy` do video job #27 đang được worker Claude giữ và gửi heartbeat tại thời điểm triển khai. Managed smoke chạy riêng đã xác nhận code path hoạt động.
 
 Khi đã drain/đối soát công việc cũ, đặt `WORKER_MODE=managed`, restart server, chạy `npm run ai:pool` và `npm run worker:start`. Nếu dùng browser, đăng nhập ChatGPT/Flow trong profile media riêng trước; xem `OPERATIONS.md`. Chưa bật managed browser tự tạo video trên dự án đang chạy.
+
+## Bổ sung thanh quota
+
+- Migration 007 thêm cache telemetry, không thay đổi dữ liệu quota/routing cũ.
+- Đã đọc quota thật của Antigravity 01/02 qua proxy management, không tạo request inference. Tại lần kiểm tra, Gemini 3 Flash báo 100% còn lại; reset theo timestamp upstream, hiển thị múi giờ máy người dùng.
+- Giao diện desktop/mobile có progressbar, reset time, stale/unknown state, refresh mỗi 5 phút. Headless Chrome xác nhận hai progressbar có giá trị 100, không có lỗi JavaScript.
+- Bộ test sau bổ sung: **241 tests pass**; typecheck và build pass. Có kiểm tra 0%/100%/missing data, cửa sổ Codex, cache, secret exclusion và nâng cấp management key không đụng access key.
+- Codex quota có parser/collector nhưng chưa chạy thật bằng tài khoản Codex. Claude subscription telemetry hiện chưa hỗ trợ.

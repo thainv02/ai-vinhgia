@@ -3,22 +3,33 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../api/client';
 import { Button } from '../components/Button';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { AccountQuota, type AccountQuotaData } from '../components/AccountQuota';
 
-interface Account {
+interface Account extends AccountQuotaData {
   id: number; alias: string; provider: string; model: string; base_url: string; enabled: boolean; priority: number;
   state: string; retry_after: string | null; last_error: string | null; login_command: string | null;
 }
 interface Policy { providers: string[]; allow_provider_fallback: boolean; allow_model_fallback: boolean; max_attempts: number }
-export async function aiRequest<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
+let adminSession: Promise<{ csrf: string }> | null = null;
+let sessionUntil = 0;
+export async function aiRequest<T>(url: string, method = 'GET', body?: unknown, retrySession = true): Promise<T> {
   const headers: Record<string, string> = {};
   if (method !== 'GET') {
-    const session = await fetch('/api/ai/session');
-    if (!session.ok) throw new Error('Không mở được phiên quản trị');
-    headers['X-AI-CSRF'] = (await session.json()).csrf;
+    if (!adminSession || Date.now() >= sessionUntil) {
+      sessionUntil = Date.now() + 45 * 60000;
+      adminSession = fetch('/api/ai/session').then(async (session) => {
+        if (!session.ok) throw new Error('Không mở được phiên quản trị');
+        return session.json() as Promise<{ csrf: string }>;
+      }).catch((error) => { adminSession = null; throw error; });
+    }
+    headers['X-AI-CSRF'] = (await adminSession).csrf;
     headers['Content-Type'] = 'application/json';
   }
   const r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const result = await r.json();
+  if (!r.ok && result.error?.code === 'AI_ADMIN_REQUIRED' && retrySession) {
+    adminSession = null; return aiRequest<T>(url, method, body, false);
+  }
   if (!r.ok) throw new Error(result.error?.message ?? 'Yêu cầu thất bại');
   return result;
 }
@@ -29,6 +40,10 @@ export default function AccountsPage() {
   useDocumentTitle('Tài khoản AI');
   const qc = useQueryClient();
   const accounts = useQuery({ queryKey: ['ai-accounts'], queryFn: () => aiRequest<Account[]>('/api/ai/accounts'), refetchInterval: 5000 });
+  const quotas = useQuery({ queryKey: ['ai-quotas'], queryFn: async () => {
+    const rows = await aiRequest<Account[]>('/api/ai/quotas/refresh', 'POST', {});
+    qc.setQueryData(['ai-accounts'], rows); return rows;
+  }, refetchInterval: 5 * 60000, staleTime: 60000, retry: false, refetchOnWindowFocus: false });
   const status = useQuery({ queryKey: ['ai-status'], queryFn: () => aiRequest<{ worker_mode: string }>('/api/ai/status'), refetchInterval: 10000 });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.listProjects });
   const [alias, setAlias] = useState('');
@@ -51,12 +66,13 @@ export default function AccountsPage() {
     finally { setBusy(false); }
   }
   return <div className="mx-auto max-w-6xl space-y-5">
-    <div><h1 className="text-xl font-bold">Tài khoản AI</h1><p className="mt-1 text-sm text-muted">Giữ tài khoản đang dùng; chuyển sang tài khoản tiếp theo khi quota không còn khả dụng.</p></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-bold">Tài khoản AI</h1><p className="mt-1 text-sm text-muted">Giữ tài khoản đang dùng; chuyển sang tài khoản tiếp theo khi quota không còn khả dụng.</p></div><Button loading={quotas.isFetching} disabled={busy} onClick={() => void quotas.refetch()}>Cập nhật hạn mức</Button></div>
     <div className="rounded-lg border border-line bg-surface p-4 text-sm">
       Chế độ worker: <strong>{status.data?.worker_mode === 'managed' ? 'Tự động qua account pool' : 'Worker bên ngoài (legacy)'}</strong>.
-      <p className="mt-1 text-muted">Quota AI tách biệt với hạn mức tạo ảnh ChatGPT và credit Google Flow. Thời gian chờ bên dưới là thời điểm thử lại, không phải cam kết quota đã reset.</p>
+      <p className="mt-1 text-muted">Thanh hiển thị phần trăm hạn mức còn lại do provider trả về, tự cập nhật mỗi 5 phút. Đây không phải số token còn lại. Quota AI tách biệt với credit Google Flow.</p>
     </div>
     {(error || accounts.error) && <div role="alert" className="rounded-lg bg-danger-bg p-3 text-sm text-danger-fg">{error || errorMessage(accounts.error)}</div>}
+    {quotas.error && <div role="status" className="text-xs text-muted">Chưa cập nhật được hạn mức. Dữ liệu lần trước vẫn được giữ; bấm Cập nhật hạn mức để thử lại.</div>}
     {notice && <div role="status" className="rounded-lg bg-surface-2 p-3 text-sm">{notice}</div>}
     <section className="rounded-lg border border-line bg-surface p-4">
       <h2 className="font-semibold">Thêm tài khoản</h2>
@@ -78,11 +94,12 @@ export default function AccountsPage() {
       <p className="mt-2 text-xs text-muted">Mỗi account dùng credential store riêng. Không đăng nhập tài khoản thứ hai vào cùng store; thêm một dòng tài khoản mới.</p>
     </section>}
     <section className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-surface-2 text-muted"><tr><th className="p-3">Tài khoản / model</th><th className="p-3">Trạng thái</th><th className="p-3">Ưu tiên</th><th className="p-3">Thao tác</th></tr></thead><tbody className="divide-y divide-line">
-        {accounts.isLoading && <tr><td colSpan={4} className="p-5 text-muted">Đang tải tài khoản...</td></tr>}
-        {accounts.data?.length === 0 && <tr><td colSpan={4} className="p-6 text-muted">Chưa có tài khoản. Thêm từng tài khoản để thiết lập pool.</td></tr>}
+      <table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-surface-2 text-muted"><tr><th className="p-3">Tài khoản / model</th><th className="p-3">Hạn mức còn lại</th><th className="p-3">Trạng thái</th><th className="p-3">Ưu tiên</th><th className="p-3">Thao tác</th></tr></thead><tbody className="divide-y divide-line">
+        {accounts.isLoading && <tr><td colSpan={5} className="p-5 text-muted">Đang tải tài khoản...</td></tr>}
+        {accounts.data?.length === 0 && <tr><td colSpan={5} className="p-6 text-muted">Chưa có tài khoản. Thêm từng tài khoản để thiết lập pool.</td></tr>}
         {accounts.data?.map((a) => <tr key={a.id} className={!a.enabled ? 'opacity-60' : ''}>
           <td className="p-3"><strong>{a.alias}</strong><div className="text-xs text-muted">{a.provider} · {a.model}</div>{models[a.id] && <select aria-label={`Model ${a.alias}`} className="mt-2 max-w-64" value={a.model} disabled={busy} onChange={(e) => void act(async () => { await aiRequest(`/api/ai/accounts/${a.id}`, 'PATCH', { model: e.target.value }); })}><option value={a.model}>{a.model}</option>{models[a.id].filter((m) => m !== a.model).map((m) => <option key={m}>{m}</option>)}</select>}</td>
+          <td className="p-3"><AccountQuota account={a} /></td>
           <td className="p-3"><span>{a.enabled ? labels[a.state] ?? a.state : 'Đã tắt'}</span>{a.retry_after && <div className="text-xs text-muted">Thử lại: {new Date(a.retry_after).toLocaleString('vi-VN')}</div>}{a.last_error && <div className="text-xs text-muted">{a.last_error}</div>}</td>
           <td className="p-3"><input aria-label={`Ưu tiên ${a.alias}`} className="max-w-20" type="number" min={0} max={10000} defaultValue={a.priority} key={`${a.id}-${a.priority}`} disabled={busy} onBlur={(e) => { const n = Number(e.target.value); if (n !== a.priority) void act(async () => { await aiRequest(`/api/ai/accounts/${a.id}`, 'PATCH', { priority: n }); }); }} /></td>
           <td className="p-3"><div className="flex flex-wrap gap-2"><Button size="sm" disabled={busy} onClick={() => setSelected(a)}>Kết nối</Button><Button size="sm" disabled={busy} onClick={() => void act(async () => { const r = await aiRequest<{ ok: boolean; models: string[] }>(`/api/ai/accounts/${a.id}/probe`, 'POST', {}); setModels((old) => ({ ...old, [a.id]: r.models })); setNotice(r.ok ? 'Gateway có model đã chọn. Quyền inference sẽ được xác nhận khi thực hiện job.' : 'Gateway/model chưa sẵn sàng. Kiểm tra đăng nhập, proxy và model ID.'); })}>Kiểm tra</Button><Button size="sm" disabled={busy} onClick={() => void act(async () => { await aiRequest(`/api/ai/accounts/${a.id}`, 'PATCH', { enabled: !a.enabled }); })}>{a.enabled ? 'Tắt' : 'Bật'}</Button></div></td>

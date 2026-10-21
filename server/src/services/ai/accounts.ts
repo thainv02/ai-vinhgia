@@ -17,6 +17,7 @@ export interface Account {
   id: number; alias: string; provider: string; adapter: string; model: string; base_url: string; key_env: string | null;
   enabled: number; priority: number; capabilities: string; quota_scope_key: string | null; state: string;
   retry_after: string | null; reserved_until: string | null; reservation_id: string | null; last_error: string | null; last_used_at: string | null;
+  quota_snapshot?: string | null; quota_checked_at?: string | null; quota_error?: string | null;
 }
 export function localUrl(value: string) {
   const u = new URL(value);
@@ -35,6 +36,8 @@ export function listAccounts(ctx: AppContext) {
     id: a.id, alias: a.alias, provider: a.provider, model: a.model, base_url: a.base_url, enabled: !!a.enabled,
     priority: a.priority, capabilities: parseJson<string[]>(a.capabilities, []), quota_scope_key: a.quota_scope_key,
     state: a.state, retry_after: a.retry_after, last_error: a.last_error, last_used_at: a.last_used_at,
+    quota: a.quota_snapshot ? parseJson<Record<string, unknown> | null>(a.quota_snapshot, null) : null,
+    quota_checked_at: a.quota_checked_at ?? null, quota_error: a.quota_error ?? null,
     login_method: ['codex', 'antigravity'].includes(a.provider) && !a.key_env ? 'cli-oauth' : 'external-gateway',
     login_command: ['codex', 'antigravity'].includes(a.provider) && !a.key_env ? `npm run ai:login -- ${a.id}` : null,
   }));
@@ -62,9 +65,11 @@ export function createAccount(ctx: AppContext, input: z.infer<typeof accountBody
     fs.chmodSync(dir, 0o700);
     const key = crypto.randomBytes(32).toString('hex');
     fs.writeFileSync(path.join(dir, 'access-key'), key, { mode: 0o600 });
+    const management = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(path.join(dir, 'management-key'), management, { mode: 0o600 });
     const port = Number(new URL(base).port || 80);
     // One isolated proxy/store per account. Autovideo is the only account router.
-    fs.writeFileSync(path.join(dir, 'config.yaml'), `server:\n  host: "127.0.0.1"\n  port: ${port}\naccess:\n  api-keys:\n    - "${key}"\nmanagement:\n  allow-remote: false\n  secret-key: "${crypto.randomBytes(32).toString('hex')}"\noauth:\n  auth-dir: ${JSON.stringify(path.join(dir, 'auth'))}\n  providers:\n    antigravity:\n      antigravity-credits: false\nrouting:\n  strategy: "fill-first"\n  retry:\n    request-retry: 0\n    max-retry-credentials: 1\n`, { mode: 0o600 });
+    fs.writeFileSync(path.join(dir, 'config.yaml'), `server:\n  host: "127.0.0.1"\n  port: ${port}\naccess:\n  api-keys:\n    - "${key}"\nmanagement:\n  allow-remote: false\n  secret-key: "${management}"\noauth:\n  auth-dir: ${JSON.stringify(path.join(dir, 'auth'))}\n  providers:\n    antigravity:\n      antigravity-credits: false\nrouting:\n  strategy: "fill-first"\n  retry:\n    request-retry: 0\n    max-retry-credentials: 1\n`, { mode: 0o600 });
     return listAccounts(ctx).find((a) => a.id === id)!;
   });
 }

@@ -60,6 +60,16 @@ Giao diện ChatGPT/Flow có thể thay đổi. Nếu tool không tìm được 
 
 ## Quota và retry
 
+Trang `/accounts` có thanh **hạn mức còn lại**, thời điểm reset và thời điểm quan sát dữ liệu. Antigravity hiển thị theo model; Codex hiển thị các cửa sổ provider trả về, ví dụ 5 giờ/7 ngày khi có dữ liệu tương ứng. Đây là quota %, không phải số token còn lại hoặc context window.
+
+Quota được đọc khi mở trang, sau đó mỗi 5 phút; nút Cập nhật hạn mức có cache tối thiểu 60 giây để tránh gọi dồn. Không có dữ liệu thì để unknown, không mặc định 100%. Khi cập nhật lỗi, giữ snapshot trước và đánh dấu dữ liệu cũ. Mốc reset đã qua không tự làm thanh tăng về 100%.
+
+Collector dùng management API của từng proxy local; provider OAuth vẫn do proxy giữ/refresh, không trả về frontend. Với store cũ, lần đọc đầu lưu management key local vào file riêng và cập nhật cấu hình management key; có bản `config.before-quota.yaml` trong store. Không sửa access key inference hoặc file OAuth. Gateway không reload key kịp thì giao diện yêu cầu restart proxy.
+
+Antigravity đọc quotaInfo từ fetchAvailableModels. Codex ưu tiên tín hiệu quota quan sát gần đây, rồi thử usage qua gateway; adapter Codex chưa được xác nhận trên tài khoản thật trong phiên này. Claude/API gateway ngoài hiện không có nguồn quota subscription và hiển thị chưa có dữ liệu. Việc có quota của một model không chứng minh model đó được gateway hỗ trợ.
+
+Collector chỉ phục vụ hiển thị, không thay đổi policy chọn tài khoản, cooldown hay credit ledger. Nguồn tham khảo: [Codex rate-limit fields](https://learn.chatgpt.com/docs/app-server), [proxy management API](https://github.com/router-for-me/CLIProxyAPI/blob/ce07d189b3de2a39d37fd68ae093b102ce3aabee/internal/api/handlers/management/api_tools.go).
+
 - Theo priority, giữ cùng provider/model; mở fallback provider/model trên `/accounts` cho từng project nếu muốn.
 - Tối đa 3 lần thử inference ở một bước; retry nội bộ proxy tắt. Đây không phải giới hạn số token hay credit Flow.
 - `429` dùng Retry-After nếu có; thời điểm probe lại không được trình bày là thời điểm quota reset chắc chắn.
