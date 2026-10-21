@@ -146,7 +146,7 @@ export function ledgerJson(row: LedgerRow & { scene_code?: string | null }) {
   };
 }
 
-type JobJoinRow = JobRow & { scene_code: string | null; project_name: string };
+type JobJoinRow = JobRow & { scene_code: string | null; project_name: string; ai_info?: string | null };
 
 export function jobJsonFromRow(row: JobJoinRow) {
   return {
@@ -171,11 +171,18 @@ export function jobJsonFromRow(row: JobJoinRow) {
     approved_at: row.approved_at,
     requeue_count: row.requeue_count,
     last_requeued_at: row.last_requeued_at,
+    worker_mode: row.worker_mode,
+    ai: parseJson<{ alias: string; provider: string; model: string; outcome: string } | null>(row.ai_info, null),
+    lease_epoch: row.lease_epoch,
+    wait_reason: row.wait_reason,
+    next_attempt_at: row.next_attempt_at,
+    checkpoint: row.checkpoint ? { step: parseJson<Record<string, unknown>>(row.checkpoint, {}).step ?? null } : null,
   };
 }
 export type JobJson = ReturnType<typeof jobJsonFromRow>;
 
-const JOB_SELECT = `SELECT j.*, s.code AS scene_code, p.name AS project_name
+const JOB_SELECT = `SELECT j.*, s.code AS scene_code, p.name AS project_name,
+  (SELECT json_object('alias',a.alias,'provider',a.provider,'model',r.model,'outcome',r.outcome) FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=j.id ORDER BY r.id DESC LIMIT 1) AS ai_info
   FROM jobs j
   LEFT JOIN scenes s ON s.id = j.scene_id
   JOIN projects p ON p.id = j.project_id`;

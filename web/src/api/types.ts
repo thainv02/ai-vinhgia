@@ -73,6 +73,10 @@ export interface Asset {
 }
 
 export interface Job {
+  ai: { alias: string; provider: string; model: string; outcome: string } | null;
+  wait_reason: string | null;
+  next_attempt_at: string | null;
+  worker_mode: string;
   id: number;
   project_id: number;
   project_name?: string;
@@ -134,7 +138,7 @@ export interface Comment {
   id: number;
   scene_id: number;
   asset_id: number | null;
-  author: 'user' | 'claude';
+  author: 'user' | 'claude' | 'agent';
   body: string;
   timecode: number | null;
   action: CommentAction;
@@ -148,7 +152,7 @@ export interface PromptVersion {
   version: number;
   prompt: string;
   reason: string | null;
-  created_by: 'claude' | 'user';
+  created_by: 'claude' | 'agent' | 'user';
   created_at: string;
 }
 
@@ -349,7 +353,7 @@ export interface FinalCut {
   /** Bản render còn logo (không bao giờ hiển thị như bản hoàn chỉnh; chỉ để tải về). */
   raw_video_path: string | null;
   raw_video_url?: string | null;
-  created_by: 'claude' | 'user';
+  created_by: 'claude' | 'agent' | 'user';
   note: string | null;
   summary: string | null;
   error: string | null;
@@ -375,6 +379,7 @@ export interface LatestFinalCut {
 
 // ---- Payload sự kiện SSE (API.md mục 7) ----
 export interface SseEventMap {
+  'ai.updated': { job_id?: number; account_id?: number; state: string };
   'scene.updated': { scene: Scene };
   'job.updated': { job: Job };
   'asset.created': { asset: Asset };

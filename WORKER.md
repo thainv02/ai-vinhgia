@@ -1,8 +1,11 @@
-# WORKER: hướng dẫn cho phiên Claude Code làm worker
+> Managed worker dùng giao thức lease ở docs/ai/OPERATIONS.md. Các lệnh curl bên dưới dành cho WORKER_MODE=legacy. Không dùng curl legacy để xử lý job managed.
+> Khi tiếp tục một job đã claim, giữ nguyên `claimed_by` hiện có (ví dụ `claude-1`); không đổi worker ID giữa job chỉ vì các ví dụ bên dưới dùng tên `worker-1`.
 
-Bạn là **worker** của web quản lý sản xuất video theo cảnh trong thư mục này. Người dùng nhập kịch bản, duyệt prompt và bấm tạo trên web. Bạn làm phần việc thật trên Chrome của người dùng (Claude in Chrome): dùng ChatGPT để tạo ảnh storyboard, dùng Google Flow để tạo video, rồi báo kết quả về web qua API cục bộ. Web và bạn chỉ giao tiếp qua API này. Đọc kỹ toàn bộ file trước khi nhận job đầu tiên.
+# WORKER: hướng dẫn cho phiên AI (Claude Code, Codex hoặc Antigravity) làm worker
 
-Lưu ý về đường dẫn: các tài liệu cũ nhắc `docs/video-production/...` và `docs/diagrams/MOCKUP_BOX/...` không tồn tại ở đây. Ở repo này: `claude-system-prompt.md`, `flow-automation-prompt.md`, `cacao-smoothie-prompts.md` nằm ở thư mục gốc, ảnh mockup nằm ở `MOCKUP_BOX/`. Mọi đường dẫn trong job đều **tương đối từ thư mục gốc repo** (gọi là `ROOT`). Đường dẫn tuyệt đối = `ROOT` + `/` + đường dẫn tương đối.
+Bạn là **worker** của web quản lý sản xuất video theo cảnh trong thư mục này. Người dùng nhập kịch bản, duyệt prompt và bấm tạo trên web. Bạn làm phần việc thật trên Chrome của người dùng (công cụ browser của môi trường đang chạy): dùng ChatGPT để tạo ảnh storyboard, dùng Google Flow để tạo video, rồi báo kết quả về web qua API cục bộ. Web và bạn chỉ giao tiếp qua API này. Đọc kỹ toàn bộ file trước khi nhận job đầu tiên.
+
+Lưu ý về đường dẫn: các tài liệu cũ nhắc `docs/video-production/...` và `docs/diagrams/MOCKUP_BOX/...` không tồn tại ở đây. Ở repo này: `video-production-rules.md`, `flow-automation-prompt.md`, `cacao-smoothie-prompts.md` nằm ở thư mục gốc, ảnh mockup nằm ở `MOCKUP_BOX/`. Mọi đường dẫn trong job đều **tương đối từ thư mục gốc repo** (gọi là `ROOT`). Đường dẫn tuyệt đối = `ROOT` + `/` + đường dẫn tương đối.
 
 # Luật cứng
 
@@ -21,7 +24,7 @@ Vi phạm bất kỳ luật nào dưới đây là lỗi nghiêm trọng, vì m�
 
 # 1. Chuẩn bị (làm một lần khi bắt đầu phiên)
 
-1. Mở phiên Claude Code **ở thư mục gốc repo** (nơi có `.env`, `WORKER.md`, `output/`).
+1. Mở phiên AI (Claude Code, Codex hoặc Antigravity) **ở thư mục gốc repo** (nơi có `.env`, `WORKER.md`, `output/`).
 2. Chrome đã mở và đã đăng nhập sẵn https://chatgpt.com và https://labs.google/fx/tools/flow. Mở thử từng trang; nếu thấy trang đăng nhập thì dừng và nhờ người dùng đăng nhập (chưa có job nào được nhận, không cần `fail`).
 3. Server API chạy ở `http://127.0.0.1:8787` (web dev ở `http://localhost:5173`). Kiểm tra: `curl -sS http://127.0.0.1:8787/api/health` phải trả `{"ok":true,...}`. Không được thì báo người dùng chạy `npm run dev`.
 4. Cần có `ffmpeg`, `ffprobe`, `jq`, `curl` (kiểm tra bằng `ffmpeg -version`, `jq --version`).
@@ -32,14 +35,14 @@ API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 ```
 
-6. **Tên worker**: dùng `claude-1`, gắn `?worker=claude-1` vào mọi request worker (server dùng nó để biết job thuộc về ai).
+6. **Tên worker**: dùng `worker-1`, gắn `?worker=worker-1` vào mọi request worker (server dùng nó để biết job thuộc về ai).
 7. Báo online và kiểm tra token:
 
 ```bash
 API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
-curl -sS -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$API/api/worker/ping?worker=claude-1"
-# {"ok":true,"server_time":"…","online":true,"last_seen_at":"…","worker_id":"claude-1","queue_paused":false,"pause_reason":null,"pause_code":null,"paused_at":null}
+curl -sS -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$API/api/worker/ping?worker=worker-1"
+# {"ok":true,"server_time":"…","online":true,"last_seen_at":"…","worker_id":"worker-1","queue_paused":false,"pause_reason":null,"pause_code":null,"paused_at":null}
 ```
 
 `401 UNAUTHORIZED` nghĩa là token sai: đọc lại `.env`, không đoán token. Web hiển thị "Worker online" khi có request hợp lệ trong 90 giây gần nhất.
@@ -50,13 +53,13 @@ Mọi request dưới đây cần header `Authorization: Bearer $TOKEN` (trừ `
 
 | Việc | Request |
 |---|---|
-| Báo online / kiểm tra token | `GET /api/worker/ping?worker=claude-1` |
+| Báo online / kiểm tra token | `GET /api/worker/ping?worker=worker-1` |
 | Trạng thái hàng đợi (không cần token) | `GET /api/worker/status` |
-| Nhận job tiếp theo (claim) | `GET /api/worker/next?worker=claude-1` |
+| Nhận job tiếp theo (claim) | `GET /api/worker/next?worker=worker-1` |
 | Xem lại một job | `GET /api/worker/jobs/:id` |
-| Heartbeat | `POST /api/worker/jobs/:id/heartbeat?worker=claude-1` |
-| Hoàn thành | `POST /api/worker/jobs/:id/complete?worker=claude-1` |
-| Báo lỗi | `POST /api/worker/jobs/:id/fail?worker=claude-1` |
+| Heartbeat | `POST /api/worker/jobs/:id/heartbeat?worker=worker-1` |
+| Hoàn thành | `POST /api/worker/jobs/:id/complete?worker=worker-1` |
+| Báo lỗi | `POST /api/worker/jobs/:id/fail?worker=worker-1` |
 | Tạo/cập nhật cảnh (sau `analyze_brief`) | `POST /api/worker/scenes` |
 | Ghi chú/trả lời vào cảnh | `POST /api/worker/comments` |
 
@@ -64,7 +67,7 @@ Mọi request dưới đây cần header `Authorization: Bearer $TOKEN` (trừ `
 API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 curl -sS -w '\nHTTP %{http_code}\n' "$API/api/worker/status"                                          # không cần token
-# {"online":true,"last_seen_at":"…","worker_id":"claude-1","queue_paused":false,"pause_reason":null,"pause_code":null,"paused_at":null,"server_time":"…"}
+# {"online":true,"last_seen_at":"…","worker_id":"worker-1","queue_paused":false,"pause_reason":null,"pause_code":null,"paused_at":null,"server_time":"…"}
 curl -sS -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$API/api/worker/jobs/42"        # xem lại job 42 (trạng thái, payload, kết quả)
 ```
 
@@ -83,7 +86,7 @@ API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 mkdir -p /tmp/autovideo-worker && rm -f /tmp/autovideo-worker/job.json
 for i in 1 2 3; do
-  code=$(curl -sS -o /tmp/autovideo-worker/job.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/worker/next?worker=claude-1")
+  code=$(curl -sS -o /tmp/autovideo-worker/job.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/worker/next?worker=worker-1")
   [ "$code" != 204 ] && break
   sleep 20
 done
@@ -104,19 +107,19 @@ Job trả về (rút gọn, job `video`):
    "output":{"video_path":"output/selftest/video/C1_v1.mp4","grid_path":"output/selftest/video/C1_v1_grid.jpg"},
    "settings":{"aspect":"9:16","duration_s":10,"count":1,"resolution":"720p"},
    "credits_expected":15,"requeued":false},
- "claimed_by":"claude-1","requeue_count":0,"requires_approval":true,"approved_at":"…", "…":"…"}
+ "claimed_by":"worker-1","requeue_count":0,"requires_approval":true,"approved_at":"…", "…":"…"}
 ```
 
 Xem một phần payload cho gọn: `jq '.payload' /tmp/autovideo-worker/job.json`; riêng prompt nguyên văn: `jq -r '.payload.scene.prompt' /tmp/autovideo-worker/job.json`.
 
-Nếu mất ngữ cảnh giữa chừng (phiên bị nén hoặc khởi động lại), lấy lại các job đang giữ: `curl -sS "$API/api/jobs?status=claimed,running" | jq '.[] | select(.claimed_by=="claude-1")'`, rồi heartbeat ngay và làm tiếp.
+Nếu mất ngữ cảnh giữa chừng (phiên bị nén hoặc khởi động lại), lấy lại các job đang giữ: `curl -sS "$API/api/jobs?status=claimed,running" | jq '.[] | select(.claimed_by=="worker-1")'`, rồi heartbeat ngay và làm tiếp.
 
 ## 2.2 Heartbeat
 
 ```bash
 API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
-curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" "$API/api/worker/jobs/42/heartbeat?worker=claude-1"
+curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" "$API/api/worker/jobs/42/heartbeat?worker=worker-1"
 # {"ok":true,"status":"running","heartbeat_at":"…"}   HTTP 200
 ```
 
@@ -134,7 +137,7 @@ TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 jq -n --arg note 'Không thấy lỗi; 941x1672 (9:16).' --arg path 'output/selftest/storyboard/C1_storyboard.png' \
   '{result:{verdict:"pass", note:$note}, assets:[{kind:"storyboard", file_path:$path, meta:{width:941, height:1672}}]}' \
 | curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "$API/api/worker/jobs/42/complete?worker=claude-1" -d @-
+    "$API/api/worker/jobs/42/complete?worker=worker-1" -d @-
 ```
 
 Chi tiết từng loại job ở mục 4.
@@ -147,7 +150,7 @@ Thân: `{ "error": "mô tả ngắn bằng tiếng Việt", "code": "...", "cred
 API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  "$API/api/worker/jobs/42/fail?worker=claude-1" \
+  "$API/api/worker/jobs/42/fail?worker=worker-1" \
   -d '{"error":"Flow hiện CAPTCHA, cần người dùng xử lý","code":"CAPTCHA"}'
 # {"job":{…,"status":"failed","error_code":"CAPTCHA"},"worker":{"queue_paused":true,"pause_code":"CAPTCHA",…}}
 ```
@@ -224,16 +227,16 @@ Trước mỗi job: đọc `payload.requeued`. Nếu `true`, đọc mục 5 trư
 
 ## 4.1 `analyze_brief`: chia cảnh và viết prompt
 
-Payload: `project` (có `brief`, `style_lock`, `credit_per_video`, `max_attempts_per_scene`), `refs` (`id`, `label`, `file_path`), `rules_file` (`claude-system-prompt.md`).
+Payload: `project` (có `brief`, `style_lock`, `credit_per_video`, `max_attempts_per_scene`), `refs` (`id`, `label`, `file_path`), `rules_file` (`video-production-rules.md`).
 
-1. Đọc **toàn bộ** `claude-system-prompt.md`: luật viết prompt, định dạng prompt, cách chia clip. Đây là nguồn luật chính. Các điểm quan trọng nhất:
+1. Đọc **toàn bộ** `video-production-rules.md`: luật viết prompt, định dạng prompt, cách chia clip. Đây là nguồn luật chính. Các điểm quan trọng nhất:
    - Prompt viết bằng tiếng Anh, đúng các dòng: `Style:`, dòng chủ thể, `Action:`, `Shot n: a–b s, …`, `Cut:`, `Camera:`, `Mood:`, rồi `No dialogue…/Focus on…/Avoid…`.
    - Ghi mốc giây cho từng shot, tả kết quả nhìn thấy được chứ không chỉ ý định; nhân quả và vật lý rõ ràng; liệt kê mọi đồ vật và vị trí ngay trong khung đầu; một người, đúng tay.
    - Gọi sản phẩm là "the … from image N"; thêm "must look exactly like image N" khi sản phẩm là trọng tâm.
    - Không để AI vẽ chữ; không viết từ ngữ quảng cáo (offer, showcase…); không nhạc nền; chữ và đồ họa làm khi dựng.
    - Avoid chỉ 2–4 mục, đúng lỗi dễ xảy ra với clip đó.
-2. **Thông số của hệ thống này khác mặc định trong `claude-system-prompt.md`**, tuân theo cái dưới đây: khung **9:16**, mỗi clip **10 giây** (shot phủ kín 0–10 s), mỗi lượt tạo **1 bản** (x1), tối đa `max_attempts_per_scene` lượt cho mỗi cảnh.
-3. Xem từng ảnh tham chiếu (mở file `ROOT/<file_path>` bằng công cụ đọc ảnh). Kiểm tra theo mục "Ảnh tham chiếu" của `claude-system-prompt.md`: đúng sản phẩm, rõ nhãn, chi tiết hay bị vẽ lại. Ảnh không dùng được thì ghi vào comment (bước 6), không bỏ qua.
+2. **Thông số của hệ thống này khác mặc định trong `video-production-rules.md`**, tuân theo cái dưới đây: khung **9:16**, mỗi clip **10 giây** (shot phủ kín 0–10 s), mỗi lượt tạo **1 bản** (x1), tối đa `max_attempts_per_scene` lượt cho mỗi cảnh.
+3. Xem từng ảnh tham chiếu (mở file `ROOT/<file_path>` bằng công cụ đọc ảnh). Kiểm tra theo mục "Ảnh tham chiếu" của `video-production-rules.md`: đúng sản phẩm, rõ nhãn, chi tiết hay bị vẽ lại. Ảnh không dùng được thì ghi vào comment (bước 6), không bỏ qua.
 4. Đọc `brief` và `style_lock`. `style_lock` là phần cố định phải khớp trong mọi prompt (ánh sáng, mặt bếp, trạng thái đồ vật); chép đúng ý đó vào dòng Style và dòng chủ thể của từng clip.
 5. Chia cảnh và viết prompt. Mỗi cảnh gồm:
    - `code`: `C1`, `C2`, … liên tục; `order_index`: 0, 1, 2, …
@@ -243,14 +246,14 @@ Payload: `project` (có `brief`, `style_lock`, `credit_per_video`, `max_attempts
    - `upload_refs`: mảng id ảnh tham chiếu theo thứ tự upload. Prompt gọi ảnh là "image 1", "image 2" **đúng theo thứ tự mảng này**; chỉ đưa ảnh cảnh đó cần (ảnh thừa làm Flow thêm đồ vật vào cảnh). Storyboard luôn upload sau cùng và không chiếm số.
    - `use_prev_storyboard`: `false` cho cảnh đầu; `true` cho các cảnh sau nếu cùng bối cảnh (giữ cùng mặt bàn, ánh sáng, bàn tay với storyboard cảnh đầu); `false` nếu cảnh đổi hẳn bối cảnh.
 6. Ghi prompt từng cảnh ra file tạm để không phải ghép chuỗi bằng tay (ví dụ `/tmp/autovideo-worker/C1_prompt.txt`), rồi gọi `POST /api/worker/scenes` (mục 2.5). Kiểm tra phản hồi: `created` có đủ mã, `skipped` rỗng, mọi cảnh `awaiting_approval`. Nếu có cảnh trùng mã đã tồn tại (phân tích lại), server cập nhật theo mã; cảnh đang chạy bị `skipped`.
-7. Có điều cần người dùng xác nhận (giả định về thông số, ảnh tham chiếu không dùng được, lưu ý pháp chế theo `claude-system-prompt.md`): tối đa 3–4 điểm, gửi **một** comment vào cảnh đầu bằng `POST /api/worker/comments` (mục 2.6).
+7. Có điều cần người dùng xác nhận (giả định về thông số, ảnh tham chiếu không dùng được, lưu ý pháp chế theo `video-production-rules.md`): tối đa 3–4 điểm, gửi **một** comment vào cảnh đầu bằng `POST /api/worker/comments` (mục 2.6).
 8. `complete` job (không cần `assets`). Chưa gọi `POST /api/worker/scenes` thì `complete` bị `409 NO_SCENES`. **Không duyệt cảnh**, người dùng sẽ duyệt prompt trên web.
 
 ```bash
 API=http://127.0.0.1:8787
 TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  "$API/api/worker/jobs/42/complete?worker=claude-1" -d '{"result":{"summary":"Đã chia 1 cảnh, 10 giây."}}'
+  "$API/api/worker/jobs/42/complete?worker=worker-1" -d '{"result":{"summary":"Đã chia 1 cảnh, 10 giây."}}'
 # {"job":{"id":42,"type":"analyze_brief","status":"done",…}}
 ```
 
@@ -261,7 +264,7 @@ Payload: `project`, `scene` (`code`, `prompt`, `first_frame_desc`), `upload_file
 1. Kiểm tra mọi file trong `upload_files` đều tồn tại. Thiếu file nào thì `fail` mã `OTHER`.
 2. Lấy nhãn ảnh tham chiếu để viết lời nhắn cho ChatGPT: `curl -sS "$API/api/projects/<project.id>/refs"` (đọc, không cần token). Ảnh cuối kiểu `output/<slug>/storyboard/C1_storyboard.png` là storyboard cảnh đầu.
 3. Mở https://chatgpt.com, tạo cuộc trò chuyện **mới**.
-4. Upload các file trong `upload_files` **đúng thứ tự** (dùng công cụ upload file của Claude in Chrome; đường dẫn tuyệt đối = `ROOT` + `/` + đường dẫn tương đối). Chờ ảnh tải lên xong hết rồi mới gửi.
+4. Upload các file trong `upload_files` **đúng thứ tự** (dùng công cụ upload file của công cụ browser của môi trường đang chạy; đường dẫn tuyệt đối = `ROOT` + `/` + đường dẫn tương đối). Chờ ảnh tải lên xong hết rồi mới gửi.
 5. Gửi yêu cầu theo mẫu, điền phần trong ngoặc vuông (bỏ dòng "Giữ cùng…" nếu không có storyboard cảnh đầu):
 
 ```
@@ -332,7 +335,7 @@ ffmpeg -y -loglevel error -i output/selftest/video/C1_v1.mp4 \
    - `pass`: đạt.
    - `fix_in_edit`: có lỗi nhỏ sửa được khi dựng (cắt, che, ghép bù), vẫn dùng được.
    - `redo`: lỗi nặng (sai sản phẩm, thiếu hành động chính, vật lý sai rõ, chữ/phụ đề lớn…).
-   `verdict_note` viết bằng tiếng Việt, ngắn, đúng kiểu `log.md`: nêu lỗi thấy được kèm mốc giây, cái gì đã đúng, và lỗi nào là ngẫu nhiên hay có vẻ do prompt. Chỉ nói những gì bạn thật sự thấy: bạn xem lưới 2 khung/giây, **không nghe được âm thanh**, nên đừng khẳng định về lời thoại hay tiếng động. Kết luận `redo` thì thêm một comment chẩn đoán ngắn (bảng "Thời điểm | Video đang ra | Đúng ra phải là | Nguyên nhân trong prompt", theo mục "Chẩn đoán video lỗi" của `claude-system-prompt.md`) bằng `POST /api/worker/comments`, để người dùng quyết định sửa prompt hay tạo lại y nguyên.
+   `verdict_note` viết bằng tiếng Việt, ngắn, đúng kiểu `log.md`: nêu lỗi thấy được kèm mốc giây, cái gì đã đúng, và lỗi nào là ngẫu nhiên hay có vẻ do prompt. Chỉ nói những gì bạn thật sự thấy: bạn xem lưới 2 khung/giây, **không nghe được âm thanh**, nên đừng khẳng định về lời thoại hay tiếng động. Kết luận `redo` thì thêm một comment chẩn đoán ngắn (bảng "Thời điểm | Video đang ra | Đúng ra phải là | Nguyên nhân trong prompt", theo mục "Chẩn đoán video lỗi" của `video-production-rules.md`) bằng `POST /api/worker/comments`, để người dùng quyết định sửa prompt hay tạo lại y nguyên.
 12. `complete`. Lấy `meta` từ ffprobe rồi gửi cả video và lưới; `credits_cost` là số credit **Flow thật sự đã trừ** (đọc số dư trước và sau nếu Flow hiển thị), không biết thì dùng `credits_expected`:
 
 ```bash
@@ -347,7 +350,7 @@ jq -n --arg v "$V" --arg g "$G" --argjson meta "$META" --arg note 'Chữ trên g
     assets:[{kind:"video", file_path:$v, meta:$meta}, {kind:"grid", file_path:$g, meta:{width:1350, height:1920}}],
     credits_cost:15}' \
 | curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "$API/api/worker/jobs/42/complete?worker=claude-1" -d @-
+    "$API/api/worker/jobs/42/complete?worker=worker-1" -d @-
 ```
 
    Server ghi sổ cái −`credits_cost`, thêm dòng vào `output/<slug>/log.md`, cảnh sang `video_review`. Xong là xong: dù kết luận là `redo`, **không tạo lại**.
@@ -357,7 +360,7 @@ jq -n --arg v "$V" --arg g "$G" --argjson meta "$META" --arg note 'Chữ trên g
 Payload: `project`, `scene` (`prompt` hiện tại, `version`), `comments` (mọi comment **chưa xử lý** của cảnh; mỗi comment có `id`, `author`, `body`, `timecode` giây trong video, `asset_id`, `action`). Danh sách này có thể chứa cả ghi chú cũ của chính bạn (`author: "claude"`): bỏ qua những comment đó, chỉ xử lý comment của người dùng (`author: "user"`, kể cả ghi chú `note` cũ nếu liên quan đến yêu cầu sửa).
 
 1. Đọc kỹ từng comment của người dùng. Xem thêm bối cảnh bằng `GET /api/scenes/<scene.id>` (asset, nhận xét cũ, lịch sử prompt). Comment gắn `timecode`/`asset_id` thì mở lưới ảnh của asset đó (`asset.file_path` với video `..._grid.jpg`) để xem đúng chỗ người dùng chỉ.
-2. Đọc lại các luật liên quan trong `claude-system-prompt.md` (mục "Luật viết prompt", "Chẩn đoán video lỗi").
+2. Đọc lại các luật liên quan trong `video-production-rules.md` (mục "Luật viết prompt", "Chẩn đoán video lỗi").
 3. Sửa **đúng chỗ liên quan** đến comment, giữ nguyên mọi chỗ khác từng chữ (dòng Style, shot không liên quan, Camera, Mood…). Giữ đúng định dạng prompt và các luật (mốc giây, kết quả nhìn thấy được, Avoid có trọng tâm). Nếu thay đổi làm trạng thái đồ vật khác với các cảnh khác, nói rõ trong `reason`.
 4. Comment không rõ hoặc đòi thứ trái luật (ví dụ thêm chữ vào hình): đừng đoán. Gửi comment hỏi lại bằng `POST /api/worker/comments`, chỉ đưa vào `resolved_comment_ids` những comment bạn đã thật sự xử lý.
 5. Ghi prompt mới ra file tạm rồi `complete` (không cần `assets`):
@@ -368,7 +371,7 @@ TOKEN=$(sed -n 's/^WORKER_TOKEN=//p' .env)
 jq -n --rawfile prompt /tmp/autovideo-worker/C1_new_prompt.txt --arg reason 'Thêm kéo cắt ngang đầu gói ở giây 1–3 theo comment #1; giữ nguyên phần còn lại.' \
   '{result:{prompt:($prompt|rtrimstr("\n")), reason:$reason, resolved_comment_ids:[1]}}' \
 | curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "$API/api/worker/jobs/42/complete?worker=claude-1" -d @-
+    "$API/api/worker/jobs/42/complete?worker=worker-1" -d @-
 ```
 
    `result.prompt` là **toàn bộ** prompt mới (không phải đoạn thay thế); `reason` bắt buộc, ngắn, tiếng Việt. Server tạo version prompt mới (`created_by=claude`), đánh dấu comment đã xử lý, đưa cảnh về `awaiting_approval` để người dùng duyệt lại, giữ nguyên các video cũ.
@@ -440,7 +443,7 @@ JSON
 jq -n --slurpfile edl /tmp/autovideo-worker/edl.json --arg summary 'Cắt khoảng đứng yên đầu/cuối mỗi cảnh và bỏ 0,8 giây ở C2 vì nguyên liệu tự biến mất; cuối C1 và đầu C2 khớp trạng thái ly trống.' \
   '{result:{edl:$edl[0], summary:$summary}}' \
 | curl -sS -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    "$API/api/worker/jobs/42/complete?worker=claude-1" -d @-
+    "$API/api/worker/jobs/42/complete?worker=worker-1" -d @-
 # 200 {"job":{…,"status":"done","credits_cost":0}}   → server render nền; web hiện "Đang render" rồi "Sẵn sàng"
 ```
 

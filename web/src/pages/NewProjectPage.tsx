@@ -87,7 +87,7 @@ export default function NewProjectPage() {
         }
         setRefBatchesDone(i + 1);
       }
-      setBusy('Đang gửi cho Claude...');
+      setBusy('Đang gửi cho AI...');
       await api.submitBrief(id, brief.trim());
       void qc.invalidateQueries();
       navigate(`/projects/${id}`);
@@ -119,7 +119,7 @@ export default function NewProjectPage() {
           <input id="p-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder="Vd: Cacao Actiso Plus" disabled={!!busy} autoFocus />
         </Field>
 
-        <Field label="Yêu cầu kịch bản" htmlFor="p-brief" hint="Mô tả sản phẩm, thông điệp, số cảnh mong muốn, giọng điệu. Claude sẽ chia cảnh và viết prompt từng cảnh theo quy tắc trong claude-system-prompt.md.">
+        <Field label="Yêu cầu kịch bản" htmlFor="p-brief" hint="Mô tả sản phẩm, thông điệp, số cảnh mong muốn, giọng điệu. AI sẽ chia cảnh và viết prompt từng cảnh theo quy tắc trong video-production-rules.md.">
           <textarea id="p-brief" rows={8} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Vd: Quảng cáo ngắn 4 cảnh cho sinh tố cacao actiso, dọc 9:16, mỗi cảnh 10 giây..." disabled={!!busy} />
         </Field>
 
@@ -155,7 +155,7 @@ export default function NewProjectPage() {
 
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
           <Button type="submit" variant="primary" loading={!!busy} disabledReason={reason} icon={<Icon name="send" />}>
-            Gửi cho Claude phân tích
+            Gửi cho AI phân tích
           </Button>
           {busy ? <span className="text-[13px] text-muted">{busy}</span> : reason ? <span className="text-[13px] text-muted">{reason}</span> : null}
         </div>

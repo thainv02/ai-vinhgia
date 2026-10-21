@@ -1,9 +1,9 @@
-Bạn sẽ tự động tạo toàn bộ video theo kịch bản trong `docs/video-production/cacao-smoothie-prompts.md`, bằng Chrome (Claude in Chrome): dùng ChatGPT để tạo ảnh storyboard, rồi dùng Google Flow để tạo video. Đọc kỹ toàn bộ hướng dẫn này trước khi bắt đầu.
+Bạn sẽ tự động tạo toàn bộ video theo kịch bản trong `cacao-smoothie-prompts.md`, bằng Chrome (browser executor của Claude Code, Codex hoặc Antigravity): dùng ChatGPT để tạo ảnh storyboard, rồi dùng Google Flow để tạo video. Đọc kỹ toàn bộ hướng dẫn này trước khi bắt đầu.
 
 # Tài liệu phải đọc trước
 
-1. `docs/video-production/cacao-smoothie-prompts.md`: kịch bản, gồm prompt từng clip, dòng "Upload", dòng "Khung đầu", bảng khóa nhất quán và danh sách kiểm tra.
-2. `docs/video-production/claude-system-prompt.md`: các luật viết prompt và cách tìm lỗi video. Dùng khi phải chẩn đoán lỗi.
+1. `cacao-smoothie-prompts.md`: kịch bản, gồm prompt từng clip, dòng "Upload", dòng "Khung đầu", bảng khóa nhất quán và danh sách kiểm tra.
+2. `video-production-rules.md`: các luật viết prompt và cách tìm lỗi video. Dùng khi phải chẩn đoán lỗi.
 
 # Trang web dùng
 
@@ -78,7 +78,7 @@ ffmpeg -i <video> -vf "fps=4,scale=360:-1,tile=5x8" -frames:v 1 <video>_grid.jpg
 4. Có ít nhất một bản Đạt hoặc Sửa khi dựng thì chuyển sang clip tiếp theo.
 5. Tất cả các bản đều Tạo lại:
    - Lỗi chỉ xuất hiện ở một bản, các bản khác lỗi khác nhau: tạo lại y nguyên một lượt.
-   - Cùng một lỗi lặp lại ở nhiều bản: sửa prompt theo luật trong `claude-system-prompt.md`. Chỉ sửa đúng chỗ gây lỗi, ghi bản prompt mới vào log, rồi tạo lại.
+   - Cùng một lỗi lặp lại ở nhiều bản: sửa prompt theo luật trong `video-production-rules.md`. Chỉ sửa đúng chỗ gây lỗi, ghi bản prompt mới vào log, rồi tạo lại.
 
 # Giới hạn và quy tắc an toàn
 

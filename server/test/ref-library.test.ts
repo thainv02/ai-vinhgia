@@ -98,7 +98,7 @@ describe('content_hash', () => {
       expect(runMigrations(db, only001)).toEqual(['001_init']);
       db.prepare("INSERT INTO projects (slug, name, created_at, updated_at) VALUES ('p', 'P', 'a', 'b')").run();
       db.prepare("INSERT INTO project_refs (project_id, label, file_path, created_at) VALUES (1, 'Hộp', 'refs/1/a.png', 'a')").run();
-      expect(runMigrations(db)).toEqual(['002_ref_library', '003_final_cuts', '004_watermark']);
+      expect(runMigrations(db)).toEqual(['002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity']);
       expect(runMigrations(db)).toEqual([]);
       expect(db.prepare('SELECT label, content_hash FROM project_refs').all()).toEqual([{ label: 'Hộp', content_hash: null }]);
       const idx = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'project_refs'").all() as { name: string }[]).map((r) => r.name);

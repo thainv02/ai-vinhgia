@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -56,7 +57,7 @@ const QUEUED_SCENE_STATUS: Partial<Record<JobType, string>> = {
  * Claim nguyên tử job queued cũ nhất đủ điều kiện (BEGIN IMMEDIATE). Trả null nếu không có việc.
  * Ném QUEUE_PAUSED (503) nếu hàng đợi đang tạm dừng.
  */
-export function claimNext(ctx: AppContext, workerId: string | null) {
+export function claimNext(ctx: AppContext, workerId: string | null, opts: { managed?: boolean; types?: string[] } = {}) {
   const id = ctx.tx(() => {
     const ws = getWorkerRow(ctx);
     if (ws.queue_paused) {
@@ -67,11 +68,14 @@ export function claimNext(ctx: AppContext, workerId: string | null) {
     }
     const queued = ctx.db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY id").all() as JobRow[];
     for (const job of queued) {
+      if (opts.types && !opts.types.includes(job.type)) continue;
+      if (job.worker_mode === 'managed' && !opts.managed) continue;
+      if (job.wait_reason && (!job.next_attempt_at || job.next_attempt_at > ctx.now())) continue;
       // Cảnh phải đang ở trạng thái *_queued tương ứng; nếu không, job đã cũ -> hủy.
       if (job.scene_id !== null) {
         const scene = getScene(ctx, job.scene_id);
         const expected = QUEUED_SCENE_STATUS[job.type];
-        if (expected && scene.status !== expected) {
+        if (expected && scene.status !== expected && !(job.worker_mode === 'managed' && scene.status === expected.replace('_queued', '_running'))) {
           cancelStale(ctx, job, scene);
           continue;
         }
@@ -86,7 +90,7 @@ export function claimNext(ctx: AppContext, workerId: string | null) {
       if (claimBlockReason(ctx, job)) continue;
 
       const now = ctx.now();
-      const payload = computePayload(ctx, job);
+      const payload = job.worker_mode === 'managed' && job.payload !== '{}' ? parseJson<Record<string, unknown>>(job.payload, {}) : computePayload(ctx, job);
       const res = ctx.db
         .prepare(
           `UPDATE jobs SET status = 'claimed', claimed_by = ?, claimed_at = ?, heartbeat_at = ?, payload = ?
@@ -94,8 +98,9 @@ export function claimNext(ctx: AppContext, workerId: string | null) {
         )
         .run(workerId, now, now, JSON.stringify(payload), job.id);
       if (res.changes !== 1) continue;
-      if (job.type === 'storyboard') transition(ctx, job.scene_id as number, 'storyboard_running', `job #${job.id} được nhận`);
-      else if (job.type === 'video') transition(ctx, job.scene_id as number, 'video_running', `job #${job.id} được nhận`);
+      if (opts.managed) ctx.db.prepare("UPDATE jobs SET lease_id=?,lease_epoch=lease_epoch+1,worker_mode='managed',wait_reason=NULL,next_attempt_at=NULL WHERE id=?").run(crypto.randomUUID(), job.id);
+      if (job.type === 'storyboard' && getScene(ctx, job.scene_id!).status !== 'storyboard_running') transition(ctx, job.scene_id as number, 'storyboard_running', `job #${job.id} được nhận`);
+      else if (job.type === 'video' && getScene(ctx, job.scene_id!).status !== 'video_running') transition(ctx, job.scene_id as number, 'video_running', `job #${job.id} được nhận`);
       emitJob(ctx, job.id, job.project_id);
       // Tạo sẵn thư mục đầu ra để worker chỉ việc ghi file.
       ctx.afterCommit(() => ensureOutputDirs(ctx, payload));
@@ -103,7 +108,7 @@ export function claimNext(ctx: AppContext, workerId: string | null) {
     }
     return null;
   });
-  return id === null ? null : getJobJson(ctx, id);
+  return id === null ? null : { ...getJobJson(ctx, id), ...(opts.managed ? { lease_id: getJobRow(ctx, id).lease_id, checkpoint: parseJson<Record<string, unknown> | null>(getJobRow(ctx, id).checkpoint, null) } : {}) };
 }
 
 function ensureOutputDirs(ctx: AppContext, payload: Record<string, unknown>): void {
@@ -235,7 +240,7 @@ const mediaResult = z.looseObject({
 });
 
 /** Worker báo hoàn thành job. Xử lý riêng theo loại job (decisions §E). */
-export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody) {
+export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody, actor: 'claude' | 'agent' = 'claude') {
   ctx.tx(() => {
     const job = getJobRow(ctx, jobId);
     assertClaimed(job);
@@ -295,7 +300,7 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody)
           .v + 1;
       ctx.db
         .prepare('INSERT INTO scene_prompt_versions (scene_id, version, prompt, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(scene.id, version, r.prompt, r.reason, 'claude', now);
+        .run(scene.id, version, r.prompt, r.reason, actor, now);
       ctx.db.prepare('UPDATE scenes SET prompt = ?, updated_at = ? WHERE id = ?').run(r.prompt, now, scene.id);
       const ids = r.resolved_comment_ids ?? ((stored.comments ?? []) as { id: number }[]).map((c) => c.id);
       for (const cid of ids) {
@@ -309,7 +314,7 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody)
         project_id: scene.project_id,
         scene_id: scene.id,
         type: 'scene.prompt',
-        message: `${scene.code}: Claude sửa prompt (v${version}) — ${r.reason}`,
+        message: `${scene.code}: AI sửa prompt (v${version}) — ${r.reason}`,
       });
       transition(ctx, scene.id, 'awaiting_approval', `job #${job.id}: đã sửa prompt, chờ duyệt lại`);
     } else if (job.type === 'edit_plan') {
@@ -320,7 +325,7 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody)
       const n = (ctx.db.prepare('SELECT COUNT(*) AS n FROM scenes WHERE project_id = ?').get(project.id) as { n: number }).n;
       if (n === 0) throw conflict('NO_SCENES', 'Chưa có cảnh nào; hãy gọi POST /api/worker/scenes trước khi complete analyze_brief');
       ctx.db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
-      logEvent(ctx, { project_id: project.id, type: 'project.analyzed', message: `Claude đã phân tích kịch bản: ${n} cảnh` });
+      logEvent(ctx, { project_id: project.id, type: 'project.analyzed', message: `AI đã phân tích kịch bản: ${n} cảnh` });
       emitProject(ctx, project.id);
     }
 
@@ -401,6 +406,7 @@ export function cancelJob(ctx: AppContext, jobId: number) {
       throw conflict('INVALID_STATE', `Job #${job.id} đã ở trạng thái ${job.status}, không thể hủy`);
     }
     const now = ctx.now();
+    ctx.db.prepare('DELETE FROM browser_leases WHERE job_id=?').run(jobId);
     ctx.db
       .prepare("UPDATE jobs SET status = 'cancelled', finished_at = ?, error = 'Đã hủy bởi người dùng' WHERE id = ?")
       .run(now, job.id);
@@ -458,6 +464,10 @@ export function sweepStaleJobs(ctx: AppContext): number[] {
              claimed_by = NULL, claimed_at = NULL, heartbeat_at = NULL WHERE id = ?`,
         )
         .run(now, job.id);
+      if (job.worker_mode === 'managed') {
+        const pending = ctx.db.prepare("SELECT 1 FROM external_actions WHERE job_id=? AND state IN ('intent','uncertain') LIMIT 1").get(job.id);
+        ctx.db.prepare('UPDATE jobs SET lease_id=NULL,wait_reason=?,next_attempt_at=? WHERE id=?').run(pending ? 'needs_reconciliation' : null, null, job.id);
+      }
       let code: string | null = null;
       if (job.scene_id !== null) {
         const scene = getScene(ctx, job.scene_id);

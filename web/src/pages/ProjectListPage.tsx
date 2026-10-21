@@ -36,7 +36,7 @@ export default function ProjectListPage() {
             </LinkButton>
           }
         >
-          Nhập kịch bản, tải ảnh sản phẩm lên, Claude sẽ chia thành các cảnh và viết prompt cho từng cảnh.
+          Nhập kịch bản, tải ảnh sản phẩm lên, AI sẽ chia thành các cảnh và viết prompt cho từng cảnh.
         </EmptyState>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">

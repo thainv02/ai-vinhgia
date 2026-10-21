@@ -58,9 +58,9 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: b
           <span className="shimmer grid size-14 place-items-center rounded-full bg-surface-3 text-muted">
             <Icon name="film" size={24} />
           </span>
-          <p className="font-semibold">Claude đang chọn điểm cắt</p>
+          <p className="font-semibold">AI đang chọn điểm cắt</p>
           <p className="text-[13px] text-muted">
-            {workerOnline ? 'Worker đang xử lý. Video sẽ tự render khi Claude gửi điểm cắt.' : 'Worker đang offline: việc này đợi tới khi mở phiên Claude Code.'}
+            {workerOnline ? 'Worker đang xử lý. Video sẽ tự render khi AI gửi điểm cắt.' : 'Worker đang offline: việc này đợi tới khi mở phiên worker AI.'}
           </p>
         </>
       )}
@@ -130,7 +130,7 @@ export default function FinalPage() {
   const list = useMemo(() => cuts.data ?? [], [cuts.data]);
   const fc = list.find((x) => x.id === selId) ?? list[0];
 
-  // Bản mới xuất hiện (vd Claude vừa gửi điểm cắt tạo version mới): nếu đang xem bản mới nhất thì tự theo.
+  // Bản mới xuất hiện (vd AI vừa gửi điểm cắt tạo version mới): nếu đang xem bản mới nhất thì tự theo.
   const latestId = list[0]?.id;
   const followLatest = useRef(true);
   useEffect(() => {
@@ -183,7 +183,7 @@ export default function FinalPage() {
               onSuccess: (created) => {
                 followLatest.current = true;
                 setSelId(created.id);
-                toast.success(`Đã tạo bản dựng v${created.version}, Claude sẽ chọn điểm cắt`);
+                toast.success(`Đã tạo bản dựng v${created.version}, AI sẽ chọn điểm cắt`);
               },
             })
           }
@@ -210,7 +210,7 @@ export default function FinalPage() {
         <ErrorState error={cuts.error} onRetry={() => void cuts.refetch()} />
       ) : !fc ? (
         <EmptyState icon="film" title="Chưa có bản hoàn chỉnh">
-          Khi mọi cảnh đã chọn video, hệ thống tự nhờ Claude chọn điểm cắt rồi render thành một video 9:16 (chuyển cảnh cắt thẳng). Bạn cũng có thể bấm «Dựng bản mới».
+          Khi mọi cảnh đã chọn video, hệ thống tự nhờ AI chọn điểm cắt rồi render thành một video 9:16 (chuyển cảnh cắt thẳng). Bạn cũng có thể bấm «Dựng bản mới».
           {blockReason && <span className="mt-2 block font-medium text-warn-fg">{blockReason}.</span>}
         </EmptyState>
       ) : (
@@ -222,7 +222,7 @@ export default function FinalPage() {
           )}
           {fc.outdated && (
             <Alert tone="warn" icon="refresh">
-              <strong>Bản v{fc.version} đã cũ.</strong> Bạn đã đổi video được chọn của một cảnh sau khi dựng. Bấm «Dựng bản mới» để Claude chọn lại điểm cắt theo các video hiện tại.
+              <strong>Bản v{fc.version} đã cũ.</strong> Bạn đã đổi video được chọn của một cảnh sau khi dựng. Bấm «Dựng bản mới» để AI chọn lại điểm cắt theo các video hiện tại.
             </Alert>
           )}
 
@@ -247,11 +247,11 @@ export default function FinalPage() {
                         role="tab"
                         aria-selected={isSel}
                         onClick={() => pickVersion(v.id)}
-                        title={`${finalStatusLabel(v)} · ${v.created_by === 'claude' ? 'Claude' : 'Bạn'}${v.renderer ? ` · ${RENDERER_LABEL[v.renderer]}` : ''}`}
+                        title={`${finalStatusLabel(v)} · ${v.created_by !== 'user' ? 'AI' : 'Bạn'}${v.renderer ? ` · ${RENDERER_LABEL[v.renderer]}` : ''}`}
                         className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-semibold ${isSel ? 'border-fg bg-ink text-ink-fg' : 'border-line-strong bg-surface hover:bg-surface-2'}`}
                       >
                         <span aria-hidden="true" className={`size-2 rounded-full ${v.status === 'ready' ? 'bg-ok-fg' : v.status === 'failed' ? 'bg-danger-fg' : v.status === 'cancelled' ? 'bg-neutral-fg' : 'pulse-dot bg-info-fg'}`} />v{v.version}
-                        <span className="text-[11px] font-normal opacity-80">{v.created_by === 'claude' ? 'Claude' : 'Bạn'}</span>
+                        <span className="text-[11px] font-normal opacity-80">{v.created_by !== 'user' ? 'AI' : 'Bạn'}</span>
                         {v.outdated && <span className="text-[11px] font-normal text-warn-fg">cũ</span>}
                       </button>
                     );
@@ -265,7 +265,7 @@ export default function FinalPage() {
                     {fc.outdated && <Badge tone="warn">Đã cũ vì đổi video</Badge>}
                   </dd>
                   <dt className="text-muted">Người tạo</dt>
-                  <dd>{fc.created_by === 'claude' ? 'Claude chọn điểm cắt' : 'Bạn chỉnh điểm cắt'}</dd>
+                  <dd>{fc.created_by !== 'user' ? 'AI chọn điểm cắt' : 'Bạn chỉnh điểm cắt'}</dd>
                   <dt className="text-muted">Trình dựng</dt>
                   <dd>{fc.renderer ? RENDERER_LABEL[fc.renderer] : '—'} · chuyển cảnh cắt thẳng</dd>
                   <dt className="text-muted">Logo Veo</dt>
@@ -341,7 +341,7 @@ export default function FinalPage() {
               )}
               {!tl && fc.status === 'planning' && (
                 <Card title="Điểm cắt theo cảnh" id="ft-h">
-                  <p className="rounded-md bg-surface-2 px-3 py-3 text-[13px] text-muted">Claude đang xem video từng cảnh để chọn khoảng thừa và đoạn không hợp lý. Điểm cắt hiện ở đây khi xong.</p>
+                  <p className="rounded-md bg-surface-2 px-3 py-3 text-[13px] text-muted">AI đang xem video từng cảnh để chọn khoảng thừa và đoạn không hợp lý. Điểm cắt hiện ở đây khi xong.</p>
                 </Card>
               )}
 
@@ -384,7 +384,7 @@ export default function FinalPage() {
       >
         <p>
           {fc?.status === 'planning'
-            ? 'Việc chọn điểm cắt của Claude sẽ bị hủy. Bạn có thể bấm «Dựng bản mới» để dựng lại.'
+            ? 'Việc chọn điểm cắt của AI sẽ bị hủy. Bạn có thể bấm «Dựng bản mới» để dựng lại.'
             : fc?.stage === 'clean'
               ? 'Việc xoá logo Veo sẽ bị dừng. Bản render còn logo được giữ lại để bấm «Thử xoá logo lại».'
               : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Dựng bản mới» để dựng lại.'}{' '}

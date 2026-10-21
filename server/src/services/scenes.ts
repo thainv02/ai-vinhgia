@@ -103,7 +103,7 @@ const IN_FLIGHT = new Set(['storyboard_queued', 'storyboard_running', 'video_que
  * Cảnh mới hoặc prompt đổi → thêm scene_prompt_versions (created_by='claude');
  * cảnh mới đi draft → prompt_ready → awaiting_approval (hoặc → storyboard_queued nếu REQUIRE_PROMPT_APPROVAL=false).
  */
-export function upsertScenes(ctx: AppContext, body: UpsertScenesBody) {
+export function upsertScenes(ctx: AppContext, body: UpsertScenesBody, actor: 'claude' | 'agent' = 'claude') {
   return ctx.tx(() => {
     const project = getProject(ctx, body.project_id);
     const validRefs = new Set(
@@ -136,9 +136,9 @@ export function upsertScenes(ctx: AppContext, body: UpsertScenesBody) {
         ids.push(sceneId);
         ctx.db
           .prepare('INSERT INTO scene_prompt_versions (scene_id, version, prompt, reason, created_by, created_at) VALUES (?, 1, ?, ?, ?, ?)')
-          .run(sceneId, s.prompt, 'Bản đầu tiên do Claude viết khi phân tích kịch bản', 'claude', now);
-        logEvent(ctx, { project_id: project.id, scene_id: sceneId, type: 'scene.created', message: `${s.code}: Claude tạo cảnh "${s.title}"` });
-        transition(ctx, sceneId, 'prompt_ready', 'Claude viết xong prompt');
+          .run(sceneId, s.prompt, 'Bản đầu tiên do AI viết khi phân tích kịch bản', actor, now);
+        logEvent(ctx, { project_id: project.id, scene_id: sceneId, type: 'scene.created', message: `${s.code}: AI tạo cảnh "${s.title}"` });
+        transition(ctx, sceneId, 'prompt_ready', 'AI viết xong prompt');
         if (ctx.config.requirePromptApproval) {
           transition(ctx, sceneId, 'awaiting_approval', 'chờ người dùng duyệt prompt');
         } else {
@@ -169,9 +169,9 @@ export function upsertScenes(ctx: AppContext, body: UpsertScenesBody) {
             (ctx.db.prepare('SELECT COALESCE(MAX(version), 0) AS v FROM scene_prompt_versions WHERE scene_id = ?').get(existing.id) as { v: number }).v + 1;
           ctx.db
             .prepare('INSERT INTO scene_prompt_versions (scene_id, version, prompt, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-            .run(existing.id, version, s.prompt, 'Claude cập nhật prompt khi phân tích lại', 'claude', now);
+            .run(existing.id, version, s.prompt, 'AI cập nhật prompt khi phân tích lại', actor, now);
           ctx.db.prepare('UPDATE scenes SET prompt = ? WHERE id = ?').run(s.prompt, existing.id);
-          logEvent(ctx, { project_id: project.id, scene_id: existing.id, type: 'scene.prompt', message: `${s.code}: Claude cập nhật prompt (v${version})` });
+          logEvent(ctx, { project_id: project.id, scene_id: existing.id, type: 'scene.prompt', message: `${s.code}: AI cập nhật prompt (v${version})` });
         }
       }
       emitScene(ctx, existing.id, project.id);

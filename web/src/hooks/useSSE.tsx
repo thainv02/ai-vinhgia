@@ -30,6 +30,7 @@ export function upsertFinalCut(qc: QueryClient, fc: FinalCut) {
 }
 
 const EVENT_NAMES: (keyof SseEventMap)[] = [
+  'ai.updated',
   'scene.updated',
   'job.updated',
   'asset.created',
@@ -75,6 +76,11 @@ export function LiveUpdates({ children }: { children: ReactNode }) {
 
     const handle = <K extends keyof SseEventMap>(name: K, data: SseEventMap[K]) => {
       switch (name) {
+        case 'ai.updated': {
+          invalidateSoon(['ai-accounts']);
+          invalidateSoon(['jobs']);
+          break;
+        }
         case 'scene.updated': {
           const { scene } = data as SseEventMap['scene.updated'];
           upsertScene(qc, scene);

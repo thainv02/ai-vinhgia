@@ -58,7 +58,7 @@ export function finalBlockReason(scenes: Scene[] | undefined, latest: FinalCut |
   const missing = scenesNotReady(scenes);
   if (missing.length > 0) return `Còn ${missing.join(', ')} chưa chọn video`;
   if (latest && (latest.status === 'planning' || latest.status === 'rendering')) {
-    return `Đang có bản dựng v${latest.version} ${latest.status === 'planning' ? 'chờ Claude chọn điểm cắt' : 'đang render'}`;
+    return `Đang có bản dựng v${latest.version} ${latest.status === 'planning' ? 'chờ AI chọn điểm cắt' : 'đang render'}`;
   }
   return null;
 }

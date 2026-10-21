@@ -21,8 +21,8 @@ export function FinalCutBlock({ projectId, scenes, serverBlock }: { projectId: n
   let status: React.ReactNode;
   if (q.isLoading) status = <span className="text-muted">Đang tải...</span>;
   else if (q.error) status = <span className="text-danger-fg">Không tải được bản dựng</span>;
-  else if (!latest) status = <span className="text-muted">Chưa có bản hoàn chỉnh.{reason ? '' : ' Hệ thống tự gửi Claude chọn điểm cắt khi mọi cảnh đã chọn video.'}</span>;
-  else if (latest.status === 'planning') status = <>Claude đang chọn điểm cắt cho v{latest.version}</>;
+  else if (!latest) status = <span className="text-muted">Chưa có bản hoàn chỉnh.{reason ? '' : ' Hệ thống tự gửi AI chọn điểm cắt khi mọi cảnh đã chọn video.'}</span>;
+  else if (latest.status === 'planning') status = <>AI đang chọn điểm cắt cho v{latest.version}</>;
   else if (latest.status === 'rendering')
     status = (
       <>
@@ -75,7 +75,7 @@ export function FinalCutBlock({ projectId, scenes, serverBlock }: { projectId: n
           variant={latest?.outdated ? 'primary' : 'secondary'}
           loading={create.isPending}
           disabledReason={reason}
-          onClick={() => create.mutate(projectId, { onSuccess: (fc) => toast.success(`Đã tạo bản dựng v${fc.version}, Claude sẽ chọn điểm cắt`) })}
+          onClick={() => create.mutate(projectId, { onSuccess: (fc) => toast.success(`Đã tạo bản dựng v${fc.version}, AI sẽ chọn điểm cắt`) })}
         >
           Dựng bản mới
         </Button>

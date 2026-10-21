@@ -4,7 +4,7 @@ import { commentJson, getProject, getScene, parseJson, projectRefs } from './rep
 import { editPlanPayload } from './final-cuts.js';
 import { firstScene } from './rules.js';
 
-export const RULES_FILE = 'claude-system-prompt.md';
+export const RULES_FILE = 'video-production-rules.md';
 export const VIDEO_SETTINGS = { aspect: '9:16', duration_s: 10, count: 1, resolution: '720p' } as const;
 
 function latestAsset(ctx: AppContext, sceneId: number, kind: 'storyboard' | 'video'): AssetRow | undefined {

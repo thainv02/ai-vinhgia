@@ -1,10 +1,14 @@
 import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 /** Thư mục gốc repo (autovideo/). config.ts nằm ở server/src nên đi lên 2 cấp. */
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export interface Config {
+  workerMode: 'legacy' | 'managed';
+  aiHome: string;
   port: number;
   host: string;
   /** Thư mục gốc chứa output/ và refs/. Tuyệt đối. */
@@ -47,6 +51,8 @@ export const DEFAULT_ALLOWED_ORIGINS = [
 
 export function defaultConfig(rootDir: string, dbPath: string): Config {
   return {
+    workerMode: 'legacy',
+    aiHome: path.join(os.homedir(), '.local/share/autovideo/accounts', crypto.createHash('sha256').update(dbPath).digest('hex').slice(0, 12)),
     port: 8787,
     host: '127.0.0.1',
     rootDir,
@@ -88,6 +94,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const base = defaultConfig(rootDir, dbPath);
   return {
     ...base,
+    workerMode: env.WORKER_MODE === 'managed' ? 'managed' : 'legacy',
+    aiHome: env.AI_HOME ? path.resolve(env.AI_HOME) : base.aiHome,
     port: num(env.PORT, base.port),
     host: env.HOST || base.host,
     workerToken: env.WORKER_TOKEN || '',
