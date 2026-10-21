@@ -3,12 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { chromium, type Browser, type Page, type Locator } from 'playwright-core';
 import { api, root, type Job } from './client.js';
-import { assertBrowserAction } from './browser-policy.js';
-
-const allowed = (url: string) => {
-  const u = new URL(url);
-  return u.protocol === 'https:' && (u.hostname === 'chatgpt.com' || (u.hostname === 'labs.google' && u.pathname.startsWith('/fx/')));
-};
+import { assertBrowserAction, isAllowedBrowserUrl as allowed } from './browser-policy.js';
 
 /** A single executor per CDP profile. Model input never becomes JS or shell. */
 export class BrowserTools {

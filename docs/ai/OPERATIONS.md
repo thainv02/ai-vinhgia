@@ -54,6 +54,8 @@ npm run ai:browser
 BROWSER_CDP_URL=http://127.0.0.1:9222 npm run worker:start
 ```
 
+Nếu `.env` có `WORKER_TYPES` từ giai đoạn chỉ chạy văn bản, đổi thành `analyze_brief,revise_prompt,edit_plan,storyboard,video` rồi restart worker để nhận cả job media. Browser dùng ChatGPT và Flow tại `https://flow.google.com`; entrypoint `https://labs.google/fx/tools/flow` cũ vẫn được chấp nhận.
+
 Browser tool chỉ mở ChatGPT/Google Flow, chỉ upload file được payload cho phép và chỉ ghi output path của job. Không có tool thực thi shell/JS tùy ý từ model. Một managed worker trên máy giữ process lock; không bật nhiều process cùng profile.
 
 Giao diện ChatGPT/Flow có thể thay đổi. Nếu tool không tìm được thao tác hoặc không có bằng chứng về kết quả, worker báo lỗi/chờ đối soát thay vì bấm Generate lại. Không dùng production video để test retry.

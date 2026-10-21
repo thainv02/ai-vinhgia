@@ -1,3 +1,13 @@
+/** Exact HTTPS origins used by ChatGPT and both current/legacy Flow entrypoints. */
+export function isAllowedBrowserUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return false;
+    return u.hostname === 'chatgpt.com' || u.hostname === 'flow.google.com' ||
+      (u.hostname === 'labs.google' && u.pathname.startsWith('/fx/'));
+  } catch { return false; }
+}
+
 /** Shared guard: upload/download tools must not become alternative ways to click Generate. */
 export function assertBrowserAction(kind: 'click' | 'upload' | 'download', label: string, type: string | null, hasDownload = false) {
   if (/purchase|buy|upgrade|mua thêm|nâng cấp|thanh toán/i.test(label)) throw new Error('Không tự mua thêm credit hoặc nâng cấp');

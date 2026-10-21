@@ -25,7 +25,7 @@ Vi phạm bất kỳ luật nào dưới đây là lỗi nghiêm trọng, vì m�
 # 1. Chuẩn bị (làm một lần khi bắt đầu phiên)
 
 1. Mở phiên AI (Claude Code, Codex hoặc Antigravity) **ở thư mục gốc repo** (nơi có `.env`, `WORKER.md`, `output/`).
-2. Chrome đã mở và đã đăng nhập sẵn https://chatgpt.com và https://labs.google/fx/tools/flow. Mở thử từng trang; nếu thấy trang đăng nhập thì dừng và nhờ người dùng đăng nhập (chưa có job nào được nhận, không cần `fail`).
+2. Chrome đã mở và đã đăng nhập sẵn https://chatgpt.com và https://flow.google.com. Địa chỉ Flow cũ https://labs.google/fx/tools/flow có thể chuyển hướng sang tên miền mới. Mở thử từng trang; nếu thấy trang đăng nhập thì dừng và nhờ người dùng đăng nhập (chưa có job nào được nhận, không cần `fail`).
 3. Server API chạy ở `http://127.0.0.1:8787` (web dev ở `http://localhost:5173`). Kiểm tra: `curl -sS http://127.0.0.1:8787/api/health` phải trả `{"ok":true,...}`. Không được thì báo người dùng chạy `npm run dev`.
 4. Cần có `ffmpeg`, `ffprobe`, `jq`, `curl` (kiểm tra bằng `ffmpeg -version`, `jq --version`).
 5. **Token**: nằm trong `.env`, dòng `WORKER_TOKEN=...`. Mỗi lần gọi Bash là một shell mới, biến không được giữ lại, nên **mọi lệnh Bash gọi API phải bắt đầu bằng đúng hai dòng này** (các ví dụ dưới đây đều có):
@@ -300,7 +300,7 @@ ffprobe -v error -show_entries stream=width,height -of csv=p=0 output/selftest/s
 Payload: `project`, `scene` (`prompt` là văn bản gửi Flow), `upload_files` (refs theo thứ tự upload, **storyboard ở cuối cùng**), `storyboard_path`, `attempt`, `output.video_path`, `output.grid_path`, `settings` (`9:16`, `10` giây, `count: 1`, `720p`), `credits_expected`, `requeued`.
 
 1. Kiểm tra mọi file trong `upload_files` tồn tại (kể cả storyboard) và `settings` đúng như trên. Đọc `payload.requeued` (mục 5): nếu `true`, kiểm tra Flow và `output.video_path` **trước** khi tạo.
-2. Mở https://labs.google/fx/tools/flow, tạo dự án hoặc cảnh mới cho clip.
+2. Mở https://flow.google.com, tạo dự án hoặc cảnh mới cho clip.
 3. Upload ảnh theo `upload_files` **đúng thứ tự**, storyboard sau cùng. Flow đánh số "image 1", "image 2"… theo thứ tự upload nên thứ tự này phải khớp prompt. Nếu Flow có chế độ khung đầu (Frames to Video / Start frame) thì dùng storyboard làm khung đầu, ngược lại upload như ảnh tham chiếu cuối cùng. Lần chạy tay đầu tiên dùng model **Flow Omni 1.1 Flash**, chế độ **Ingredients** (hộp, stick, storyboard); ưu tiên giữ cấu hình đó nếu còn, và ghi chế độ đã dùng vào `verdict_note`.
 4. Chọn khung **9:16**, độ dài **10 giây**, số bản **x1**. Nếu Flow không cho chọn đúng như vậy, hoặc số credit hiển thị khác `credits_expected`: **không bấm tạo**, `fail` mã `UI_CHANGED` kèm mô tả.
 5. Dán **nguyên văn** `payload.scene.prompt` vào ô prompt, không thêm gì khác (không thêm `style_lock`, không thêm dòng Upload). Prompt có ký tự đặc biệt (như dấu `–` trong "0–3 s"), nên sau khi nhập hãy **đọc lại nội dung ô prompt và đối chiếu từng chữ** với prompt gốc; lệch thì xóa nhập lại.
