@@ -5,6 +5,7 @@ import type { FinalRenderService } from './services/final-render/index.js';
 import { SseHub } from './services/sse.js';
 
 export type SseEventName =
+  | 'ai.updated'
   | 'scene.updated'
   | 'job.updated'
   | 'asset.created'

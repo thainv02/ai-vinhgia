@@ -31,6 +31,7 @@ export function Layout() {
               Hàng đợi
               {activeCount > 0 && <span className="ml-1.5 rounded bg-white/20 px-1.5 py-px text-[11px] font-bold">{activeCount}</span>}
             </NavLink>
+            <NavLink to="/accounts" className={navCls}>Tài khoản AI</NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-2">
             {sse === 'reconnecting' && (

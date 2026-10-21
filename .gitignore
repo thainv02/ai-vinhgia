@@ -13,3 +13,6 @@ gemini-watermark-remover/
 .ai-local/
 *.sqlite*
 *.db
+
+.env.*
+!.env.example

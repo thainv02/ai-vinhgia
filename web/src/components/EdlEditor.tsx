@@ -193,7 +193,7 @@ export function EdlEditor({ fc, onRendered }: { fc: FinalCut; onRendered: (fc: F
   const mentioned = useMemo(() => new Set(error?.scene ? [error.scene] : (error?.message.match(/\bC\d+\b/g) ?? [])), [error]);
 
   if (!fc.edl) {
-    return <p className="rounded-md bg-surface-2 px-3 py-3 text-[13px] text-muted">Bản này chưa có điểm cắt (Claude chưa chọn xong) nên chưa chỉnh được.</p>;
+    return <p className="rounded-md bg-surface-2 px-3 py-3 text-[13px] text-muted">Bản này chưa có điểm cắt (AI chưa chọn xong) nên chưa chỉnh được.</p>;
   }
 
   const submit = () => {

@@ -94,12 +94,20 @@ export interface PromptVersionRow {
   version: number;
   prompt: string;
   reason: string;
-  created_by: 'claude' | 'user';
+  created_by: 'claude' | 'agent' | 'user';
   created_at: string;
   ext_key: string | null;
 }
 
 export interface JobRow {
+  lease_id: string | null;
+  lease_epoch: number;
+  worker_mode: string;
+  wait_reason: string | null;
+  next_attempt_at: string | null;
+  checkpoint: string | null;
+  completion_key: string | null;
+  completion_hash: string | null;
   id: number;
   project_id: number;
   scene_id: number | null;
@@ -139,7 +147,7 @@ export interface CommentRow {
   id: number;
   scene_id: number;
   asset_id: number | null;
-  author: 'user' | 'claude';
+  author: 'user' | 'claude' | 'agent';
   body: string;
   timecode: number | null;
   action: CommentAction;
@@ -216,7 +224,7 @@ export interface FinalCutRow {
   job_id: number | null;
   render_ref: string | null;
   progress: number | null;
-  created_by: 'claude' | 'user';
+  created_by: 'claude' | 'agent' | 'user';
   note: string | null;
   summary: string | null;
   error: string | null;

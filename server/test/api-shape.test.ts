@@ -82,7 +82,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     expect(keys(d.jobs[0])).toEqual(
       [
         'approved_at', 'claimed_at', 'claimed_by', 'created_at', 'credits_cost', 'error', 'error_code', 'finished_at', 'heartbeat_at', 'id',
-        'last_requeued_at', 'payload', 'project_id', 'project_name', 'requeue_count', 'requires_approval', 'result', 'scene_code', 'scene_id', 'status', 'type',
+        'last_requeued_at', 'worker_mode', 'ai', 'lease_epoch', 'wait_reason', 'next_attempt_at', 'checkpoint', 'payload', 'project_id', 'project_name', 'requeue_count', 'requires_approval', 'result', 'scene_code', 'scene_id', 'status', 'type',
       ].sort(),
     );
     expect(d.jobs[0].credits_cost).toBe(15);

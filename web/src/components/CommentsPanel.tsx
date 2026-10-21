@@ -26,7 +26,7 @@ interface Props {
 const ACTIONS: CommentAction[] = ['note', 'revise_and_regenerate', 'regenerate_same', 'regenerate_storyboard'];
 const ACTION_HINT: Record<CommentAction, string> = {
   note: 'Chỉ lưu nhận xét, không chạy gì.',
-  revise_and_regenerate: 'Claude sửa đúng chỗ liên quan trong prompt, bạn duyệt lại rồi mới tạo video.',
+  revise_and_regenerate: 'AI sửa đúng chỗ liên quan trong prompt, bạn duyệt lại rồi mới tạo video.',
   regenerate_same: 'Tạo video mới với đúng prompt hiện tại.',
   regenerate_storyboard: 'Tạo lại ảnh storyboard, không tốn credit.',
 };
@@ -34,11 +34,11 @@ const ACTION_HINT: Record<CommentAction, string> = {
 function CommentItem({ c, scene, videos, onSeek }: { c: Comment; scene: SceneDetail; videos: Asset[]; onSeek: Props['onSeek'] }) {
   const resolve = useResolveComment();
   const asset = videos.find((v) => v.id === c.asset_id) ?? null;
-  const fromClaude = c.author === 'claude';
+  const fromAI = c.author !== 'user';
   return (
-    <li className={`rounded-lg border px-3 py-2 ${fromClaude ? 'ml-5 border-line bg-surface-2' : 'border-line-strong bg-surface'} ${c.resolved ? 'opacity-70' : ''}`}>
+    <li className={`rounded-lg border px-3 py-2 ${fromAI ? 'ml-5 border-line bg-surface-2' : 'border-line-strong bg-surface'} ${c.resolved ? 'opacity-70' : ''}`}>
       <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        <Badge tone={fromClaude ? 'violet' : 'info'}>{fromClaude ? 'Claude' : 'Bạn'}</Badge>
+        <Badge tone={fromAI ? 'violet' : 'info'}>{fromAI ? 'AI' : 'Bạn'}</Badge>
         {c.action !== 'note' && <Badge tone={c.action === 'regenerate_same' ? 'warn' : 'neutral'}>{COMMENT_ACTION_LABEL[c.action]}</Badge>}
         {c.timecode !== null && (
           <button
@@ -113,7 +113,7 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
           setAction('note');
           toast.success(
             effective === 'revise_and_regenerate'
-              ? 'Đã gửi. Claude sẽ sửa prompt, bạn sẽ duyệt lại trước khi tạo video.'
+              ? 'Đã gửi. AI sẽ sửa prompt, bạn sẽ duyệt lại trước khi tạo video.'
               : effective === 'regenerate_same'
                 ? `Đã gửi và đặt trước ${creditPerVideo} credit cho video mới.`
                 : effective === 'regenerate_storyboard'
@@ -145,7 +145,7 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
 
       {scene.comments.length === 0 ? (
         <p className="mb-3 rounded-md bg-surface-2 px-3 py-3 text-[13px] text-muted">
-          Chưa có nhận xét nào. Ghi lại điều bạn thấy trên video, hoặc nhờ Claude sửa prompt rồi tạo lại.
+          Chưa có nhận xét nào. Ghi lại điều bạn thấy trên video, hoặc nhờ AI sửa prompt rồi tạo lại.
         </p>
       ) : (
         <ol className="mb-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
@@ -211,7 +211,7 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
             {effective === 'note'
               ? 'Gửi nhận xét'
               : effective === 'revise_and_regenerate'
-                ? 'Gửi và nhờ Claude sửa prompt'
+                ? 'Gửi và nhờ AI sửa prompt'
                 : effective === 'regenerate_same'
                   ? 'Gửi và tạo lại video'
                   : 'Gửi và tạo lại storyboard'}

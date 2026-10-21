@@ -82,7 +82,7 @@ export default function QueuePage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">Hàng đợi</h1>
           <p className="text-[13px] text-muted">
-            {worker.data?.online ? 'Worker đang online.' : 'Worker đang offline: job đứng yên cho tới khi mở phiên Claude Code.'}
+            {worker.data?.online ? 'Worker đang online.' : 'Worker đang offline: job đứng yên cho tới khi mở phiên worker AI.'}
             {meta.data && ` Tối đa ${meta.data.config.max_concurrent_video_jobs} video chạy cùng lúc.`}
           </p>
         </div>
@@ -177,6 +177,8 @@ export default function QueuePage() {
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-1">
                         <JobStatusBadge status={j.status} />
+                        {j.ai && <span className="text-xs text-muted" title={`${j.ai.provider} / ${j.ai.model}`}>{j.ai.alias}</span>}
+                        {j.wait_reason && <span className="text-xs text-muted">{j.wait_reason === 'ai_quota' ? 'Chờ tài khoản AI' : 'Cần đối soát lượt tạo'}</span>}
                         <Requeued job={j} />
                       </div>
                       {j.status === 'failed' && (
@@ -217,6 +219,8 @@ export default function QueuePage() {
                   {j.scene_id && <SceneLink job={j} />}
                   <span className="ml-auto">
                     <JobStatusBadge status={j.status} />
+                        {j.ai && <span className="text-xs text-muted" title={`${j.ai.provider} / ${j.ai.model}`}>{j.ai.alias}</span>}
+                        {j.wait_reason && <span className="text-xs text-muted">{j.wait_reason === 'ai_quota' ? 'Chờ tài khoản AI' : 'Cần đối soát lượt tạo'}</span>}
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-muted">{j.project_name}</p>

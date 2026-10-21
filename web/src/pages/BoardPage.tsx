@@ -83,7 +83,7 @@ function BriefPanel({ project }: { project: ProjectDetail }) {
     return (
       <EmptyState
         icon="clock"
-        title="Claude đang phân tích kịch bản"
+        title="AI đang phân tích kịch bản"
         action={
           analyzeJob && (
             <>
@@ -107,7 +107,7 @@ function BriefPanel({ project }: { project: ProjectDetail }) {
           )
         }
       >
-        Danh sách cảnh sẽ tự hiện ra khi Claude xong, không cần tải lại trang. Claude chỉ làm việc khi phiên Claude Code (worker) đang mở.
+        Danh sách cảnh sẽ tự hiện ra khi AI xong, không cần tải lại trang. AI chỉ làm việc khi phiên worker AI (worker) đang mở.
         {analyzeJob && <span className="mt-1 block text-xs">Job #{analyzeJob.id}: {analyzeJob.status === 'queued' ? 'đang chờ worker nhận' : 'worker đang chạy'}.</span>}
       </EmptyState>
     );
@@ -115,8 +115,8 @@ function BriefPanel({ project }: { project: ProjectDetail }) {
 
   return (
     <div className="mx-auto max-w-2xl rounded-lg border border-line bg-surface p-4">
-      <h2 className="mb-1 text-base font-semibold">{project.status === 'draft' ? 'Chưa gửi kịch bản cho Claude' : 'Dự án chưa có cảnh nào'}</h2>
-      <p className="mb-3 text-muted">Kiểm tra lại yêu cầu kịch bản rồi gửi cho Claude để chia cảnh và viết prompt.</p>
+      <h2 className="mb-1 text-base font-semibold">{project.status === 'draft' ? 'Chưa gửi kịch bản cho AI' : 'Dự án chưa có cảnh nào'}</h2>
+      <p className="mb-3 text-muted">Kiểm tra lại yêu cầu kịch bản rồi gửi cho AI để chia cảnh và viết prompt.</p>
       <label htmlFor="brief" className="sr-only">
         Yêu cầu kịch bản
       </label>
@@ -134,7 +134,7 @@ function BriefPanel({ project }: { project: ProjectDetail }) {
           disabledReason={brief.trim() ? null : 'Nhập yêu cầu kịch bản'}
           onClick={() => submit.mutate({ projectId: project.id, brief: brief.trim() })}
         >
-          Gửi cho Claude phân tích
+          Gửi cho AI phân tích
         </Button>
       </div>
     </div>

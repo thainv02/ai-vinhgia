@@ -1,7 +1,8 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { buildApp } from './app.js';
 import { REPO_ROOT, loadConfig } from './config.js';
-import { backupDb } from './db/index.js';
+import { openDb, backupDb } from './db/index.js';
 import { ensureWorkerToken, loadDotEnv } from './lib/env.js';
 
 async function main(): Promise<void> {
@@ -11,6 +12,11 @@ async function main(): Promise<void> {
   ensureWorkerToken(envFile);
   const config = loadConfig();
 
+  // Snapshot the previous schema before buildApp applies migrations.
+  if (fs.existsSync(config.dbPath)) {
+    const before = openDb(config.dbPath);
+    try { await backupDb(before, config.dbPath); } finally { before.close(); }
+  }
   const app = await buildApp({ config, startTimers: true });
   try {
     const dest = await backupDb(app.ctx.db, config.dbPath);

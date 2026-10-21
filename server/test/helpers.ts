@@ -33,7 +33,7 @@ export async function makeEnv(opts: Partial<BuildAppOptions> = {}): Promise<Env>
     dbPath,
     clock,
     logger: false,
-    config: { workerToken: WORKER_TOKEN, ...opts.config },
+    config: { workerToken: WORKER_TOKEN, aiHome: path.join(root, 'private-ai'), ...opts.config },
   });
   return {
     app,

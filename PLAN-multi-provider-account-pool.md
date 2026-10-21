@@ -1,6 +1,6 @@
 # Plan: nhiều provider, nhiều tài khoản và tiếp tục job khi hết quota
 
-Ngày lập: 21/10/2026. Trạng thái: đề xuất để triển khai, chưa cài proxy, chưa đăng nhập tài khoản và chưa thay đổi runtime.
+Ngày lập: 21/10/2026. Trạng thái: đã triển khai account pool MVP trên nhánh `feat/multi-provider-account-pool`; xem `docs/ai/VALIDATION.md` để biết phần đã kiểm chứng và phần còn cần thử nghiệm. Thiết kế ban đầu bên dưới vẫn làm tài liệu định hướng.
 
 ## 1. Mục tiêu và quyết định đề xuất
 

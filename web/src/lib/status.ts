@@ -85,7 +85,7 @@ export const PROJECT_STATUS: Record<ProjectStatus, StatusInfo> = {
 };
 
 export const FINAL_STATUS: Record<FinalCutStatus, StatusInfo> = {
-  planning: { label: 'Claude đang chọn điểm cắt', tone: 'info', live: true },
+  planning: { label: 'AI đang chọn điểm cắt', tone: 'info', live: true },
   rendering: { label: 'Đang render', tone: 'info', live: true },
   ready: { label: 'Sẵn sàng', tone: 'ok' },
   failed: { label: 'Lỗi', tone: 'danger' },
@@ -146,7 +146,7 @@ export const REVISE_ALLOWED: ReadonlySet<SceneStatus> = new Set<SceneStatus>([
   'failed',
 ]);
 
-/** Cảnh đang có job hoạt động hoặc chờ Claude. */
+/** Cảnh đang có job hoạt động hoặc chờ AI. */
 export function isBusy(status: SceneStatus): boolean {
   return (
     status === 'storyboard_queued' ||

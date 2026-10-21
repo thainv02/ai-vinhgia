@@ -64,7 +64,7 @@ export function Banners() {
       )}
       {showOffline && (
         <Alert tone="info" icon="clock">
-          <strong>Worker đang offline.</strong> {waiting.length} job đang chờ sẽ chạy khi phiên Claude Code mở lại và nhận việc.
+          <strong>Worker đang offline.</strong> {waiting.length} job đang chờ sẽ chạy khi phiên worker AI mở lại và nhận việc.
         </Alert>
       )}
     </div>

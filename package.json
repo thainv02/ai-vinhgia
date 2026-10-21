@@ -2,22 +2,31 @@
   "name": "autovideo",
   "version": "0.1.0",
   "private": true,
-  "description": "Web quản lý sản xuất video theo cảnh (local)",
+  "description": "Web qu\u1ea3n l\u00fd s\u1ea3n xu\u1ea5t video theo c\u1ea3nh (local)",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "worker"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
-    "build": "npm run build -w web && npm run build -w server",
+    "build": "npm run build -w web && npm run build -w server && npm run typecheck -w worker",
     "start": "npm run start -w server",
     "test": "npm run test -w server",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w worker",
     "sim:worker": "npm run sim:worker -w server --",
-    "import:legacy": "npm run import:legacy -w server --"
+    "import:legacy": "npm run import:legacy -w server --",
+    "worker:start": "npm run start -w worker --",
+    "ai:login": "npm run login -w worker --",
+    "ai:proxy": "npm run proxy -w worker --",
+    "ai:setup": "npm run setup -w worker",
+    "rollback:check": "node scripts/rollback-check.mjs",
+    "ai:browser": "npm run browser -w worker",
+    "ai:smoke": "npm run smoke -w worker --",
+    "ai:pool": "npm run pool -w worker"
   },
   "devDependencies": {
     "concurrently": "^9.2.5"

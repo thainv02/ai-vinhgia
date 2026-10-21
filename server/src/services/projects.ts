@@ -65,19 +65,19 @@ export function patchProject(ctx: AppContext, id: number, patch: PatchProjectBod
   });
 }
 
-/** Gửi kịch bản cho Claude: tạo job analyze_brief (không cần duyệt). */
+/** Gửi kịch bản cho AI: tạo job analyze_brief (không cần duyệt). */
 export function submitBrief(ctx: AppContext, projectId: number, brief?: string) {
   return ctx.tx(() => {
     const project = getProject(ctx, projectId);
     const text = (brief ?? project.brief).trim();
-    if (!text) throw badRequest('VALIDATION_ERROR', 'Cần nhập yêu cầu kịch bản (brief) trước khi gửi cho Claude');
+    if (!text) throw badRequest('VALIDATION_ERROR', 'Cần nhập yêu cầu kịch bản (brief) trước khi gửi cho AI');
     const active = ctx.db
       .prepare("SELECT id FROM jobs WHERE project_id = ? AND type = 'analyze_brief' AND status IN ('queued','claimed','running') LIMIT 1")
       .get(projectId);
     if (active) throw conflict('JOB_ACTIVE', 'Dự án đang có job phân tích kịch bản chưa xong');
     ctx.db.prepare("UPDATE projects SET brief = ?, status = 'analyzing', updated_at = ? WHERE id = ?").run(text, ctx.now(), projectId);
     const jobId = insertJob(ctx, { project_id: projectId, scene_id: null, type: 'analyze_brief', requires_approval: false, approved: false });
-    logEvent(ctx, { project_id: projectId, type: 'project.brief', message: 'Gửi kịch bản cho Claude phân tích' });
+    logEvent(ctx, { project_id: projectId, type: 'project.brief', message: 'Gửi kịch bản cho AI phân tích' });
     emitProject(ctx, projectId);
     return { jobId };
   });

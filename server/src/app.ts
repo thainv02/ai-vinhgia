@@ -15,6 +15,7 @@ import { registerProjectRoutes } from './routes/projects.js';
 import { registerSceneRoutes } from './routes/scenes.js';
 import { registerSecurity } from './routes/security.js';
 import { registerStreamRoutes } from './routes/stream.js';
+import { registerAiRoutes } from './routes/ai.js';
 import { registerWorkerRoutes } from './routes/worker.js';
 import { sweepStaleJobs } from './services/jobs.js';
 import { recoverRenderingCuts } from './services/final-cuts.js';
@@ -98,6 +99,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
   registerFinalCutRoutes(app, ctx);
   registerJobRoutes(app, ctx);
   registerWorkerRoutes(app, ctx);
+  registerAiRoutes(app, ctx);
   registerStreamRoutes(app, ctx);
   await registerFileRoutes(app, ctx);
 

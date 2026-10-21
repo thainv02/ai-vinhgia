@@ -12,7 +12,7 @@ import { emitProject } from './project-view.js';
 import { commentJson, fileUrl, getJobJson, getProject, logEvent, parseJson } from './repo.js';
 
 /**
- * Bản dựng hoàn chỉnh (final cut): sau khi mọi cảnh đã chọn video, Claude (job `edit_plan`) chọn điểm cắt (EDL),
+ * Bản dựng hoàn chỉnh (final cut): sau khi mọi cảnh đã chọn video, AI (job `edit_plan`) chọn điểm cắt (EDL),
  * server render nền (Shotcut MCP hoặc ffmpeg) ra `output/<slug>/final/<slug>_final_v<n>.mp4`.
  */
 
@@ -277,7 +277,7 @@ export function updateCut(ctx: AppContext, id: number, patch: CutPatch): FinalCu
 function insertCut(
   ctx: AppContext,
   project: ProjectRow,
-  fields: { status: FinalCutStatus; selection: SelectionItem[]; signature: string; created_by: 'claude' | 'user'; edl?: Edl; note?: string | null },
+  fields: { status: FinalCutStatus; selection: SelectionItem[]; signature: string; created_by: 'claude' | 'agent' | 'user'; edl?: Edl; note?: string | null },
 ): number {
   const version = nextVersion(ctx, project);
   const info = ctx.db
@@ -301,7 +301,7 @@ function insertCut(
 }
 
 function createPlanning(ctx: AppContext, project: ProjectRow, sel: ReturnType<typeof currentSelection>, reason: string): { cutId: number; jobId: number } {
-  const cutId = insertCut(ctx, project, { status: 'planning', selection: sel.items, signature: sel.signature, created_by: 'claude' });
+  const cutId = insertCut(ctx, project, { status: 'planning', selection: sel.items, signature: sel.signature, created_by: ctx.config.workerMode === 'managed' ? 'agent' : 'claude' });
   const version = getFinalCutRow(ctx, cutId).version;
   const jobId = insertJob(ctx, {
     project_id: project.id,
@@ -331,7 +331,7 @@ export function maybeAutoFinalCut(ctx: AppContext, projectId: number): { cutId: 
       .prepare("SELECT 1 FROM final_cuts WHERE project_id = ? AND selection_signature = ? AND status NOT IN ('failed','cancelled') LIMIT 1")
       .get(projectId, sel.signature);
     if (dup) return null;
-    return createPlanning(ctx, project, sel, 'mọi cảnh đã chọn video, Claude đang chọn điểm cắt');
+    return createPlanning(ctx, project, sel, 'mọi cảnh đã chọn video, AI đang chọn điểm cắt');
   });
 }
 
@@ -342,7 +342,7 @@ export function createFinalCutManual(ctx: AppContext, projectId: number): { cutI
     const block = finalCutBlock(ctx, projectId);
     if (block) throw conflict(block.code, block.message);
     const sel = currentSelection(ctx, projectId);
-    return createPlanning(ctx, project, sel, 'người dùng yêu cầu dựng bản mới, Claude đang chọn điểm cắt');
+    return createPlanning(ctx, project, sel, 'người dùng yêu cầu dựng bản mới, AI đang chọn điểm cắt');
   });
 }
 
@@ -512,7 +512,7 @@ export function completeEditPlan(ctx: AppContext, job: JobRow, result: { edl?: u
   if (cut.status !== 'planning') throw conflict('INVALID_STATE', `Bản hoàn chỉnh v${cut.version} đang ở trạng thái ${cut.status}, không nhận kế hoạch dựng`);
   const edl = validateEdl(ctx, parseJson<SelectionItem[]>(cut.selection, []), result.edl);
   updateCut(ctx, cut.id, { edl: JSON.stringify(edl), summary: result.summary, status: 'rendering', stage: 'render', progress: null, error: null, failed_stage: null });
-  logEvent(ctx, { project_id: cut.project_id, type: 'final_cut.planned', message: `Bản hoàn chỉnh v${cut.version}: Claude đã chọn điểm cắt — ${result.summary}` });
+  logEvent(ctx, { project_id: cut.project_id, type: 'final_cut.planned', message: `Bản hoàn chỉnh v${cut.version}: AI đã chọn điểm cắt — ${result.summary}` });
   ctx.afterCommit(() => ctx.finalRender?.enqueue(cut.id));
   return cut.id;
 }

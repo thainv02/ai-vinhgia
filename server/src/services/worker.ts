@@ -36,6 +36,7 @@ export function emitWorkerStatus(ctx: AppContext): void {
 /** Mọi request worker hợp lệ gọi hàm này để cập nhật last_seen_at (và phát SSE nếu vừa online trở lại). */
 export function touchWorker(ctx: AppContext, workerId?: string | null): void {
   const wasOnline = isOnline(ctx);
+  if (workerId) ctx.db.prepare("INSERT INTO worker_sessions VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,mode=excluded.mode").run(workerId, ctx.config.workerMode, ctx.now());
   ctx.db
     .prepare('UPDATE worker_state SET last_seen_at = ?, worker_id = COALESCE(?, worker_id) WHERE id = 1')
     .run(ctx.now(), workerId ?? null);
