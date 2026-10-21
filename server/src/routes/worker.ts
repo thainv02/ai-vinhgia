@@ -33,6 +33,9 @@ const workerIdOf = (req: FastifyRequest): string | null => {
 };
 const ownerOf = (req: FastifyRequest) => ({ worker: workerIdOf(req), lease: typeof req.headers['x-job-lease'] === 'string' ? req.headers['x-job-lease'] : null });
 
+// Reference images are embedded as base64 in both inference and resumable context.
+const CONTEXT_BODY_LIMIT = 32 * 1024 * 1024;
+
 /** API cho worker (Claude Code). Mọi route yêu cầu `Authorization: Bearer <WORKER_TOKEN>`. */
 export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.register(async (w) => {
@@ -135,7 +138,7 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       return reply.code(201).send(result);
     });
 
-    w.post('/api/worker/jobs/:id/checkpoint', async (req) => saveCheckpoint(ctx, intParam((req.params as { id: string }).id), ownerOf(req),
+    w.post('/api/worker/jobs/:id/checkpoint', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => saveCheckpoint(ctx, intParam((req.params as { id: string }).id), ownerOf(req),
       parse(z.record(z.string(), z.unknown()), req.body)));
     w.post('/api/worker/jobs/:id/wait', async (req) => {
       const b = parse(z.object({ reason: z.enum(['ai_quota', 'needs_reconciliation', 'browser_offline']), retry_at: z.string().datetime().nullable() }), req.body);
@@ -148,7 +151,7 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       state: z.enum(['intent', 'submitted', 'uncertain', 'downloaded', 'committed']), evidence: z.record(z.string(), z.unknown()),
     }), req.body)));
     w.post('/api/worker/jobs/:id/browser-lease', async (req) => browserLease(ctx, intParam((req.params as { id: string }).id), ownerOf(req), parse(z.object({ profile: z.string().min(1).max(100) }), req.body).profile));
-    w.post('/api/worker/jobs/:id/infer', { bodyLimit: 8 * 1024 * 1024 }, async (req) => {
+    w.post('/api/worker/jobs/:id/infer', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => {
       const id = intParam((req.params as { id: string }).id);
       const job = assertManagedLease(ctx, id, ownerOf(req));
       const body = parse(z.object({ messages: z.array(z.record(z.string(), z.unknown())).min(1).max(100), tools: z.array(z.record(z.string(), z.unknown())).max(20).default([]), capabilities: z.array(z.enum(['text', 'vision', 'tools'])).min(1).default(['text']) }), req.body);
