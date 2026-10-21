@@ -1,0 +1,265 @@
+@import 'tailwindcss';
+
+/*
+  Hệ màu: giao diện đơn sắc (mực + giấy), màu chỉ dùng để nói về trạng thái.
+  Nút thường màu mực; nút tốn credit có huy hiệu credit riêng (xem .spend-chip).
+  Sáng/tối theo hệ thống (prefers-color-scheme).
+*/
+:root {
+  color-scheme: light;
+  --bg: #eceef1;
+  --surface: #ffffff;
+  --surface-2: #f4f5f7;
+  --surface-3: #e6e8ec;
+  --line: #dde0e5;
+  --line-strong: #c3c8d0;
+  --fg: #14171c;
+  --muted: #5d6572;
+  --ink: #14171c;
+  --ink-fg: #ffffff;
+  --ink-hover: #2a2f38;
+  --header: #14171c;
+  --header-fg: #f2f4f7;
+  --focus: #2b6cf0;
+
+  --neutral-bg: #e8eaee;
+  --neutral-fg: #4a525e;
+  --info-bg: #dde9ff;
+  --info-fg: #1646b8;
+  --warn-bg: #ffecc2;
+  --warn-fg: #7a4a00;
+  --ok-bg: #d6f1de;
+  --ok-fg: #14602d;
+  --danger-bg: #fddcd8;
+  --danger-fg: #a1251a;
+  --violet-bg: #ebe2fd;
+  --violet-fg: #5d2fb8;
+
+  --spend: #b25e00;
+  --spend-bg: #fff4dc;
+  --spend-line: #e8b866;
+
+  --add-bg: #cdeed7;
+  --add-fg: #0f5a28;
+  --del-bg: #fbd5d0;
+  --del-fg: #8f1f15;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1114;
+    --surface: #181b20;
+    --surface-2: #1f2329;
+    --surface-3: #2a2f37;
+    --line: #2b3038;
+    --line-strong: #414855;
+    --fg: #e9ecf1;
+    --muted: #98a1ae;
+    --ink: #eef0f4;
+    --ink-fg: #12151a;
+    --ink-hover: #ffffff;
+    --header: #0a0b0d;
+    --header-fg: #eef0f4;
+    --focus: #6f9bff;
+
+    --neutral-bg: #2a2f37;
+    --neutral-fg: #b3bbc7;
+    --info-bg: #17284d;
+    --info-fg: #9cbcff;
+    --warn-bg: #44330c;
+    --warn-fg: #f3c565;
+    --ok-bg: #123a22;
+    --ok-fg: #86dba3;
+    --danger-bg: #4a1b17;
+    --danger-fg: #ff9f94;
+    --violet-bg: #2d2050;
+    --violet-fg: #c2a8ff;
+
+    --spend: #f0b45a;
+    --spend-bg: #3a2a0c;
+    --spend-line: #7a5a1d;
+
+    --add-bg: #123a22;
+    --add-fg: #8ee0a9;
+    --del-bg: #4a1b17;
+    --del-fg: #ffa89e;
+  }
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-ink: var(--ink);
+  --color-ink-fg: var(--ink-fg);
+  --color-ink-hover: var(--ink-hover);
+  --color-header: var(--header);
+  --color-header-fg: var(--header-fg);
+  --color-focus: var(--focus);
+  --color-neutral-bg: var(--neutral-bg);
+  --color-neutral-fg: var(--neutral-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-fg: var(--ok-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+  --color-violet-bg: var(--violet-bg);
+  --color-violet-fg: var(--violet-fg);
+  --color-spend: var(--spend);
+  --color-spend-bg: var(--spend-bg);
+  --color-spend-line: var(--spend-line);
+  --color-add-bg: var(--add-bg);
+  --color-add-fg: var(--add-fg);
+  --color-del-bg: var(--del-bg);
+  --color-del-fg: var(--del-fg);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary,
+  select,
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'] {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select {
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 7px 10px;
+    min-height: 36px;
+    width: 100%;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    accent-color: var(--ink);
+  }
+
+  input[type='range'] {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    min-height: 0;
+    accent-color: var(--ink);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+    opacity: 0.8;
+  }
+
+  textarea {
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  dialog {
+    color: var(--fg);
+  }
+
+  dialog::backdrop {
+    background: rgba(8, 10, 14, 0.55);
+  }
+}
+
+@layer components {
+  /* Huy hiệu credit gắn vào nút tốn credit */
+  .spend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
+    background: var(--spend-bg);
+    color: var(--spend);
+    border: 1px solid var(--spend-line);
+  }
+
+  /* Tiến trình mượt khi đổi trạng thái */
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  .pulse-dot {
+    animation: pulse-dot 1.4s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  .shimmer {
+    background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fg) 10%, transparent) 50%, transparent 70%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-dot,
+    .shimmer {
+      animation: none;
+    }
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+  }
+}

@@ -1,0 +1,15 @@
+node_modules
+dist
+data/
+.env
+.DS_Store
+*.log
+coverage
+
+# Local media, credentials and upstream checkout (backed up separately)
+output/
+refs/
+gemini-watermark-remover/
+.ai-local/
+*.sqlite*
+*.db
