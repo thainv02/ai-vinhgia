@@ -1,7 +1,7 @@
 import { Route, Routes, Link } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { EmptyState } from './components/States';
-import { LinkButton } from './components/Button';
+import { LinkButton } from './components/LinkButton';
 import ProjectListPage from './pages/ProjectListPage';
 import NewProjectPage from './pages/NewProjectPage';
 import BoardPage from './pages/BoardPage';
@@ -10,6 +10,9 @@ import AccountsPage from './pages/AccountsPage';
 import QueuePage from './pages/QueuePage';
 import LedgerPage from './pages/LedgerPage';
 import FinalPage from './pages/FinalPage';
+import TrashPage from './pages/TrashPage';
+import ClipListPage from './pages/ClipListPage';
+import ClipProjectPage from './pages/ClipProjectPage';
 import { LiveUpdates } from './hooks/useSSE';
 
 function NotFound() {
@@ -39,8 +42,11 @@ export default function App() {
           <Route path="/projects/:projectId/scenes/:sceneId" element={<SceneDetailPage />} />
           <Route path="/projects/:projectId/ledger" element={<LedgerPage />} />
           <Route path="/projects/:projectId/final" element={<FinalPage />} />
+          <Route path="/clips" element={<ClipListPage />} />
+          <Route path="/clips/:id" element={<ClipProjectPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/queue" element={<QueuePage />} />
+          <Route path="/trash" element={<TrashPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

@@ -50,3 +50,43 @@ Khi khởi động lại máy, chạy server/web, `npm run ai:pool` và `npm run
 - Giao diện desktop/mobile có progressbar, reset time, stale/unknown state, refresh mỗi 5 phút. Headless Chrome xác nhận hai progressbar có giá trị 100, không có lỗi JavaScript.
 - Bộ test sau bổ sung: **241 tests pass**; typecheck và build pass. Có kiểm tra 0%/100%/missing data, cửa sổ Codex, cache, secret exclusion và nâng cấp management key không đụng access key.
 - Codex quota có parser/collector nhưng chưa chạy thật bằng tài khoản Codex. Claude subscription telemetry hiện chưa hỗ trợ.
+
+## Sửa lỗi managed worker (review 22/10/2026)
+
+Nguồn: hai job media thật thất bại (job #31 kẹt `needs_reconciliation` vì nhãn `Generated image 1` bị coi là nút tạo; job #32 mở nhầm Flow cho storyboard và upload file output của chính job). Sáu thay đổi F1–F6; chi tiết vận hành ở `OPERATIONS.md`.
+
+### Đã kiểm chứng bằng test (324 test pass, trước đó 245; typecheck, build pass)
+
+Tất cả chạy trên DB/ROOT tạm, gateway AI giả, và **Chrome headless riêng** (không CDP, profile tạm) với `page.route` giả lập `https://chatgpt.com` và `https://flow.google.com`. Mọi request ngoài fixture bị chặn và test khẳng định không request nào rơi vào route chặn. Lưu ý đã rút ra: tải xuống bằng điều hướng (`<a href=http… download>`) KHÔNG đi qua `context.route` nên fixture chỉ dùng `blob:` URL; hai lần chạy thử đầu tiên (trước khi sửa fixture) đã làm Chrome headless gửi tổng cộng ba GET không cookie/không đăng nhập tới `/dl/720.mp4` (Flow) và `/dl/image.png` (ChatGPT) trên hai domain thật; không có thao tác nào khác ra ngoài.
+
+| Mục | Test chính |
+|---|---|
+| F1 phân loại nút, site theo loại job | `browser-policy.test.ts` (nhãn thật `Generated image 1`/`Share…`/`Edit…`, động từ đứng riêng, icon ligature, form submit, mua/nâng cấp, mục tải bị cấm, site theo loại job) và `browser-executor.test.ts` (ChatGPT: click ảnh sinh ra được, Send bị chặn, `browser_open/select/submit` sai site → `WRONG_SITE`) |
+| F2 kiểm tra cứng trước submit | `worker-logic.test.ts` (chip, credit, prompt, upload, fail-safe khi không xác minh được) và `browser-executor.test.ts` (Flow: 9:16/10s/x1/720p/credit/prompt/upload từng mục sai → `PRECHECK_FAILED`, không journal, không click; upload qua showOpenFilePicker/filechooser/không có hộp chọn file; menu Download, `720p Original` tải được, `1080p Upscaled`/`4K (Upgrade)`/`270p GIF` không bị bấm) |
+| F3 chế độ kết hợp | `mixed-mode.test.ts` (claim theo loại, WORKER.md legacy chạy như cũ, endpoint ghi theo job, `MANAGED_JOB_TYPES`), `managed-worker.test.ts` |
+| F4 đối soát | `reconcile.test.ts` (ba lựa chọn, idempotent, transaction, hủy bị chặn, ledger một lần); giao diện kiểm tra bằng Chrome headless trên server tạm (Hàng đợi, thẻ cảnh, chi tiết cảnh, hộp thoại; không lỗi JS) |
+| F5 ngân sách lượt | `worker-logic.test.ts` (nén ngữ cảnh, không tool_call_id mồ côi), `browser-executor.test.ts` (`browser_wait`), `worker-runner.test.ts` (vòng lặp đầy đủ: nén khi > 60 message, hết 60 lượt báo lỗi rõ ràng) |
+| F6 nhiều tool call | `managed-worker.test.ts` (`parallel_tool_calls:false`), `worker-logic.test.ts`, `worker-runner.test.ts` (chỉ lệnh đầu chạy, các lệnh còn lại nhận lỗi) |
+
+`worker-runner.test.ts` chạy `runner.ts` (vòng lặp job tách khỏi `main.ts`) end-to-end với executor thật trên fixture, gồm resume sau `retry_download` không submit lại và `nothing_created` chạy lại với action id mới. Test này lộ ra một lỗi thật khi resume: kết luận JSON được checkpoint trước khi tải asset làm vòng lặp bị bỏ qua và job kẹt mãi; đã sửa (kết luận sớm bị từ chối, resume bỏ kết luận chưa kèm asset đã tải).
+
+### Chưa chạy được với website thật (cần nghiệm thu trước khi tin cậy)
+
+- Fixture mô phỏng nhãn/giao diện theo ghi chú của lần chạy tay ngày 20/10, **không phải DOM thật** của Flow/ChatGPT. Cần chạy thử một job storyboard và một job video thật (có người theo dõi) để kiểm tra: chip `Video · 720p · 8s · x1`; popover và trạng thái chọn của 9:16/4-10s/x1-x4 (executor cần aria-selected/checked/pressed/data-state hoặc chip để xác minh; nếu Flow chỉ đánh dấu bằng CSS thì precheck sẽ từ chối `aspect_ratio`/`duration` thay vì đoán); câu chữ dòng credit (`will use N credits` hoặc tương đương); ô prompt ProseMirror (so khớp sau khi chuẩn hóa khoảng trắng và dấu typographic; Flow tự đổi ký tự khác sẽ bị từ chối); menu Download và mục `720p Original`; việc "Upload media" thật sự dùng `showOpenFilePicker` hay filechooser và trang có nhận file từ stub.
+- Executor không xác minh được ảnh đã xuất hiện trong khung soạn sau khi upload; chỉ tin ghi nhận upload của chính nó (và yêu cầu model chụp snapshot xem lại).
+- Chưa chạy `npm run worker:start`/`ai:*` thật; vòng lặp `main.ts` (khóa tiến trình, vòng claim, cảnh báo cấu hình khi khởi động) chỉ qua typecheck, phần xử lý job nằm trong `runner.ts` đã có test.
+- Migration 008 (`job_reconciliations`) kiểm tra trên DB tạm và các test runner migration; chưa áp dụng lên bản sao DB thật.
+
+
+## Hoàn thiện sửa lỗi AI chọn clip (27/10/2026)
+
+Phạm vi tiếp nối phiên Claude: hoàn thiện đợt sửa AI chọn 0 clip, không mở rộng sang P4/P5. Mã phát triển/kiểm thử trên bản sao riêng; không gọi STT, Gemini hay Flow thật, không chạy worker nhận job. Không thay migration hay cấu hình `.env`.
+
+Kiểm tra cuối tại repo: `npm test` với ffmpeg có libass → **846 đạt, 1 bỏ qua, 67 bộ test đạt** (gồm Shotcut, xoá logo thật và hai việc xoá logo song song trên dữ liệu tạm); `npm run typecheck`, `npm run build` đều qua. DB thật kiểm tra chỉ đọc: `foreign_key_check` rỗng, `integrity_check=ok`; server tiếp tục phản hồi health.
+
+- `clips-boundaries.test.ts`: fixture transcript thật đã có từ phiên trước (102 s, 318 từ) + 35 khoảng lặng; tách được 21 câu (≤12 s/30 từ), phủ đúng mọi từ. Dò trích dẫn có dấu/không dấu, sai một từ, đảo thứ tự, cắt giữa câu, từ bịa, transcript cũ không có `pauses`, fallback theo câu. Có kiểm tra ffmpeg thật trên audio tạm với khoảng lặng biết trước và hủy tiến trình.
+- `clip-plan-runner.test.ts`: API/DB tạm + managed runner + gateway HTTP giả + lưới 4 khung thật; timeout rồi thử lại thành công; clip hoàn thành giữ đúng từ giữa câu và phụ đề khôi phục. Giữ kiểm tra chờ quota/checkpoint hiện có.
+- `clips-api.test.ts`: cache cũ thiếu khoảng lặng được đo lại ở dự án mới, không gọi STT lại và không sửa file/ID của dự án cũ.
+- Mất lease, hủy job, hết tài khoản AI và lỗi request không bị thử lại theo lỗi mạng. Lỗi mạng/timeout chỉ thử lại tối đa hai lần, chờ 1/2 s; sau đó áp dụng xử lý thất bại/chưa kiểm định sẵn có của từng bước.
+
+Chưa kiểm định lại chất lượng chọn clip bằng Gemini thật; cần người dùng yêu cầu chạy thử để tạo job. Worker đang chạy từ trước cần khởi động lại để nạp mã mới vào lần vận hành tiếp theo; phiên sửa mã không tự khởi động worker.

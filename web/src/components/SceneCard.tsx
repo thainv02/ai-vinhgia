@@ -5,7 +5,7 @@ import { sceneStatusInfo, TONE_BORDER } from '../lib/status';
 import { ElapsedTime } from './ElapsedTime';
 import { Icon } from './Icon';
 import { SceneActions } from './SceneActions';
-import { SceneStatusBadge } from './StatusBadge';
+import { Badge, SceneStatusBadge } from './StatusBadge';
 
 /** Khung 9:16 có nhãn góc. */
 function Frame({ className = '', children }: { className?: string; children: React.ReactNode }) {
@@ -148,6 +148,7 @@ export function SceneCard({ scene, projectId, creditPerVideo }: { scene: Scene; 
                 ) : (
                   <>{scene.waiting_reason ?? 'Đang chờ worker nhận'}</>
                 )}
+                {job.reconcile_required && <Badge tone="warn" title="Đã gửi lệnh tạo sang Flow/ChatGPT nhưng chưa rõ kết quả">Cần đối soát</Badge>}
                 {job.requeue_count > 0 && <span className="rounded bg-warn-bg px-1 text-warn-fg">bị trả về {job.requeue_count} lần</span>}
               </span>
             )}

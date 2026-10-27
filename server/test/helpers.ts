@@ -93,7 +93,8 @@ export function client(app: App, extraHeaders: Record<string, string> = {}) {
     get: (url: string, headers?: Record<string, string>) => call('GET', url, undefined, headers),
     post: (url: string, payload?: unknown, headers?: Record<string, string>) => call('POST', url, payload ?? {}, headers),
     patch: (url: string, payload?: unknown, headers?: Record<string, string>) => call('PATCH', url, payload ?? {}, headers),
-    del: (url: string, headers?: Record<string, string>) => call('DELETE', url, undefined, headers),
+    put: (url: string, payload?: unknown, headers?: Record<string, string>) => call('PUT', url, payload ?? {}, headers),
+    del: (url: string, payload?: unknown, headers?: Record<string, string>) => call('DELETE', url, payload, headers),
   };
 }
 

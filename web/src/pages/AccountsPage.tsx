@@ -3,6 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../api/client';
 import { Button } from '../components/Button';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { aiRequest } from '../api/ai';
+import type { JobType } from '../api/types';
+import { JOB_TYPE_LABEL } from '../lib/status';
 import { AccountQuota, type AccountQuotaData } from '../components/AccountQuota';
 
 interface Account extends AccountQuotaData {
@@ -10,29 +13,6 @@ interface Account extends AccountQuotaData {
   state: string; retry_after: string | null; last_error: string | null; login_command: string | null;
 }
 interface Policy { providers: string[]; allow_provider_fallback: boolean; allow_model_fallback: boolean; max_attempts: number }
-let adminSession: Promise<{ csrf: string }> | null = null;
-let sessionUntil = 0;
-export async function aiRequest<T>(url: string, method = 'GET', body?: unknown, retrySession = true): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (method !== 'GET') {
-    if (!adminSession || Date.now() >= sessionUntil) {
-      sessionUntil = Date.now() + 45 * 60000;
-      adminSession = fetch('/api/ai/session').then(async (session) => {
-        if (!session.ok) throw new Error('Không mở được phiên quản trị');
-        return session.json() as Promise<{ csrf: string }>;
-      }).catch((error) => { adminSession = null; throw error; });
-    }
-    headers['X-AI-CSRF'] = (await adminSession).csrf;
-    headers['Content-Type'] = 'application/json';
-  }
-  const r = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  const result = await r.json();
-  if (!r.ok && result.error?.code === 'AI_ADMIN_REQUIRED' && retrySession) {
-    adminSession = null; return aiRequest<T>(url, method, body, false);
-  }
-  if (!r.ok) throw new Error(result.error?.message ?? 'Yêu cầu thất bại');
-  return result;
-}
 const labels: Record<string, string> = { unknown: 'Chưa kiểm tra', ready: 'Gateway sẵn sàng', cooldown: 'Đang chờ thử lại', login_required: 'Cần đăng nhập lại', access_denied: 'Không có quyền truy cập', model_unavailable: 'Model chưa khả dụng', offline: 'Gateway chưa kết nối', disabled: 'Đã ngắt liên kết' };
 const defaults: Policy = { providers: ['codex', 'antigravity', 'claude', 'openai'], allow_provider_fallback: false, allow_model_fallback: false, max_attempts: 3 };
 
@@ -44,7 +24,7 @@ export default function AccountsPage() {
     const rows = await aiRequest<Account[]>('/api/ai/quotas/refresh', 'POST', {});
     qc.setQueryData(['ai-accounts'], rows); return rows;
   }, refetchInterval: 5 * 60000, staleTime: 60000, retry: false, refetchOnWindowFocus: false });
-  const status = useQuery({ queryKey: ['ai-status'], queryFn: () => aiRequest<{ worker_mode: string }>('/api/ai/status'), refetchInterval: 10000 });
+  const status = useQuery({ queryKey: ['ai-status'], queryFn: () => aiRequest<{ worker_mode: string; managed_job_types?: JobType[] }>('/api/ai/status'), refetchInterval: 10000 });
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.listProjects });
   const [alias, setAlias] = useState('');
   const [provider, setProvider] = useState('codex');
@@ -69,6 +49,9 @@ export default function AccountsPage() {
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-bold">Tài khoản AI</h1><p className="mt-1 text-sm text-muted">Giữ tài khoản đang dùng; chuyển sang tài khoản tiếp theo khi quota không còn khả dụng.</p></div><Button loading={quotas.isFetching} disabled={busy} onClick={() => void quotas.refetch()}>Cập nhật hạn mức</Button></div>
     <div className="rounded-lg border border-line bg-surface p-4 text-sm">
       Chế độ worker: <strong>{status.data?.worker_mode === 'managed' ? 'Tự động qua account pool' : 'Worker bên ngoài (legacy)'}</strong>.
+      {status.data?.worker_mode === 'managed' && status.data.managed_job_types && status.data.managed_job_types.length < 5 && (
+        <p className="mt-1">Managed xử lý: <strong>{status.data.managed_job_types.map((t) => JOB_TYPE_LABEL[t]).join(', ')}</strong>. Các loại còn lại do worker legacy (Claude Code theo WORKER.md) nhận.</p>
+      )}
       <p className="mt-1 text-muted">Thanh hiển thị phần trăm hạn mức còn lại do provider trả về, tự cập nhật mỗi 5 phút. Đây không phải số token còn lại. Quota AI tách biệt với credit Google Flow.</p>
     </div>
     {(error || accounts.error) && <div role="alert" className="rounded-lg bg-danger-bg p-3 text-sm text-danger-fg">{error || errorMessage(accounts.error)}</div>}

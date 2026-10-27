@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ApiError, errorMessage } from '../api/client';
+import { ApiError, errorMessage } from '../api/errors';
 import { Button, Spinner } from './Button';
 import { Icon, type IconName } from './Icon';
 

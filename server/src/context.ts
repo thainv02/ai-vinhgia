@@ -1,7 +1,9 @@
 import type { Config } from './config.js';
 import type { DB } from './db/index.js';
 import { type Clock, toIso } from './lib/clock.js';
+import { AppError } from './lib/errors.js';
 import type { FinalRenderService } from './services/final-render/index.js';
+import type { SttService } from './services/clips/stt.js';
 import { SseHub } from './services/sse.js';
 
 export type SseEventName =
@@ -16,7 +18,14 @@ export type SseEventName =
   | 'budget.updated'
   | 'project.updated'
   | 'final_cut.updated'
-  | 'event.created';
+  | 'event.created'
+  | 'project.deleted'
+  | 'project.restored'
+  | 'project.purged'
+  | 'source.updated'
+  | 'clip.updated'
+  | 'clip.deleted'
+  | 'clip_cut.updated';
 
 /**
  * Ngữ cảnh dùng chung của ứng dụng: DB, cấu hình, đồng hồ, SSE.
@@ -31,6 +40,12 @@ export class AppContext {
   public lastEmittedOnline: boolean | null = null;
   /** Dịch vụ render bản hoàn chỉnh (nền). Gán trong buildApp; null trong script/test không cần render. */
   public finalRender: FinalRenderService | null = null;
+  /** Dịch vụ nhận dạng lời nói cho dự án cắt clip (hàng đợi một việc một lúc). Gán trong buildApp. */
+  public stt: SttService | null = null;
+  /** Trạng thái listener LAN (do index.ts đặt); null = chưa/không bật. Chỉ để app chính hiển thị khối "Chia sẻ qua LAN". */
+  public lan: { listening: boolean; host: string; port: number; error: string | null } | null = null;
+  /** Số lượt tải video LAN đang chạy dở theo dự án (để không xoá dự án khi file đang được ghi). */
+  private readonly uploadsInFlight = new Map<number, number>();
 
   constructor(
     public readonly db: DB,
@@ -41,6 +56,23 @@ export class AppContext {
 
   now(): string {
     return toIso(this.clock.now());
+  }
+
+  /** Đánh dấu một lượt tải lên đang ghi file vào dự án; trả hàm nhả (gọi trong finally). */
+  beginProjectUpload(projectId: number): () => void {
+    this.uploadsInFlight.set(projectId, (this.uploadsInFlight.get(projectId) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const n = (this.uploadsInFlight.get(projectId) ?? 1) - 1;
+      if (n <= 0) this.uploadsInFlight.delete(projectId);
+      else this.uploadsInFlight.set(projectId, n);
+    };
+  }
+
+  projectUploadsInFlight(projectId: number): number {
+    return this.uploadsInFlight.get(projectId) ?? 0;
   }
 
   get inTx(): boolean {
@@ -94,7 +126,14 @@ export class AppContext {
     this.afterCommit(() => {
       // Không ai nghe thì khỏi dựng payload (tiết kiệm truy vấn); worker.status luôn chạy để cập nhật lastEmittedOnline.
       if (this.sse.size === 0 && event !== 'worker.status') return;
-      const payload = typeof data === 'function' ? (data as () => unknown)() : data;
+      let payload: unknown;
+      try {
+        payload = typeof data === 'function' ? (data as () => unknown)() : data;
+      } catch (err) {
+        // Đối tượng của sự kiện không còn nhìn thấy được (vd dự án vừa vào thùng rác): bỏ sự kiện thay vì ghi lỗi.
+        if (err instanceof AppError && err.code === 'NOT_FOUND') return;
+        throw err;
+      }
       this.sse.publish(event, payload, projectId);
     }, dedupeKey);
   }

@@ -124,10 +124,32 @@ describe('managed worker: account failover and durable ownership', () => {
     expect((await w.post(`/api/worker/jobs/${j.id}/complete`, { result: {} }, headers)).status).toBe(409);
     expect(env.ctx.db.prepare('SELECT created_by FROM scene_prompt_versions').get()).toEqual({ created_by: 'agent' });
   });
-  it('chặn worker legacy khi server chạy managed, filter loại job', async () => {
-    expect((await worker().get('/api/worker/next')).status).toBe(409);
+  it('không còn lỗi WORKER_MODE: worker lệch chế độ nhận 204 (lọc theo loại), filter loại job vẫn hoạt động', async () => {
+    // server managed (mọi loại): worker legacy không có loại nào để nhận → 204 thay vì 409
+    expect((await worker().get('/api/worker/next')).status).toBe(204);
     await job();
+    expect((await worker().get('/api/worker/next')).status).toBe(204);
     expect((await worker('B').get('/api/worker/next?mode=managed&types=video')).status).toBe(204);
+    // server legacy: managed worker không có loại nào
+    env.ctx.config.workerMode = 'legacy';
+    expect((await worker('B').get('/api/worker/next?mode=managed')).status).toBe(204);
+  });
+  it('gửi parallel_tool_calls:false khi có tools (và không gửi khi không có tools)', async () => {
+    const bodies: any[] = [];
+    const s = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c) => { raw += c; });
+      req.on('end', () => { bodies.push(JSON.parse(raw)); res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ choices: [{ message: { content: '{}' } }] })); });
+    });
+    servers.push(s); await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
+    add('A', `http://127.0.0.1:${(s.address() as any).port}/v1`);
+    const j = await job(), w = worker('A', j.lease_id);
+    const tool = { type: 'function', function: { name: 'browser_snapshot', description: 'x', parameters: { type: 'object', properties: {} } } };
+    expect((await w.post(`/api/worker/jobs/${j.id}/infer`, { messages: request.messages, tools: [tool], capabilities: ['text', 'tools'] })).status).toBe(200);
+    expect((await w.post(`/api/worker/jobs/${j.id}/infer`, { messages: request.messages, tools: [], capabilities: ['text'] })).status).toBe(200);
+    expect(bodies[0]).toMatchObject({ parallel_tool_calls: false, tools: [tool] });
+    expect(bodies[1]).not.toHaveProperty('parallel_tool_calls');
+    expect(bodies[1]).not.toHaveProperty('tools');
   });
   it('không cho fallback provider/model nếu chưa bật policy', async () => {
     add('A', await gateway(429, { error: 'quota' }));

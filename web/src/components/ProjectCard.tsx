@@ -3,7 +3,8 @@ import type { ProjectSummary, SceneStatus } from '../api/types';
 import { pct } from '../lib/format';
 import { finalStatusLabel } from '../lib/finalCut';
 import { SCENE_STATUS, TONE_SOLID } from '../lib/status';
-import { ProjectStatusBadge } from './StatusBadge';
+import { fmtRelative } from '../lib/format';
+import { Badge, LanBadge, ProjectStatusBadge } from './StatusBadge';
 
 // Thứ tự các đoạn trong thanh tiến trình: từ xong (trái) tới chưa xong (phải).
 const SEGMENTS: SceneStatus[] = [
@@ -32,7 +33,29 @@ export function ProgressBar({ counts, total }: { counts: Partial<Record<SceneSta
   );
 }
 
+/** Thẻ dự án cắt clip: mở /clips/:id, nhãn loại "Cắt clip", không có tiến độ cảnh/credit. */
+function ClipProjectCard({ project: p }: { project: ProjectSummary }) {
+  return (
+    <Link
+      to={`/clips/${p.id}`}
+      className="group flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-2"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="text-[15px] font-semibold leading-snug group-hover:underline">{p.name}</h2>
+        <Badge tone="violet">Cắt clip</Badge>
+      </div>
+      {p.source === 'lan' && (
+        <div className="-mt-1.5">
+          <LanBadge name={p.created_by_name} />
+        </div>
+      )}
+      <p className="text-xs text-muted">Cắt clip 9:16 từ video dài · tạo {fmtRelative(p.created_at)}</p>
+    </Link>
+  );
+}
+
 export function ProjectCard({ project: p }: { project: ProjectSummary }) {
+  if (p.kind === 'clips') return <ClipProjectCard project={p} />;
   const total = p.scene_count;
   return (
     <Link
@@ -43,6 +66,11 @@ export function ProjectCard({ project: p }: { project: ProjectSummary }) {
         <h2 className="text-[15px] font-semibold leading-snug group-hover:underline">{p.name}</h2>
         <ProjectStatusBadge status={p.status} />
       </div>
+      {p.source === 'lan' && (
+        <div className="-mt-1.5">
+          <LanBadge name={p.created_by_name} />
+        </div>
+      )}
       <div>
         <div className="mb-1.5 flex items-baseline justify-between text-xs text-muted">
           <span>

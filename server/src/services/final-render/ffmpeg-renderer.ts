@@ -72,7 +72,7 @@ export function buildFfmpegArgs(segments: RenderSegment[], hasAudio: boolean[], 
   return args;
 }
 
-function run(bin: string, args: string[], signal: AbortSignal, onStdoutLine?: (line: string) => void): Promise<void> {
+export function run(bin: string, args: string[], signal: AbortSignal, onStdoutLine?: (line: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new RenderCancelled());
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -103,6 +103,25 @@ function run(bin: string, args: string[], signal: AbortSignal, onStdoutLine?: (l
       reject(new Error(`ffmpeg thoát với mã ${code}: ${stderr.trim().split('\n').slice(-4).join(' | ')}`));
     });
   });
+}
+
+/**
+ * Lưới khung hình (contact sheet): 12 khung đều nhau, 4 cột. Trả đường dẫn nếu tạo được; lỗi ffmpeg → null (không làm hỏng bản dựng),
+ * bị hủy → ném RenderCancelled. `fallbackDurationS`: dùng khi ffprobe không đọc được thời lượng.
+ */
+export async function makeContactSheet(config: RenderRequest['config'], videoAbs: string, outAbs: string, fallbackDurationS: number, signal: AbortSignal): Promise<string | null> {
+  const bin = ffmpegOf(config);
+  if (!bin || fs.existsSync(outAbs)) return null;
+  try {
+    const dur = probeMedia(config, videoAbs)?.duration_s ?? fallbackDurationS;
+    const vf = `fps=12/${f3(Math.max(dur, 1))},scale=240:-2,tile=4x3:padding=2:margin=2`;
+    await run(bin, ['-n', '-hide_banner', '-loglevel', 'error', '-i', videoAbs, '-vf', vf, '-frames:v', '1', outAbs], signal);
+    return outAbs;
+  } catch (err) {
+    fs.rmSync(outAbs, { force: true });
+    if (err instanceof RenderCancelled) throw err;
+    return null;
+  }
 }
 
 /** Trình dựng dự phòng bằng ffmpeg: không có file .mlt. */
@@ -148,16 +167,10 @@ export class FfmpegRenderer implements Renderer {
     let contactAbs: string | null = null;
     if (!fs.existsSync(req.out.contactAbs)) {
       try {
-        const dur = probeMedia(req.config, req.out.videoAbs)?.duration_s ?? total;
-        const vf = `fps=12/${f3(Math.max(dur, 1))},scale=240:-2,tile=4x3:padding=2:margin=2`;
-        await run(bin, ['-n', '-hide_banner', '-loglevel', 'error', '-i', req.out.videoAbs, '-vf', vf, '-frames:v', '1', req.out.contactAbs], req.signal);
-        contactAbs = req.out.contactAbs;
+        contactAbs = await makeContactSheet(req.config, req.out.videoAbs, req.out.contactAbs, total, req.signal);
       } catch (err) {
-        fs.rmSync(req.out.contactAbs, { force: true });
-        if (err instanceof RenderCancelled) {
-          fs.rmSync(req.out.videoAbs, { force: true });
-          throw err;
-        }
+        fs.rmSync(req.out.videoAbs, { force: true });
+        throw err;
       }
     }
     return { renderer: 'ffmpeg', videoAbs: req.out.videoAbs, contactAbs, projectFileAbs: null };

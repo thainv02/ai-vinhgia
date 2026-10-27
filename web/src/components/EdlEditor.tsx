@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, errorMessage } from '../api/client';
-import type { EdlScene, EdlSegment, FinalCut } from '../api/types';
-import { useRerenderFinalCut } from '../hooks/mutations';
+import { ApiError, errorMessage } from '../api/errors';
+import type { Edl, EdlScene, EdlSegment, FinalCut } from '../api/types';
 import { computeRemoved, fmtSeconds, round2, validateSegments } from '../lib/finalCut';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { InlineError } from './States';
 import { VideoPlayer, type PlayerHandle } from './VideoPlayer';
+
+/**
+ * Hàm "render lại" do nơi dùng truyền vào (trang Bản hoàn chỉnh của app chính dùng API `/api/final-cuts/:id/rerender`, trang planner LAN dùng
+ * `/lan/api/plans/:id/final-cuts/:cutId/rerender`), để trình chỉnh điểm cắt không phụ thuộc API client của app chính. Hình dạng khớp kết quả
+ * của `useMutation` (react-query): `mutate(vars, {onSuccess, onError})` và `isPending`.
+ */
+export interface RerenderApi {
+  mutate(
+    vars: { id: number; edl: Edl; note?: string },
+    options: { onSuccess?: (created: FinalCut) => void; onError?: (error: unknown) => void },
+  ): void;
+  isPending: boolean;
+}
 
 interface DraftScene extends EdlScene {
   code: string;
@@ -182,8 +194,7 @@ function SceneEditor({ scene, onChange, serverMessage, badSegment }: { scene: Dr
 }
 
 /** Trình chỉnh EDL: sửa các đoạn giữ của từng cảnh, rồi "Render lại" tạo version mới (không tốn credit). */
-export function EdlEditor({ fc, onRendered }: { fc: FinalCut; onRendered: (fc: FinalCut) => void }) {
-  const rerender = useRerenderFinalCut();
+export function EdlEditor({ fc, onRendered, rerender }: { fc: FinalCut; onRendered: (fc: FinalCut) => void; rerender: RerenderApi }) {
   const [scenes, setScenes] = useState<DraftScene[]>(() => toDraft(fc));
   const [note, setNote] = useState('');
   const [error, setError] = useState<EdlError | null>(null);

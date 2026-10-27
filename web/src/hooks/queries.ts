@@ -6,6 +6,7 @@ import type { Stage } from '../api/types';
 // Khóa truy vấn tập trung để SSE và mutation cùng dùng.
 export const qk = {
   projects: ['projects'] as const,
+  trash: ['trash'] as const,
   project: (id: number) => ['project', id] as const,
   scenes: (projectId: number) => ['scenes', projectId] as const,
   scene: (id: number) => ['scene', id] as const,
@@ -111,5 +112,11 @@ export function useFinalCuts(projectId: number) {
     queryKey: qk.finalCuts(projectId),
     queryFn: () => api.listFinalCuts(projectId),
     enabled: projectId > 0,
+    // Chờ AI chọn điểm cắt: vị trí trong hàng đợi worker đổi khi job khác được nhận/xong (server cũng phát SSE; đây là lưới an toàn)
+    refetchInterval: (q) => (q.state.data?.some((c) => c.status === 'planning') ? 5000 : false),
   });
+}
+
+export function useTrash() {
+  return useQuery<Awaited<ReturnType<typeof api.listTrash>>, ApiError>({ queryKey: qk.trash, queryFn: api.listTrash });
 }

@@ -87,7 +87,7 @@ export async function infer(ctx: AppContext, jobId: number, projectId: number, m
     count++;
     const start = Date.now(); let outcome = 'network_error';
     try {
-      const res = await gateway(ctx, candidate, '/chat/completions', { model: candidate.model, messages, stream: false, ...(tools.length ? { tools } : {}) });
+      const res = await gateway(ctx, candidate, '/chat/completions', { model: candidate.model, messages, stream: false, ...(tools.length ? { tools, parallel_tool_calls: false } : {}) });
       const raw = await res.text();
       if (raw.length > 4_000_000) throw new Error('response_too_large');
       if (!res.ok) {

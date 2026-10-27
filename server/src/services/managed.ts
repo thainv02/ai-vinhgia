@@ -5,6 +5,20 @@ import { getJobRow, parseJson, emitJob } from './repo.js';
 
 export interface Lease { worker: string | null; lease: string | null }
 
+/** Trạng thái action còn "sống": đã có thể phát sinh generation/credit bên ngoài và chưa được đối soát/hoàn tất. */
+export const LIVE_ACTION_STATES = ['intent', 'uncertain', 'submitted', 'downloaded'] as const;
+export interface ActionRow { id: string; state: string; evidence: string }
+
+/** Action hiện hành của job: bản mới nhất chưa bị `abandoned` (đối soát nothing_created). */
+export function liveAction(ctx: AppContext, jobId: number): ActionRow | undefined {
+  return ctx.db.prepare("SELECT id,state,evidence FROM external_actions WHERE job_id=? AND state<>'abandoned' ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    .get(jobId) as ActionRow | undefined;
+}
+export const hasLiveAction = (ctx: AppContext, jobId: number): boolean => {
+  const a = liveAction(ctx, jobId);
+  return !!a && (LIVE_ACTION_STATES as readonly string[]).includes(a.state);
+};
+
 export function assertLease(ctx: AppContext, id: number, owner: Lease, allowDone = false) {
   const job = getJobRow(ctx, id);
   if (job.claimed_by && (job.lease_id || owner.worker) && owner.worker !== job.claimed_by) throw conflict('JOB_CANCELLED', 'Job không thuộc worker này');
@@ -48,6 +62,8 @@ export function actionJournal(ctx: AppContext, id: number, owner: Lease, input: 
       intent: ['submitted', 'uncertain'], submitted: ['downloaded', 'uncertain'], uncertain: ['submitted', 'downloaded'], downloaded: ['committed'], committed: [],
     };
     if (!prior && input.state !== 'intent') throw conflict('ACTION_CONFLICT', 'Action phải bắt đầu bằng intent');
+    // Mỗi job chỉ có MỘT action sống. Muốn submit lần nữa phải đối soát (nothing_created → action cũ `abandoned`) trước.
+    if (!prior && liveAction(ctx, id)) throw conflict('ACTION_CONFLICT', 'Job đã có thao tác tạo chưa được đối soát; không ghi intent mới');
     if (prior && prior.state !== input.state && !transitions[prior.state]?.includes(input.state)) throw conflict('ACTION_CONFLICT', 'Action transition không hợp lệ');
     ctx.db.prepare(`INSERT INTO external_actions(id,job_id,lease_epoch,profile,kind,state,evidence,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,evidence=excluded.evidence,updated_at=excluded.updated_at`)
@@ -57,6 +73,7 @@ export function actionJournal(ctx: AppContext, id: number, owner: Lease, input: 
 }
 
 export function actions(ctx: AppContext, id: number) {
+  getJobRow(ctx, id); // 404 nếu job không tồn tại hoặc thuộc dự án trong thùng rác
   return (ctx.db.prepare('SELECT id,profile,kind,state,evidence FROM external_actions WHERE job_id=? ORDER BY created_at').all(id) as { evidence: string }[])
     .map((r) => ({ ...r, evidence: parseJson(r.evidence, {}) }));
 }

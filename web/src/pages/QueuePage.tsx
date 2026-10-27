@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { errorMessage } from '../api/client';
+import { errorMessage, type ApiError } from '../api/client';
 import type { Job } from '../api/types';
 import { Button } from '../components/Button';
+import { ReconcileDialog, canReconcile, cancelBlockedReason } from '../components/ReconcileDialog';
 import { ElapsedTime } from '../components/ElapsedTime';
 import { Icon } from '../components/Icon';
 import { ConfirmDialog } from '../components/Modal';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { Badge, JobStatusBadge } from '../components/StatusBadge';
-import { useCancelJob, useQueueControl } from '../hooks/mutations';
+import { useCancelJob, useQueueControl, useResumeJob } from '../hooks/mutations';
 import { useJobs, useMeta, useProjects, useWorkerStatus } from '../hooks/queries';
 import { fmtDateTime, fmtDuration, parseTime } from '../lib/format';
 import { ACTIVE_JOB_STATUSES, FAIL_CODE_LABEL, JOB_TYPE_LABEL } from '../lib/status';
@@ -24,6 +25,29 @@ const TABS: { key: Tab; label: string; status?: string }[] = [
 
 const isActive = (j: Job) => j.status === 'queued' || j.status === 'claimed' || j.status === 'running';
 const isRunning = (j: Job) => j.status === 'claimed' || j.status === 'running';
+
+/** Nhãn trạng thái chờ của job queued; chờ đối soát hiện thành huy hiệu riêng. */
+function WaitState({ job }: { job: Job }) {
+  if (job.reconcile_required) return <Badge tone="warn" title="Job đã gửi lệnh tạo sang Flow/ChatGPT nhưng chưa rõ kết quả. Bấm Đối soát để quyết định.">Cần đối soát</Badge>;
+  if (job.wait_reason === 'ai_quota') return <span className="text-xs text-muted">Chờ tài khoản AI</span>;
+  if (job.wait_reason === 'browser_offline') return <span className="text-xs text-muted">Chờ trình duyệt media</span>;
+  return null;
+}
+
+/** Nút theo trạng thái: Đối soát (chờ đối soát), Thử lại ngay (chờ AI/trình duyệt), Hủy (còn lại; bị khóa nếu đã gửi lệnh tạo). */
+function JobActions({ job, size, onCancel, onReconcile, onResume, resuming }: { job: Job; size: 'sm'; onCancel: () => void; onReconcile: () => void; onResume: () => void; resuming: boolean }) {
+  if (!isActive(job)) return null;
+  if (job.reconcile_required) return <Button size={size} variant="primary" onClick={onReconcile}>Đối soát</Button>;
+  const blocked = cancelBlockedReason(job);
+  const resumable = job.status === 'queued' && (job.wait_reason === 'ai_quota' || job.wait_reason === 'browser_offline');
+  return (
+    <span className="inline-flex flex-wrap justify-end gap-1.5">
+      {resumable && <Button size={size} loading={resuming} onClick={onResume} title="Bỏ chờ và cho worker nhận lại ngay">Thử lại ngay</Button>}
+      {canReconcile(job) && <Button size={size} onClick={onReconcile} title="Job đã gửi lệnh tạo và đang chờ worker tiếp tục. Đối soát lại nếu worker không chạy.">Đối soát</Button>}
+      <Button size={size} variant="danger" disabledReason={blocked} onClick={onCancel}>Hủy</Button>
+    </span>
+  );
+}
 
 function RunTime({ job }: { job: Job }) {
   if (isRunning(job)) return <ElapsedTime since={job.claimed_at} className="font-semibold" />;
@@ -71,7 +95,9 @@ export default function QueuePage() {
   const worker = useWorkerStatus();
   const { resume, pause } = useQueueControl();
   const cancel = useCancelJob({ silent: true });
+  const resumeJob = useResumeJob();
   const [target, setTarget] = useState<Job | null>(null);
+  const [reconcileTarget, setReconcileTarget] = useState<Job | null>(null);
 
   const list = jobs.data ?? [];
   const running = list.filter(isRunning).length;
@@ -178,7 +204,7 @@ export default function QueuePage() {
                       <div className="flex flex-wrap items-center gap-1">
                         <JobStatusBadge status={j.status} />
                         {j.ai && <span className="text-xs text-muted" title={`${j.ai.provider} / ${j.ai.model}`}>{j.ai.alias}</span>}
-                        {j.wait_reason && <span className="text-xs text-muted">{j.wait_reason === 'ai_quota' ? 'Chờ tài khoản AI' : 'Cần đối soát lượt tạo'}</span>}
+                        <WaitState job={j} />
                         <Requeued job={j} />
                       </div>
                       {j.status === 'failed' && (
@@ -197,11 +223,7 @@ export default function QueuePage() {
                       <CreditCell job={j} />
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {isActive(j) && (
-                        <Button size="sm" variant="danger" onClick={() => { cancel.reset(); setTarget(j); }}>
-                          Hủy
-                        </Button>
-                      )}
+                      <JobActions job={j} size="sm" resuming={resumeJob.isPending && resumeJob.variables === j.id} onResume={() => resumeJob.mutate(j.id)} onReconcile={() => setReconcileTarget(j)} onCancel={() => { cancel.reset(); setTarget(j); }} />
                     </td>
                   </tr>
                 ))}
@@ -220,7 +242,7 @@ export default function QueuePage() {
                   <span className="ml-auto">
                     <JobStatusBadge status={j.status} />
                         {j.ai && <span className="text-xs text-muted" title={`${j.ai.provider} / ${j.ai.model}`}>{j.ai.alias}</span>}
-                        {j.wait_reason && <span className="text-xs text-muted">{j.wait_reason === 'ai_quota' ? 'Chờ tài khoản AI' : 'Cần đối soát lượt tạo'}</span>}
+                    <WaitState job={j} />
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-muted">{j.project_name}</p>
@@ -241,11 +263,9 @@ export default function QueuePage() {
                   <Requeued job={j} />
                 </div>
                 {j.status === 'failed' && <p className="mt-1 text-xs text-danger-fg">{j.error}</p>}
-                {isActive(j) && (
-                  <Button size="sm" variant="danger" className="mt-2" onClick={() => { cancel.reset(); setTarget(j); }}>
-                    Hủy job
-                  </Button>
-                )}
+                <div className="mt-2">
+                  <JobActions job={j} size="sm" resuming={resumeJob.isPending && resumeJob.variables === j.id} onResume={() => resumeJob.mutate(j.id)} onReconcile={() => setReconcileTarget(j)} onCancel={() => { cancel.reset(); setTarget(j); }} />
+                </div>
               </li>
             ))}
           </ul>
@@ -261,7 +281,14 @@ export default function QueuePage() {
         danger
         pending={cancel.isPending}
         error={cancel.isError ? errorMessage(cancel.error) : null}
-        onConfirm={() => target && cancel.mutate(target.id, { onSuccess: () => setTarget(null) })}
+        onConfirm={() =>
+          target &&
+          cancel.mutate(target.id, {
+            onSuccess: () => setTarget(null),
+            // Server chặn hủy vì đã có lệnh tạo bên ngoài: chuyển thẳng sang đối soát.
+            onError: (e) => { if ((e as ApiError).code === 'RECONCILIATION_REQUIRED') { setReconcileTarget(target); setTarget(null); } },
+          })
+        }
       >
         {target?.status === 'queued' ? (
           <p>Job chưa được worker nhận.{target.type === 'video' ? ' Phần credit đã đặt trước sẽ được trả lại.' : ' Không mất credit.'}</p>
@@ -272,6 +299,13 @@ export default function QueuePage() {
           </p>
         )}
       </ConfirmDialog>
+
+      <ReconcileDialog job={reconcileTarget} open={!!reconcileTarget} onClose={() => setReconcileTarget(null)} />
+      {resumeJob.isError && (
+        <p role="alert" className="mt-3 rounded-md bg-danger-bg px-3 py-2 text-[13px] text-danger-fg">
+          {errorMessage(resumeJob.error)}
+        </p>
+      )}
     </div>
   );
 }

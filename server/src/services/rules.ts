@@ -53,6 +53,7 @@ export const JOB_TYPE_LABEL: Record<string, string> = {
   video: 'video',
   revise_prompt: 'sửa prompt',
   edit_plan: 'chọn điểm cắt bản hoàn chỉnh',
+  clip_plan: 'chọn đoạn clip từ video dài',
 };
 
 function activeJobError(scene: SceneRow, job: JobRow): AppError {

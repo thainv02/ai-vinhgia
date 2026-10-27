@@ -1,17 +1,19 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { useJobs } from '../hooks/queries';
+import { useJobs, useTrash } from '../hooks/queries';
 import { useSseState } from '../hooks/useSSE';
 import { Banners, ACTIVE_JOBS_FILTER } from './Banners';
+import { LanShareButton } from './LanSharePanel';
 import { Toaster } from './Toaster';
 import { WorkerBadge } from './WorkerBadge';
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
-  `rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${isActive ? 'bg-white/15 text-white' : 'text-header-fg/70 hover:bg-white/10 hover:text-white'}`;
+  `whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${isActive ? 'bg-white/15 text-white' : 'text-header-fg/70 hover:bg-white/10 hover:text-white'}`;
 
 export function Layout() {
   const sse = useSseState();
   const { data: active } = useJobs(ACTIVE_JOBS_FILTER);
   const activeCount = active?.length ?? 0;
+  const trashCount = useTrash().data?.length ?? 0;
 
   return (
     <div className="min-h-dvh">
@@ -23,15 +25,22 @@ export function Layout() {
             </span>
             Autovideo
           </Link>
-          <nav className="flex items-center gap-1" aria-label="Điều hướng chính">
+          <nav className="-mx-1 flex max-w-full items-center gap-1 overflow-x-auto px-1" aria-label="Điều hướng chính">
             <NavLink to="/" end className={navCls}>
               Dự án
+            </NavLink>
+            <NavLink to="/clips" className={navCls}>
+              Cắt clip
             </NavLink>
             <NavLink to="/queue" className={navCls}>
               Hàng đợi
               {activeCount > 0 && <span className="ml-1.5 rounded bg-white/20 px-1.5 py-px text-[11px] font-bold">{activeCount}</span>}
             </NavLink>
             <NavLink to="/accounts" className={navCls}>Tài khoản AI</NavLink>
+            <NavLink to="/trash" className={navCls}>
+              Thùng rác
+              {trashCount > 0 && <span className="ml-1.5 rounded bg-white/20 px-1.5 py-px text-[11px] font-bold">{trashCount}</span>}
+            </NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-2">
             {sse === 'reconnecting' && (
@@ -39,6 +48,7 @@ export function Layout() {
                 Mất kết nối, đang nối lại...
               </span>
             )}
+            <LanShareButton />
             <WorkerBadge />
           </div>
         </div>

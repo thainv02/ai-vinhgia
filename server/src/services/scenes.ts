@@ -5,8 +5,8 @@ import type { SceneRow } from '../db/types.js';
 import { maybeAutoFinalCut } from './final-cuts.js';
 import { insertJob } from './jobs.js';
 import { nextStoryboardAttempt } from './payload.js';
-import { getAsset, getProject, getScene, logEvent } from './repo.js';
-import { PROMPT_EDITABLE, statusLabel } from './rules.js';
+import { emitBudget, getAsset, getProject, getScene, logEvent } from './repo.js';
+import { PROMPT_EDITABLE, activeJobOf, hasAsset, statusLabel } from './rules.js';
 import { emitScene } from './scene-view.js';
 import { transition } from './transition.js';
 
@@ -98,14 +98,59 @@ export type UpsertScenesBody = z.infer<typeof upsertScenesBody>;
 
 const IN_FLIGHT = new Set(['storyboard_queued', 'storyboard_running', 'video_queued', 'video_running', 'needs_revision']);
 
+/** Số thứ tự cảnh suy ra từ mã AI hay đặt (C1, c01, scene_01, Scene 1, S1, 01, 1…); null nếu không đọc được. */
+function sceneNumber(code: string): number | null {
+  const m = /^\s*(?:c|clip|canh|scene|s)?[\s_\-#.]*0*(\d{1,3})\s*$/i.exec(code);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+/**
+ * Chuẩn hóa mã cảnh của dự án LAN về dạng `C1, C2, …` theo THỨ TỰ ĐẦU VÀO. Cách làm an toàn, xác định và không mất cảnh:
+ * 1. mọi mã đọc được số thứ tự và các số khác nhau → `C<số>` (scene_01 → C1, giữ khoảng trống nếu AI bỏ số);
+ * 2. có mã không đọc được (vd "intro") hoặc hai mã trùng số (scene_01 và scene-1) → đánh số lại C1..Cn theo order_index
+ *    (hòa thì theo vị trí trong mảng). Không bao giờ ném lỗi và không bao giờ để hai cảnh cùng mã.
+ */
+export function normalizeSceneCodes(scenes: { code: string; order_index?: number }[]): string[] {
+  const mapped = scenes.map((s) => {
+    const n = sceneNumber(s.code);
+    return n === null ? null : `C${n}`;
+  });
+  if (mapped.every((c): c is string => c !== null) && new Set(mapped).size === mapped.length) return mapped;
+  const out: string[] = new Array(scenes.length);
+  scenes
+    .map((s, i) => ({ i, o: s.order_index ?? i }))
+    .sort((a, b) => a.o - b.o || a.i - b.i)
+    .forEach((x, rank) => {
+      out[x.i] = `C${rank + 1}`;
+    });
+  return out;
+}
+
+/** Cảnh chỉ mới là kế hoạch (chưa ai duyệt/tạo gì): an toàn để thay khi phân tích lại dự án LAN. */
+const PLAN_ONLY = new Set(['draft', 'prompt_ready', 'awaiting_approval']);
+
 /**
  * Worker tạo/cập nhật hàng loạt cảnh sau analyze_brief. Upsert theo (project_id, code).
  * Cảnh mới hoặc prompt đổi → thêm scene_prompt_versions (created_by='claude');
  * cảnh mới đi draft → prompt_ready → awaiting_approval (hoặc → storyboard_queued nếu REQUIRE_PROMPT_APPROVAL=false).
  */
-export function upsertScenes(ctx: AppContext, body: UpsertScenesBody, actor: 'claude' | 'agent' = 'claude') {
+export function upsertScenes(ctx: AppContext, input: UpsertScenesBody, actor: 'claude' | 'agent' = 'claude') {
   return ctx.tx(() => {
-    const project = getProject(ctx, body.project_id);
+    const project = getProject(ctx, input.project_id);
+    // Dự án LAN: mã cảnh luôn là C1, C2, … (managed worker từng trả scene_01).
+    const renamed: { from: string; to: string }[] = [];
+    let body = input;
+    if (project.source === 'lan') {
+      const codes = normalizeSceneCodes(input.scenes);
+      body = { ...input, scenes: input.scenes.map((s, i) => ({ ...s, code: codes[i]! })) };
+      input.scenes.forEach((s, i) => {
+        if (s.code !== codes[i]) renamed.push({ from: s.code, to: codes[i]! });
+      });
+      if (renamed.length) {
+        logEvent(ctx, { project_id: project.id, type: 'scene.codes_normalized', message: `Chuẩn hóa mã cảnh: ${renamed.map((r) => `${r.from} → ${r.to}`).join(', ')}` });
+      }
+    }
     const validRefs = new Set(
       (ctx.db.prepare('SELECT id FROM project_refs WHERE project_id = ?').all(project.id) as { id: number }[]).map((r) => r.id),
     );
@@ -139,7 +184,8 @@ export function upsertScenes(ctx: AppContext, body: UpsertScenesBody, actor: 'cl
           .run(sceneId, s.prompt, 'Bản đầu tiên do AI viết khi phân tích kịch bản', actor, now);
         logEvent(ctx, { project_id: project.id, scene_id: sceneId, type: 'scene.created', message: `${s.code}: AI tạo cảnh "${s.title}"` });
         transition(ctx, sceneId, 'prompt_ready', 'AI viết xong prompt');
-        if (ctx.config.requirePromptApproval) {
+        // Dự án LAN chỉ lập kế hoạch: KHÔNG BAO GIỜ tự tạo job storyboard, kể cả khi REQUIRE_PROMPT_APPROVAL=false.
+        if (ctx.config.requirePromptApproval || project.source === 'lan') {
           transition(ctx, sceneId, 'awaiting_approval', 'chờ người dùng duyệt prompt');
         } else {
           insertJob(ctx, {
@@ -177,6 +223,24 @@ export function upsertScenes(ctx: AppContext, body: UpsertScenesBody, actor: 'cl
       emitScene(ctx, existing.id, project.id);
       updated.push(s.code);
     });
-    return { created, updated, skipped, sceneIds: ids };
+
+    // Dự án LAN phân tích lại: cảnh cũ không còn trong kết quả mới và chỉ mới là kế hoạch (chưa có job/duyệt) thì bỏ, để trang
+    // kế hoạch khớp với lần phân tích mới nhất. Cảnh đã được chủ máy duyệt/sản xuất luôn được giữ.
+    const pruned: string[] = [];
+    if (project.source === 'lan') {
+      const keep = new Set(body.scenes.map((s) => s.code));
+      const old = ctx.db.prepare('SELECT * FROM scenes WHERE project_id = ?').all(project.id) as SceneRow[];
+      for (const o of old) {
+        // Cảnh đã có video người dùng LAN tải lên cũng được giữ (không xoá mất video của họ khi phân tích lại).
+        if (keep.has(o.code) || !PLAN_ONLY.has(o.status) || activeJobOf(ctx, o.id) || hasAsset(ctx, o.id, 'video')) continue;
+        ctx.db.prepare('DELETE FROM scenes WHERE id = ?').run(o.id);
+        pruned.push(o.code);
+      }
+      if (pruned.length) {
+        logEvent(ctx, { project_id: project.id, type: 'scene.pruned', message: `Phân tích lại: bỏ cảnh không còn trong kế hoạch mới (${pruned.join(', ')})` });
+        emitBudget(ctx, project.id); // SSE budget.updated làm web tải lại danh sách cảnh
+      }
+    }
+    return { created, updated, skipped, sceneIds: ids, renamed, pruned };
   });
 }

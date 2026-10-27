@@ -59,7 +59,7 @@ describe('tự kích hoạt', () => {
     expect(jobs[0]).toMatchObject({ id: c.job_id, type: 'edit_plan', status: 'queued', scene_id: null, scene_code: null, requires_approval: false, approved_at: null, credits_cost: 0 });
     // project summary
     const p = (await sc.user.get(`/api/projects/${sc.project.id}`)).body;
-    expect(p.latest_final_cut).toEqual({ id: c.id, version: 1, status: 'planning', progress: null, stage: null, failed_stage: null, watermark_removed: false, url: null, duration_s: null, outdated: false, error: null });
+    expect(p.latest_final_cut).toEqual({ id: c.id, version: 1, status: 'planning', progress: null, stage: null, failed_stage: null, watermark_removed: false, url: null, duration_s: null, outdated: false, error: null, queue_state: null, queue_position: null, ai_queue: { state: 'waiting', position: 1, ahead: 0, running: null, worker: expect.any(Object), wait_reason: null } });
     expect(p.final_cut_block).toEqual({ code: 'FINAL_CUT_ACTIVE', message: 'Đang chọn điểm cắt cho bản hoàn chỉnh v1' });
     expect((await sc.user.get('/api/projects')).body[0].latest_final_cut.version).toBe(1);
     // không tốn credit
@@ -250,6 +250,8 @@ describe('job edit_plan (worker)', () => {
         'contact_sheet_path', 'contact_sheet_url', 'created_at', 'created_by', 'duration_s', 'edl', 'error', 'failed_stage', 'finished_at', 'id', 'job_id', 'note',
         'outdated', 'progress', 'project_file_path', 'project_id', 'raw_video_path', 'raw_video_url', 'render_ref', 'renderer', 'selection', 'selection_signature',
         'stage', 'status', 'summary', 'version', 'video_path', 'video_url', 'watermark_meta', 'watermark_removed',
+        'ai_queue', 'concurrency', 'queue_position', 'queue_state', 'running_count',
+        'base_path', 'color_ref', 'feedback', 'grade', 'grade_chips', 'parent_id', 'parent_version', 'revision',
       ].sort(),
     );
     // renderer nhận đúng các đoạn theo thứ tự, caption "C1 v1 #1"
@@ -436,7 +438,10 @@ describe('render', () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it('mỗi lúc chỉ render một bản (hàng đợi trong tiến trình), kể cả giữa các dự án', async () => {
+  it('RENDER_CONCURRENCY=1: mỗi lúc chỉ render một bản (hàng đợi trong tiến trình), kể cả giữa các dự án', async () => {
+    fake.release();
+    await env.close();
+    await mk({ config: { renderConcurrency: 1 } });
     fake.hold();
     // chuẩn bị hai dự án tới sát bước chọn video; chọn video ở cuối để hai job edit_plan nằm trong hàng đợi
     const prep = async (name: string) => {

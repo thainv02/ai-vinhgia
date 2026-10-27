@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { AppError, badRequest } from '../lib/errors.js';
+import { badRequest } from '../lib/errors.js';
+import { readImageUploads } from '../lib/uploads.js';
 import { intParam, optionalIntParam, parse } from '../lib/validate.js';
 import type { EventRow, ProjectRow, RefRow } from '../db/types.js';
 import { approveAll, previewApproveAll } from '../services/approvals.js';
@@ -20,15 +21,14 @@ import { projectSummary } from '../services/project-view.js';
 import {
   addRefsFromLibrary,
   deleteRef,
-  detectImageType,
   refLibrary,
   reorderRefs,
-  sanitizeBaseName,
   setRefLabel,
   storeRef,
 } from '../services/refs.js';
 import { eventJson, getJobJson, getProject, getRef, projectRefs, refJson } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
+import { deleteProject } from '../services/trash.js';
 
 const stageSchema = z.enum(['storyboard', 'video']);
 
@@ -40,7 +40,7 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   app.get('/api/projects', async () => {
-    const rows = ctx.db.prepare('SELECT * FROM projects ORDER BY id DESC').all() as ProjectRow[];
+    const rows = ctx.db.prepare('SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY id DESC').all() as ProjectRow[];
     return rows.map((p) => projectSummary(ctx, p));
   });
 
@@ -55,28 +55,20 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
     return projectDetail(ctx, patchProject(ctx, id, patch));
   });
 
+  // Xoá = chuyển vào thùng rác 30 ngày (khôi phục được ở POST /api/trash/:id/restore). Body { confirm_name } phải trùng tên dự án.
+  app.delete('/api/projects/:id', async (req) => {
+    const id = intParam((req.params as { id: string }).id);
+    const body = parse(z.object({ confirm_name: z.string({ error: 'cần confirm_name (tên dự án)' }) }), req.body ?? {});
+    getProject(ctx, id);
+    const r = deleteProject(ctx, id, { by: 'app', confirmName: body.confirm_name });
+    return { ok: true, id: r.id, name: r.name, restorable_days: ctx.config.trashRetentionDays };
+  });
+
   // ---- ảnh tham chiếu ----
   app.post('/api/projects/:id/refs', async (req, reply) => {
     const projectId = intParam((req.params as { id: string }).id);
     getProject(ctx, projectId);
-    if (!req.isMultipart()) throw badRequest('BAD_REQUEST', 'Cần gửi multipart/form-data với trường "file"');
-    const items: { name: string; buf: Buffer; type: NonNullable<ReturnType<typeof detectImageType>>; label?: string }[] = [];
-    let pendingLabel: string | undefined;
-    for await (const part of req.parts()) {
-      if (part.type === 'field') {
-        if (part.fieldname === 'label') pendingLabel = String(part.value ?? '');
-        continue;
-      }
-      const buf = await part.toBuffer();
-      if (part.file.truncated) throw new AppError('FILE_TOO_LARGE', 'Ảnh vượt quá dung lượng cho phép (10MB)', 413);
-      const filename = part.filename ?? '';
-      sanitizeBaseName(filename); // ném INVALID_FILENAME nếu có `..` hoặc dấu phân cách đường dẫn
-      const type = detectImageType(buf);
-      if (!type) throw new AppError('UNSUPPORTED_FILE_TYPE', `File "${filename.slice(0, 60)}" không phải ảnh png, jpg hoặc webp`, 415);
-      items.push({ name: filename, buf, type, label: pendingLabel });
-      pendingLabel = undefined;
-    }
-    if (items.length === 0) throw badRequest('NO_FILE', 'Không có file ảnh nào được gửi lên');
+    const items = await readImageUploads(req);
     const created: RefRow[] = items.map((it) => storeRef(ctx, projectId, it.name, it.buf, it.type, it.label));
     return reply.code(201).send(created.map(refJson));
   });

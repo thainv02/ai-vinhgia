@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import type { FinalCut, Scene, SseEventMap } from '../api/types';
 import { qk } from './queries';
+import { toast } from '../lib/toast';
+import { clipKeys, patchSource, upsertClip, upsertCut } from '../clips/hooks';
 
 export type SseState = 'connecting' | 'open' | 'reconnecting';
 
@@ -42,6 +44,13 @@ const EVENT_NAMES: (keyof SseEventMap)[] = [
   'event.created',
   'project.updated',
   'final_cut.updated',
+  'project.deleted',
+  'project.restored',
+  'project.purged',
+  'source.updated',
+  'clip.updated',
+  'clip.deleted',
+  'clip_cut.updated',
 ];
 
 /**
@@ -96,6 +105,7 @@ export function LiveUpdates({ children }: { children: ReactNode }) {
           const { job } = data as SseEventMap['job.updated'];
           invalidateSoon(['jobs']);
           invalidateSoon(qk.project(job.project_id));
+          if (job.type === 'clip_plan') invalidateSoon(clipKeys.project('app', job.project_id));
           if (job.scene_id) invalidateSoon(qk.scene(job.scene_id));
           break;
         }
@@ -141,6 +151,60 @@ export function LiveUpdates({ children }: { children: ReactNode }) {
           invalidateSoon(qk.projects);
           invalidateSoon(qk.project(final_cut.project_id));
           if (final_cut.status !== 'rendering') invalidateSoon(['jobs']);
+          break;
+        }
+        case 'project.deleted': {
+          const { project_id, name, deleted_by } = data as SseEventMap['project.deleted'];
+          // xoá ở nơi khác (vd người tạo xoá kế hoạch từ trang LAN): danh sách và thùng rác cập nhật ngay, bỏ cache của dự án đó
+          qc.removeQueries({ queryKey: qk.project(project_id) });
+          qc.removeQueries({ queryKey: qk.scenes(project_id) });
+          invalidateSoon(qk.projects);
+          invalidateSoon(qk.trash);
+          invalidateSoon(['jobs']);
+          invalidateSoon(['ref-library']);
+          if (deleted_by === 'lan') toast.info(`Kế hoạch "${name}" vừa được người tạo xoá từ trang LAN. Khôi phục ở mục Thùng rác trong 30 ngày.`);
+          break;
+        }
+        case 'project.restored':
+        case 'project.purged': {
+          invalidateSoon(qk.projects);
+          invalidateSoon(qk.trash);
+          invalidateSoon(['ref-library']);
+          break;
+        }
+        // ---- cắt clip: ghi thẳng vào cache khi biết dự án, không thì làm mới mọi dự án cắt clip đang mở ----
+        case 'source.updated': {
+          const { source } = data as SseEventMap['source.updated'];
+          if (source.project_id) patchSource(qc, 'app', source.project_id, source);
+          else invalidateSoon(['clip-project', 'app']);
+          invalidateSoon(qk.projects);
+          break;
+        }
+        case 'clip.updated': {
+          const { clip } = data as SseEventMap['clip.updated'];
+          if (clip.project_id) upsertClip(qc, 'app', clip.project_id, clip);
+          else invalidateSoon(['clip-project', 'app']);
+          break;
+        }
+        case 'clip.deleted': {
+          const { clip_id } = data as SseEventMap['clip.deleted'];
+          qc.setQueriesData<{ clips?: { id: number }[] }>({ queryKey: ['clip-project', 'app'] }, (old) => (old?.clips ? { ...old, clips: old.clips.filter((c) => c.id !== clip_id) } : old));
+          break;
+        }
+        case 'clip_cut.updated': {
+          const { cut } = data as SseEventMap['clip_cut.updated'];
+          if (cut.project_id && cut.clip_id) {
+            upsertCut(qc, 'app', cut.project_id, cut.clip_id, cut);
+            break;
+          }
+          // Không biết clip nào: cập nhật bản dựng đã có trong cache, nếu là bản mới thì làm mới.
+          let found = false;
+          qc.setQueriesData<{ clips?: { latest_cut: { id: number } | null }[] }>({ queryKey: ['clip-project', 'app'] }, (old) => {
+            if (!old?.clips?.some((c) => c.latest_cut?.id === cut.id)) return old;
+            found = true;
+            return { ...old, clips: old.clips.map((c) => (c.latest_cut?.id === cut.id ? { ...c, latest_cut: cut } : c)) };
+          });
+          if (!found) invalidateSoon(['clip-project', 'app']);
           break;
         }
         case 'project.updated': {

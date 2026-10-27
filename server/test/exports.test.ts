@@ -98,7 +98,7 @@ describe('DB: migration, ràng buộc, sao lưu', () => {
   it('migration chạy lặp lại không đổi gì và ghi schema_migrations', async () => {
     expect(runMigrations(env.ctx.db)).toEqual([]);
     const rows = env.ctx.db.prepare('SELECT version FROM schema_migrations').all();
-    expect(rows).toEqual([{ version: '001_init' }, { version: '002_ref_library' }, { version: '003_final_cuts' }, { version: '004_watermark' }, { version: '005_managed_workers' }, { version: '006_account_identity' }, { version: '007_account_quota' }]);
+    expect(rows).toEqual([{ version: '001_init' }, { version: '002_ref_library' }, { version: '003_final_cuts' }, { version: '004_watermark' }, { version: '005_managed_workers' }, { version: '006_account_identity' }, { version: '007_account_quota' }, { version: '008_job_reconciliations' }, { version: '009_lan_planner' }, { version: '010_lan_tools' }, { version: '011_project_trash' }, { version: '012_final_cut_feedback' }, { version: '013_color_refs' }, { version: '014_clips' }]);
     const pragma = env.ctx.db.pragma('journal_mode', { simple: true });
     expect(pragma).toBe('wal');
     expect(env.ctx.db.pragma('foreign_keys', { simple: true })).toBe(1);

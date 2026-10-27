@@ -437,6 +437,7 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
 
     // ---- dự án (theo slug)
     let project = db.prepare('SELECT * FROM projects WHERE slug = ?').get(slug) as ProjectRow | undefined;
+    if (project?.deleted_at) throw new Error(`Dự án "${slug}" đang nằm trong thùng rác; khôi phục hoặc xoá vĩnh viễn trước khi import`);
     const projectCreated = !project;
     if (!project) {
       const now = ctx.now();
