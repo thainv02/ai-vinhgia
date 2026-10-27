@@ -9,6 +9,10 @@ export interface BlockInfo {
   message: string;
 }
 
+const waitText = (reason: string | null): string | null =>
+  reason === 'needs_reconciliation' ? 'Cần đối soát: kiểm tra Flow/ChatGPT xem đã tạo chưa'
+    : reason === 'ai_quota' ? 'Chờ tài khoản AI khả dụng' : reason === 'browser_offline' ? 'Chờ trình duyệt media' : null;
+
 /** Cảnh kèm dữ liệu tổng hợp cho bảng cảnh (`GET /projects/:id/scenes`, SSE `scene.updated`). */
 export function buildSceneSummary(ctx: AppContext, scene: SceneRow, project?: ProjectRow) {
   const proj = project ?? getProject(ctx, scene.project_id);
@@ -28,7 +32,7 @@ export function buildSceneSummary(ctx: AppContext, scene: SceneRow, project?: Pr
     activeJob = getJobJson(ctx, activeRow.id);
     if (activeRow.status === 'queued') {
       const paused = ctx.db.prepare('SELECT queue_paused FROM worker_state WHERE id = 1').get() as { queue_paused: number };
-      waiting = paused.queue_paused ? 'Hàng đợi đang tạm dừng' : claimBlockReason(ctx, activeRow);
+      waiting = paused.queue_paused ? 'Hàng đợi đang tạm dừng' : waitText(activeRow.wait_reason) ?? claimBlockReason(ctx, activeRow);
     }
   }
   const openComments = (

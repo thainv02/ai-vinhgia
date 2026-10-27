@@ -27,7 +27,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     expect(keys(p)).toEqual(
       [
         'brief', 'created_at', 'credit_per_video', 'credits_reserved', 'credits_used',
-        'done_count', 'final_cut_block', 'id', 'latest_final_cut', 'max_attempts_per_scene', 'name', 'scene_count', 'slug', 'status', 'status_counts', 'style_lock', 'updated_at',
+        'created_by_name', 'done_count', 'final_cut_block', 'id', 'kind', 'latest_final_cut', 'max_attempts_per_scene', 'name', 'scene_count', 'slug', 'source', 'status', 'status_counts', 'style_lock', 'updated_at',
       ].sort(),
     );
     expect(p).toMatchObject({
@@ -82,7 +82,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     expect(keys(d.jobs[0])).toEqual(
       [
         'approved_at', 'claimed_at', 'claimed_by', 'created_at', 'credits_cost', 'error', 'error_code', 'finished_at', 'heartbeat_at', 'id',
-        'last_requeued_at', 'worker_mode', 'ai', 'lease_epoch', 'wait_reason', 'next_attempt_at', 'checkpoint', 'payload', 'project_id', 'project_name', 'requeue_count', 'requires_approval', 'result', 'scene_code', 'scene_id', 'status', 'type',
+        'last_requeued_at', 'worker_mode', 'ai', 'lease_epoch', 'wait_reason', 'next_attempt_at', 'checkpoint', 'action_state', 'reconcile_required', 'payload', 'project_id', 'project_name', 'requeue_count', 'requires_approval', 'result', 'scene_code', 'scene_id', 'status', 'type',
       ].sort(),
     );
     expect(d.jobs[0].credits_cost).toBe(15);

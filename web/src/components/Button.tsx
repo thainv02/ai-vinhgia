@@ -1,5 +1,4 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { Link, type LinkProps } from 'react-router-dom';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
@@ -47,15 +46,6 @@ export function Button({ variant = 'secondary', size = 'md', loading, credit, di
       {children}
       {credit !== undefined && <span className="spend-chip">{credit} credit</span>}
     </button>
-  );
-}
-
-export function LinkButton({ variant = 'secondary', size = 'md', className = '', icon, children, ...rest }: LinkProps & { variant?: ButtonVariant; size?: ButtonSize; icon?: ReactNode }) {
-  return (
-    <Link {...rest} className={buttonClass(variant, size, className)}>
-      {icon}
-      {children}
-    </Link>
   );
 }
 

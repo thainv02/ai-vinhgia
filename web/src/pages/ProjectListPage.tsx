@@ -1,6 +1,6 @@
 import { useProjects } from '../hooks/queries';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
-import { LinkButton } from '../components/Button';
+import { LinkButton } from '../components/LinkButton';
 import { Icon } from '../components/Icon';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { ProjectCard } from '../components/ProjectCard';
@@ -13,9 +13,14 @@ export default function ProjectListPage() {
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight">Dự án</h1>
-        <LinkButton to="/projects/new" variant="primary" icon={<Icon name="plus" />}>
-          Dự án mới
-        </LinkButton>
+        <div className="flex flex-wrap gap-2">
+          <LinkButton to="/clips?new=1" icon={<Icon name="film" />}>
+            Dự án cắt clip mới
+          </LinkButton>
+          <LinkButton to="/projects/new" variant="primary" icon={<Icon name="plus" />}>
+            Dự án mới
+          </LinkButton>
+        </div>
       </div>
 
       {isLoading ? (

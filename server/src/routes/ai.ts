@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { managedJobTypes } from '../config.js';
 import { AppError } from '../lib/errors.js';
 import { intParam, parse } from '../lib/validate.js';
 import { accountBody, createAccount, listAccounts, policyBody, projectPolicy, account } from '../services/ai/accounts.js';
@@ -33,7 +34,7 @@ export function registerAiRoutes(app: FastifyInstance, ctx: AppContext) {
       reply.header('Cache-Control', 'no-store');
       return listAccounts(ctx);
     });
-    a.get('/api/ai/status', async () => ({ worker_mode: ctx.config.workerMode, accounts: listAccounts(ctx),
+    a.get('/api/ai/status', async () => ({ worker_mode: ctx.config.workerMode, managed_job_types: managedJobTypes(ctx.config), accounts: listAccounts(ctx),
       sessions: ctx.db.prepare('SELECT worker_id,mode,last_seen_at FROM worker_sessions').all() }));
     a.post('/api/ai/accounts', async (req, reply) => reply.code(201).send(createAccount(ctx, parse(accountBody, req.body))));
     a.patch('/api/ai/accounts/:id', async (req) => {
@@ -72,7 +73,7 @@ export function registerAiRoutes(app: FastifyInstance, ctx: AppContext) {
       const id = intParam((req.params as { id: string }).id);
       const job = ctx.db.prepare('SELECT wait_reason FROM jobs WHERE id=?').get(id) as { wait_reason: string | null } | undefined;
       if (!job) throw new AppError('NOT_FOUND', 'Không tìm thấy job', 404);
-      if (job.wait_reason === 'needs_reconciliation') throw new AppError('RECONCILIATION_REQUIRED', 'Cần đối soát lượt tạo bằng worker; không tự bỏ qua intent', 409);
+      if (job.wait_reason === 'needs_reconciliation') throw new AppError('RECONCILIATION_REQUIRED', 'Job đang chờ đối soát lượt tạo: dùng đối soát trên Hàng đợi (POST /api/jobs/:id/reconcile); không tự bỏ qua intent', 409);
       ctx.db.prepare('UPDATE jobs SET wait_reason=NULL,next_attempt_at=NULL WHERE id=? AND status=\'queued\'').run(id);
       return { ok: true };
     });

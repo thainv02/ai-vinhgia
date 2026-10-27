@@ -1,11 +1,76 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import type { ProjectDetail } from '../api/types';
-import { usePatchProject } from '../hooks/mutations';
+import { useDeleteProject, usePatchProject } from '../hooks/mutations';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { InlineError } from './States';
+
+/** Vùng nguy hiểm: chuyển dự án vào thùng rác 30 ngày (khôi phục được). Phải gõ đúng tên; hiện lý do nếu đang bị chặn. */
+function DeleteZone({ project, onDone }: { project: ProjectDetail; onDone: () => void }) {
+  const navigate = useNavigate();
+  const del = useDeleteProject();
+  const [typed, setTyped] = useState('');
+  const block = project.delete_block;
+  const match = typed.trim().normalize('NFC') === project.name.trim().normalize('NFC');
+  return (
+    <section aria-labelledby="del-title" className="mt-4 rounded-lg border border-danger-fg/40 bg-danger-bg/40 p-3 text-sm">
+      <h3 id="del-title" className="mb-1 flex items-center gap-1.5 text-[13px] font-bold text-danger-fg">
+        <Icon name="trash" size={15} /> Xoá dự án
+      </h3>
+      <p className="text-[13px]">
+        Dự án (cảnh, video, bản hoàn chỉnh, ảnh tham chiếu) được chuyển vào <strong>Thùng rác 30 ngày</strong>: biến khỏi mọi danh sách, worker không nhận việc của nó. Trong 30 ngày bạn khôi phục được ở mục «Thùng rác»; sau đó xoá vĩnh viễn và không lấy lại được.
+      </p>
+      {block ? (
+        <div role="alert" className="mt-2 rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+          <strong>Chưa xoá được lúc này:</strong>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {block.reasons.map((r) => (
+              <li key={r.code + r.message}>{r.message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <label htmlFor="del-name" className="mb-1 block text-xs font-semibold">
+            Gõ đúng tên dự án «{project.name}» để bật nút
+          </label>
+          <input id="del-name" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" placeholder={project.name} />
+        </div>
+      )}
+      {del.isError && (
+        <div className="mt-2">
+          <InlineError>{errorMessage(del.error)}</InlineError>
+        </div>
+      )}
+      <div className="mt-2">
+        <Button
+          variant="danger"
+          icon={<Icon name="trash" />}
+          loading={del.isPending}
+          disabledReason={block ? 'Đang bị chặn, xem lý do ở trên' : !match ? 'Gõ đúng tên dự án để bật nút' : null}
+          onClick={() =>
+            del.mutate(
+              { projectId: project.id, confirmName: typed },
+              {
+                onSuccess: () => {
+                  toast.success(`Đã chuyển "${project.name}" vào thùng rác. Khôi phục trong 30 ngày ở mục Thùng rác.`);
+                  onDone();
+                  navigate('/');
+                },
+              },
+            )
+          }
+        >
+          Chuyển vào thùng rác
+        </Button>
+      </div>
+    </section>
+  );
+}
 
 export function ProjectSettingsDialog({ project, open, onClose }: { project: ProjectDetail; open: boolean; onClose: () => void }) {
   const patch = usePatchProject({ silent: true });
@@ -90,6 +155,7 @@ export function ProjectSettingsDialog({ project, open, onClose }: { project: Pro
         <p className="text-xs text-muted">Ảnh tham chiếu quản lý ở mục «Ảnh tham chiếu» trên bảng cảnh.</p>
         {patch.isError && <InlineError>{errorMessage(patch.error)}</InlineError>}
       </form>
+      {open && <DeleteZone key={project.id} project={project} onDone={onClose} />}
     </Modal>
   );
 }

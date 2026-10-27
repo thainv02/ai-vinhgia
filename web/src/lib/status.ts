@@ -66,6 +66,7 @@ export const JOB_TYPE_LABEL: Record<JobType, string> = {
   video: 'Video',
   revise_prompt: 'Sửa prompt',
   edit_plan: 'Chọn điểm cắt',
+  clip_plan: 'Chọn đoạn clip',
 };
 
 export const JOB_STATUS: Record<JobStatus, StatusInfo> = {

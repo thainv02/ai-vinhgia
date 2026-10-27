@@ -28,38 +28,60 @@ export function fileUrl(filePath: string): string {
 
 // ---------- getters (ném 404 nếu không có) ----------
 
+/**
+ * Thùng rác: dự án đã xoá (mềm) KHÔNG tồn tại với mọi getter dưới đây (404). Mọi getter của cảnh/job/asset/comment/ảnh/bản dựng đều nối với
+ * `projects` và loại dự án đã xoá, nên không đường nào (app chính, LAN, worker) chạm được dữ liệu trong thùng rác. Chỉ `getProjectAny`
+ * và `services/trash.ts` nhìn thấy dự án đã xoá.
+ */
 export function getProject(ctx: AppContext, id: number): ProjectRow {
+  const row = ctx.db.prepare('SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL').get(id) as ProjectRow | undefined;
+  if (!row) throw notFound('dự án');
+  return row;
+}
+
+/** Như `getProject` nhưng thấy cả dự án trong thùng rác (chỉ dành cho khôi phục, xoá vĩnh viễn, dọn dẹp lúc khởi động). */
+export function getProjectAny(ctx: AppContext, id: number): ProjectRow {
   const row = ctx.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
   if (!row) throw notFound('dự án');
   return row;
 }
 
 export function getScene(ctx: AppContext, id: number): SceneRow {
-  const row = ctx.db.prepare('SELECT * FROM scenes WHERE id = ?').get(id) as SceneRow | undefined;
+  const row = ctx.db
+    .prepare('SELECT s.* FROM scenes s JOIN projects p ON p.id = s.project_id WHERE s.id = ? AND p.deleted_at IS NULL')
+    .get(id) as SceneRow | undefined;
   if (!row) throw notFound('cảnh');
   return row;
 }
 
 export function getJobRow(ctx: AppContext, id: number): JobRow {
-  const row = ctx.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as JobRow | undefined;
+  const row = ctx.db
+    .prepare('SELECT j.* FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.id = ? AND p.deleted_at IS NULL')
+    .get(id) as JobRow | undefined;
   if (!row) throw notFound('job');
   return row;
 }
 
 export function getAsset(ctx: AppContext, id: number): AssetRow {
-  const row = ctx.db.prepare('SELECT * FROM assets WHERE id = ?').get(id) as AssetRow | undefined;
+  const row = ctx.db
+    .prepare('SELECT a.* FROM assets a JOIN scenes s ON s.id = a.scene_id JOIN projects p ON p.id = s.project_id WHERE a.id = ? AND p.deleted_at IS NULL')
+    .get(id) as AssetRow | undefined;
   if (!row) throw notFound('asset');
   return row;
 }
 
 export function getComment(ctx: AppContext, id: number): CommentRow {
-  const row = ctx.db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as CommentRow | undefined;
+  const row = ctx.db
+    .prepare('SELECT c.* FROM comments c JOIN scenes s ON s.id = c.scene_id JOIN projects p ON p.id = s.project_id WHERE c.id = ? AND p.deleted_at IS NULL')
+    .get(id) as CommentRow | undefined;
   if (!row) throw notFound('comment');
   return row;
 }
 
 export function getRef(ctx: AppContext, id: number): RefRow {
-  const row = ctx.db.prepare('SELECT * FROM project_refs WHERE id = ?').get(id) as RefRow | undefined;
+  const row = ctx.db
+    .prepare('SELECT r.* FROM project_refs r JOIN projects p ON p.id = r.project_id WHERE r.id = ? AND p.deleted_at IS NULL')
+    .get(id) as RefRow | undefined;
   if (!row) throw notFound('ảnh tham chiếu');
   return row;
 }
@@ -146,9 +168,20 @@ export function ledgerJson(row: LedgerRow & { scene_code?: string | null }) {
   };
 }
 
-type JobJoinRow = JobRow & { scene_code: string | null; project_name: string; ai_info?: string | null };
+type JobJoinRow = JobRow & { scene_code: string | null; project_name: string; ai_info?: string | null; action_state?: string | null };
 
-export function jobJsonFromRow(row: JobJoinRow) {
+/**
+ * Payload gọn cho API/SSE: job `clip_plan` mang toàn bộ câu của transcript (có thể hàng trăm KB với video 3 giờ) nên danh sách job và sự kiện
+ * `job.updated` chỉ có số câu/cửa sổ. Worker nhận bản đầy đủ (`full: true`: claim và GET /api/worker/jobs/:id).
+ */
+function lightPayload(row: JobRow, full: boolean): Record<string, unknown> {
+  const payload = parseJson<Record<string, unknown>>(row.payload, {});
+  if (full || row.type !== 'clip_plan') return payload;
+  const { sentences, windows, ...rest } = payload;
+  return { ...rest, sentence_count: Array.isArray(sentences) ? sentences.length : 0, window_count: Array.isArray(windows) ? windows.length : 0 };
+}
+
+export function jobJsonFromRow(row: JobJoinRow, opts: { full?: boolean } = {}) {
   return {
     id: row.id,
     project_id: row.project_id,
@@ -157,7 +190,7 @@ export function jobJsonFromRow(row: JobJoinRow) {
     scene_code: row.scene_code,
     type: row.type,
     status: row.status,
-    payload: parseJson<Record<string, unknown>>(row.payload, {}),
+    payload: lightPayload(row, !!opts.full),
     result: parseJson<Record<string, unknown> | null>(row.result, null),
     error: row.error,
     error_code: row.error_code,
@@ -177,20 +210,25 @@ export function jobJsonFromRow(row: JobJoinRow) {
     wait_reason: row.wait_reason,
     next_attempt_at: row.next_attempt_at,
     checkpoint: row.checkpoint ? { step: parseJson<Record<string, unknown>>(row.checkpoint, {}).step ?? null } : null,
+    /** Trạng thái action ngoài hiện hành (intent/submitted/…); null nếu chưa có hoặc đã abandoned. */
+    action_state: row.action_state ?? null,
+    /** true: worker đã dừng và báo cần đối soát (wait_reason=needs_reconciliation) — xem POST /api/jobs/:id/reconcile; hủy bị chặn. */
+    reconcile_required: row.worker_mode === 'managed' && row.status === 'queued' && row.wait_reason === 'needs_reconciliation' && ['intent', 'uncertain', 'submitted', 'downloaded'].includes(row.action_state ?? ''),
   };
 }
 export type JobJson = ReturnType<typeof jobJsonFromRow>;
 
 const JOB_SELECT = `SELECT j.*, s.code AS scene_code, p.name AS project_name,
-  (SELECT json_object('alias',a.alias,'provider',a.provider,'model',r.model,'outcome',r.outcome) FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=j.id ORDER BY r.id DESC LIMIT 1) AS ai_info
+  (SELECT json_object('alias',a.alias,'provider',a.provider,'model',r.model,'outcome',r.outcome) FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=j.id ORDER BY r.id DESC LIMIT 1) AS ai_info,
+  (SELECT e.state FROM external_actions e WHERE e.job_id=j.id AND e.state<>'abandoned' ORDER BY e.created_at DESC, e.rowid DESC LIMIT 1) AS action_state
   FROM jobs j
   LEFT JOIN scenes s ON s.id = j.scene_id
-  JOIN projects p ON p.id = j.project_id`;
+  JOIN projects p ON p.id = j.project_id AND p.deleted_at IS NULL`;
 
-export function getJobJson(ctx: AppContext, id: number): JobJson {
+export function getJobJson(ctx: AppContext, id: number, opts: { full?: boolean } = {}): JobJson {
   const row = ctx.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(id) as JobJoinRow | undefined;
   if (!row) throw notFound('job');
-  return jobJsonFromRow(row);
+  return jobJsonFromRow(row, opts);
 }
 
 export function listJobsJson(
@@ -217,7 +255,7 @@ export function listJobsJson(
   }
   const sql = `${JOB_SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY j.id DESC LIMIT ?`;
   args.push(filter.limit ?? 200);
-  return (ctx.db.prepare(sql).all(...args) as JobJoinRow[]).map(jobJsonFromRow);
+  return (ctx.db.prepare(sql).all(...args) as JobJoinRow[]).map((r) => jobJsonFromRow(r));
 }
 
 // ---------- events ----------

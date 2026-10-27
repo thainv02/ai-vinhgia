@@ -4,7 +4,9 @@ import type { AppContext } from '../context.js';
 import { badRequest } from '../lib/errors.js';
 import { intParam, optionalIntParam, parse } from '../lib/validate.js';
 import { JOB_STATUSES, JOB_TYPES, SCENE_STATUSES, SCENE_STATUS_LABEL, VERDICTS, VERDICT_LABEL, COMMENT_ACTIONS, FAIL_CODES } from '../db/types.js';
+import { clipLimits } from '../services/clips/lan.js';
 import { cancelJob } from '../services/jobs.js';
+import { reconcileBody, reconcileJob } from '../services/reconcile.js';
 import { getJobJson, getJobRow, listJobsJson } from '../services/repo.js';
 import { sceneSummaryById } from '../services/scene-view.js';
 import { pauseQueue, resumeQueue, workerStatus } from '../services/worker.js';
@@ -37,6 +39,15 @@ export function registerJobRoutes(app: FastifyInstance, ctx: AppContext): void {
     return { job: getJobJson(ctx, id), scene: row.scene_id ? sceneSummaryById(ctx, row.scene_id) : null };
   });
 
+  // Đối soát job managed có thao tác tạo bên ngoài chưa rõ kết quả: { outcome: retry_download|nothing_created|charge_and_fail, note? }.
+  app.post('/api/jobs/:id/reconcile', async (req) => {
+    const id = intParam((req.params as { id: string }).id);
+    const body = parse(reconcileBody, req.body ?? {});
+    const row = getJobRow(ctx, id);
+    const { replay } = reconcileJob(ctx, id, body);
+    return { job: getJobJson(ctx, id), scene: row.scene_id ? sceneSummaryById(ctx, row.scene_id) : null, replay };
+  });
+
   // ---- hàng đợi / worker (cho web, không cần token) ----
   app.get('/api/worker/status', async () => ({ ...workerStatus(ctx), server_time: ctx.now() }));
 
@@ -55,6 +66,8 @@ export function registerJobRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/meta', async () => ({
     final_renderer: await ctx.finalRender!.status(),
     watermark_remover: await ctx.finalRender!.watermarkStatus(),
+    /** Cắt clip từ video dài: giới hạn video nguồn, nhận dạng lời nói và phụ đề có sẵn không (xem GET /api/clip-status). */
+    clips: clipLimits(ctx, false),
     config: {
       max_concurrent_video_jobs: ctx.config.maxConcurrentVideoJobs,
       require_prompt_approval: ctx.config.requirePromptApproval,

@@ -37,6 +37,12 @@ export class FakeRenderer implements Renderer {
   /** Khi đặt, render chờ cho tới khi gọi release() (hoặc bị hủy). */
   private gate: { promise: Promise<void>; release: () => void } | null = null;
 
+  /** Thứ tự các bản đã BẮT ĐẦU render (theo cutId). */
+  started: number[] = [];
+  /** true: mỗi bản chờ cổng RIÊNG theo cutId, mở bằng `releaseCut(id)` (hoặc `release()` mở hết). Dùng để kiểm tra nhiều bản chạy song song. */
+  gateEach = false;
+  private cutGates = new Map<number, { promise: Promise<void>; release: () => void }>();
+
   /** Đặt để ghi video THẬT (ffmpeg testsrc) thay vì chữ giả — cần cho bước xoá logo (ffprobe kiểm tra). */
   realVideo: { seconds: number; audio?: boolean } | null = null;
 
@@ -50,10 +56,27 @@ export class FakeRenderer implements Renderer {
   release(): void {
     this.gate?.release();
     this.gate = null;
+    this.gateEach = false;
+    for (const g of this.cutGates.values()) g.release();
+  }
+  /** Mở cổng của một bản (chế độ `gateEach`); bản đó chạy tiếp tới xong. */
+  releaseCut(cutId: number): void {
+    this.gateFor(cutId).release();
+  }
+  private gateFor(cutId: number) {
+    let g = this.cutGates.get(cutId);
+    if (!g) {
+      let release!: () => void;
+      const promise = new Promise<void>((r) => (release = r));
+      g = { promise, release };
+      this.cutGates.set(cutId, g);
+    }
+    return g;
   }
 
   async render(req: RenderRequest): Promise<RenderOutcome> {
     this.calls.push(req);
+    this.started.push(req.cutId);
     this.concurrent++;
     this.maxConcurrent = Math.max(this.maxConcurrent, this.concurrent);
     try {
@@ -63,7 +86,17 @@ export class FakeRenderer implements Renderer {
         req.onProjectFile(req.out.mltAbs);
         req.onRenderRef(`fake-render-${req.cutId}`);
       }
-      if (this.gate) {
+      if (this.gateEach) {
+        const gate = this.gateFor(req.cutId);
+        await new Promise<void>((resolve) => {
+          void gate.promise.then(resolve);
+          req.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        if (req.signal.aborted) {
+          this.aborted.push(req.cutId);
+          throw new Error('aborted');
+        }
+      } else if (this.gate) {
         const gate = this.gate;
         await new Promise<void>((resolve) => {
           gate.promise.then(resolve);

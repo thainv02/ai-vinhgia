@@ -2,18 +2,19 @@ import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { AppError } from '../lib/errors.js';
+import { isManagedJobType, managedJobTypes } from '../config.js';
+import { AppError, conflict } from '../lib/errors.js';
 import { intParam, parse } from '../lib/validate.js';
 import { COMMENT_ACTIONS } from '../db/types.js';
 import { createComment } from '../services/comments.js';
 import { claimNext, completeBody, completeJob, failBody, failJob, heartbeat } from '../services/jobs.js';
-import { commentJson, getComment, getJobJson, getScene } from '../services/repo.js';
+import { commentJson, getComment, getJobJson, getJobRow, getScene } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
 import { upsertScenes, upsertScenesBody } from '../services/scenes.js';
 import { touchWorker, workerStatus } from '../services/worker.js';
 import { assertLease, assertManagedLease, saveCheckpoint, waitJob, actionJournal, actions, browserLease, completionHash, stampProvenance } from '../services/managed.js';
 import { infer } from '../services/ai/router.js';
-import { JOB_TYPES } from '../db/types.js';
+import { JOB_TYPES, type JobRow, type JobType } from '../db/types.js';
 
 function tokenOk(expected: string, header: string | undefined): boolean {
   if (!expected || !header) return false;
@@ -32,6 +33,26 @@ const workerIdOf = (req: FastifyRequest): string | null => {
   return v ? String(v).slice(0, 100) : null;
 };
 const ownerOf = (req: FastifyRequest) => ({ worker: workerIdOf(req), lease: typeof req.headers['x-job-lease'] === 'string' ? req.headers['x-job-lease'] : null });
+/** Chế độ của một request ghi: có X-Job-Lease (hoặc ?mode=managed) là managed; còn lại là legacy (WORKER.md). */
+const requestMode = (req: FastifyRequest): 'legacy' | 'managed' =>
+  ownerOf(req).lease || (req.query as { mode?: string } | undefined)?.mode === 'managed' ? 'managed' : 'legacy';
+
+/**
+ * Endpoint ghi không gắn id job trên đường dẫn (scenes/comments): quyết định theo JOB, không theo cấu hình toàn cục.
+ * Có X-Job-Lease → phải là lease managed hợp lệ của job trong X-Job-Id. Không có → legacy, chỉ hợp lệ khi job/loại liên quan
+ * không thuộc managed.
+ */
+function managedWriteJob(ctx: AppContext, req: FastifyRequest): JobRow | null {
+  const owner = ownerOf(req);
+  if (!owner.lease) return null;
+  return assertManagedLease(ctx, intParam(req.headers['x-job-id'], 'X-Job-Id'), owner);
+}
+function assertLegacyMayWrite(ctx: AppContext, type: JobType, active: JobRow | undefined) {
+  if (isManagedJobType(ctx.config, type)) throw conflict('MANAGED_REQUIRED', `Loại job ${type} do managed worker xử lý; request ghi cần X-Job-Lease`);
+  if (active && (active.worker_mode === 'managed' || isManagedJobType(ctx.config, active.type))) {
+    throw conflict('MANAGED_REQUIRED', `Job #${active.id} (${active.type}) do managed worker xử lý; request ghi cần X-Job-Lease`);
+  }
+}
 
 // Reference images are embedded as base64 in both inference and resumable context.
 const CONTEXT_BODY_LIMIT = 32 * 1024 * 1024;
@@ -43,16 +64,16 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       if (!tokenOk(ctx.config.workerToken, req.headers.authorization)) {
         throw new AppError('UNAUTHORIZED', 'Thiếu hoặc sai WORKER_TOKEN (header Authorization: Bearer <token>)', 401);
       }
-      touchWorker(ctx, workerIdOf(req));
+      touchWorker(ctx, workerIdOf(req), requestMode(req));
     });
 
-    w.get('/api/worker/ping', async () => ({ ok: true, server_time: ctx.now(), ...workerStatus(ctx) }));
+    w.get('/api/worker/ping', async () => ({ ok: true, server_time: ctx.now(), ...workerStatus(ctx), managed_job_types: managedJobTypes(ctx.config) }));
 
     // Nhận (claim) job tiếp theo: 200 + job | 204 không có việc | 503 QUEUE_PAUSED
     w.get('/api/worker/next', async (req, reply) => {
       const query = req.query as { mode?: string; types?: string };
       const managed = query.mode === 'managed';
-      if (managed !== (ctx.config.workerMode === 'managed')) throw new AppError('WORKER_MODE', 'WORKER_MODE của server không khớp worker', 409);
+      // Không còn cổng WORKER_MODE toàn cục: mỗi loại job thuộc đúng một chế độ (config.managedJobTypes); lệch chế độ → 204.
       const types = query.types ? parse(z.array(z.enum(JOB_TYPES)), query.types.split(',')) : undefined;
       if (managed && !workerIdOf(req)) throw new AppError('WORKER_REQUIRED', 'Managed worker phải có worker ID');
       const job = claimNext(ctx, workerIdOf(req), { managed, types });
@@ -60,7 +81,7 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       return job;
     });
 
-    w.get('/api/worker/jobs/:id', async (req) => getJobJson(ctx, intParam((req.params as { id: string }).id)));
+    w.get('/api/worker/jobs/:id', async (req) => getJobJson(ctx, intParam((req.params as { id: string }).id), { full: true }));
 
     w.post('/api/worker/jobs/:id/heartbeat', async (req) => {
       const id = intParam((req.params as { id: string }).id);
@@ -98,13 +119,17 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
     w.post('/api/worker/scenes', async (req) => {
       const body = parse(upsertScenesBody, req.body);
       return ctx.tx(() => {
-        if (ctx.config.workerMode === 'managed') {
-          const job = assertManagedLease(ctx, Number(req.headers['x-job-id']), ownerOf(req));
+        const job = managedWriteJob(ctx, req);
+        if (job) {
           if (job.type !== 'analyze_brief' || job.project_id !== body.project_id) throw new AppError('JOB_SCOPE', 'Không được ghi cảnh của job khác', 409);
+        } else {
+          const active = ctx.db.prepare("SELECT * FROM jobs WHERE project_id = ? AND type = 'analyze_brief' AND status IN ('claimed','running') ORDER BY id DESC LIMIT 1")
+            .get(body.project_id) as JobRow | undefined;
+          assertLegacyMayWrite(ctx, 'analyze_brief', active);
         }
-        const r = upsertScenes(ctx, body, ctx.config.workerMode === 'managed' ? 'agent' : 'claude');
-        if (ctx.config.workerMode === 'managed') stampProvenance(ctx, Number(req.headers['x-job-id']), r.sceneIds);
-        return { created: r.created, updated: r.updated, skipped: r.skipped, scenes: listSceneSummaries(ctx, body.project_id) };
+        const r = upsertScenes(ctx, body, job ? 'agent' : 'claude');
+        if (job) stampProvenance(ctx, job.id, r.sceneIds);
+        return { created: r.created, updated: r.updated, skipped: r.skipped, ...(r.renamed.length ? { renamed: r.renamed } : {}), ...(r.pruned.length ? { pruned: r.pruned } : {}), scenes: listSceneSummaries(ctx, body.project_id) };
       });
     });
 
@@ -122,17 +147,23 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       );
       const result = ctx.tx(() => {
         const scene = getScene(ctx, body.scene_id);
-        if (ctx.config.workerMode === 'managed') {
-          const job = assertManagedLease(ctx, Number(req.headers['x-job-id']), ownerOf(req));
+        const job = managedWriteJob(ctx, req);
+        if (job) {
           if (job.project_id !== scene.project_id || (job.scene_id && job.scene_id !== scene.id)) throw new AppError('JOB_SCOPE', 'Comment không thuộc phạm vi job', 409);
+        } else {
+          const headerId = req.headers['x-job-id'] === undefined ? null : intParam(req.headers['x-job-id'], 'X-Job-Id');
+          const named = headerId === null ? undefined : getJobRow(ctx, headerId);
+          if (named && (named.project_id !== scene.project_id || (named.scene_id && named.scene_id !== scene.id))) throw new AppError('JOB_SCOPE', 'Comment không thuộc phạm vi job', 409);
+          const active = named ?? ctx.db.prepare("SELECT * FROM jobs WHERE scene_id = ? AND status IN ('claimed','running') ORDER BY id DESC LIMIT 1").get(scene.id) as JobRow | undefined;
+          if (active) assertLegacyMayWrite(ctx, active.type, active);
         }
         const r = createComment(
           ctx,
           body.scene_id,
           { body: body.body, asset_id: body.asset_id ?? null, timecode: body.timecode ?? null, action: 'note' },
-          ctx.config.workerMode === 'managed' ? 'agent' : 'claude',
+          job ? 'agent' : 'claude',
         );
-        if (ctx.config.workerMode === 'managed') stampProvenance(ctx, Number(req.headers['x-job-id']), [], r.commentId);
+        if (job) stampProvenance(ctx, job.id, [], r.commentId);
         return { comment: commentJson(getComment(ctx, r.commentId)) };
       });
       return reply.code(201).send(result);

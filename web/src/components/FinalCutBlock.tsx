@@ -2,35 +2,50 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Scene } from '../api/types';
 import { useCreateFinalCut } from '../hooks/mutations';
-import { useFinalCuts } from '../hooks/queries';
-import { cleanAction, finalBlockReason, finalStatusLabel, fmtSeconds } from '../lib/finalCut';
+import { useFinalCuts, useWorkerStatus } from '../hooks/queries';
+import { aiQueueNote, cleanAction, finalBlockReason, finalStatusLabel, fmtSeconds, isWaitingToRender, renderQueueNote, stageProgressLabel } from '../lib/finalCut';
 import { FINAL_STATUS, TONE_CLASS } from '../lib/status';
 import { toast } from '../lib/toast';
-import { Button, LinkButton } from './Button';
+import { Button } from './Button';
+import { LinkButton } from './LinkButton';
 import { CleanLogoButton } from './CleanLogoButton';
 import { Icon } from './Icon';
 
 /** Khối "Bản hoàn chỉnh" trên bảng cảnh: trạng thái dựng cuối, xem bản dựng, dựng bản mới. */
-export function FinalCutBlock({ projectId, scenes, serverBlock }: { projectId: number; scenes: Scene[] | undefined; serverBlock?: { message: string } | null }) {
+export function FinalCutBlock({ projectId, scenes, serverBlock, source }: { projectId: number; scenes: Scene[] | undefined; serverBlock?: { message: string } | null; source?: 'app' | 'lan' }) {
   const q = useFinalCuts(projectId);
+  const worker = useWorkerStatus().data;
   const create = useCreateFinalCut();
   const latest = q.data?.[0];
-  const reason = useMemo(() => finalBlockReason(scenes, latest, serverBlock), [scenes, latest, serverBlock]);
+  const reason = useMemo(() => finalBlockReason(scenes, latest, serverBlock, source), [scenes, latest, serverBlock, source]);
   const info = latest ? FINAL_STATUS[latest.status] : null;
 
   let status: React.ReactNode;
   if (q.isLoading) status = <span className="text-muted">Đang tải...</span>;
   else if (q.error) status = <span className="text-danger-fg">Không tải được bản dựng</span>;
   else if (!latest) status = <span className="text-muted">Chưa có bản hoàn chỉnh.{reason ? '' : ' Hệ thống tự gửi AI chọn điểm cắt khi mọi cảnh đã chọn video.'}</span>;
-  else if (latest.status === 'planning') status = <>AI đang chọn điểm cắt cho v{latest.version}</>;
-  else if (latest.status === 'rendering')
+  else if (latest.status === 'planning') {
+    const note = aiQueueNote(latest.ai_queue, worker?.online, latest.parent_id ? 'feedback' : 'cut');
     status = (
       <>
-        {latest.stage === 'clean' ? 'Đang xoá logo Veo' : 'Đang render'} v{latest.version}
+        v{latest.version}: {note.title}
+        {note.detail && <span className={`block text-xs ${note.warn ? 'text-warn-fg' : 'text-muted'}`}>{note.detail}</span>}
+      </>
+    );
+  } else if (latest.status === 'rendering') {
+    const wait = renderQueueNote(latest);
+    status = wait ? (
+      <>
+        v{latest.version}: {wait.title}
+      </>
+    ) : (
+      <>
+        {latest.stage === 'clean' ? 'Đang xoá logo Veo' : latest.stage === 'grade' ? 'Đang chỉnh màu' : 'Đang render'} v{latest.version}
         {latest.progress !== null ? ` ${Math.round(latest.progress)}%` : ''}
       </>
     );
-  else if (latest.status === 'ready') status = <>v{latest.version} sẵn sàng · {fmtSeconds(latest.duration_s)}{latest.watermark_removed ? ' · đã xoá logo Veo' : ''}</>;
+  }
+  else if (latest.status === 'ready') status = <>v{latest.version} sẵn sàng · {fmtSeconds(latest.duration_s)}{latest.watermark_removed ? ' · đã xoá logo Veo' : ''}{latest.grade_chips?.length ? ` · ${latest.grade_chips.join(', ')}` : ''}</>;
   else if (latest.status === 'failed')
     status = latest.failed_stage === 'clean' ? <>v{latest.version}: {latest.error ?? 'xoá logo Veo không thành công'}. Bản render vẫn còn, bấm «Thử xoá logo lại».</> : <>v{latest.version} lỗi: {latest.error ?? 'không rõ lý do'}</>;
   else status = <>v{latest.version} đã hủy{latest.failed_stage === 'clean' ? ' giữa bước xoá logo Veo' : ''}</>;
@@ -58,8 +73,8 @@ export function FinalCutBlock({ projectId, scenes, serverBlock }: { projectId: n
         )}
       </div>
       <p className="mt-1 text-[13px]">{status}</p>
-      {latest?.status === 'rendering' && (
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={Math.round(latest.progress ?? 0)} aria-valuemin={0} aria-valuemax={100} aria-label={latest.stage === 'clean' ? 'Tiến độ xoá logo Veo' : 'Tiến độ render'}>
+      {latest?.status === 'rendering' && !isWaitingToRender(latest) && (
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={Math.round(latest.progress ?? 0)} aria-valuemin={0} aria-valuemax={100} aria-label={stageProgressLabel(latest.stage)}>
           <div className="h-full bg-info-fg transition-[width] duration-500" style={{ width: `${Math.max(3, latest.progress ?? 0)}%` }} />
         </div>
       )}

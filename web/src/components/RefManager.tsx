@@ -8,6 +8,7 @@ import { checkImageFiles, defaultLabel, isFileDrag } from '../lib/refFiles';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { mainLibrarySource } from '../lib/librarySource';
 import { LibraryPickerDialog } from './LibraryPickerDialog';
 import { ConfirmDialog } from './Modal';
 
@@ -201,6 +202,7 @@ export function RefManager({ project }: { project: ProjectDetail }) {
       {refs.length > 0 && <p className="text-xs text-muted">Ảnh thêm sau khi AI đã phân tích chỉ được cảnh dùng khi cảnh đó gán ảnh (lần phân tích lại).</p>}
 
       <LibraryPickerDialog
+        source={mainLibrarySource}
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         projectId={project.id}

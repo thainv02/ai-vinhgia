@@ -4,6 +4,9 @@ import type { FinalCut } from '../api/types';
 import { Button, buttonClass } from '../components/Button';
 import { CleanLogoButton } from '../components/CleanLogoButton';
 import { EdlEditor } from '../components/EdlEditor';
+import { FeedbackBox } from '../components/FeedbackBox';
+import { GradePanel } from '../components/GradePanel';
+import { hasRevisions, VersionThread } from '../components/VersionThread';
 import { FinalTimeline } from '../components/FinalTimeline';
 import { Icon } from '../components/Icon';
 import { ImageLightbox } from '../components/ImageLightbox';
@@ -11,9 +14,10 @@ import { ConfirmDialog } from '../components/Modal';
 import { Alert, EmptyState, ErrorState, Skeleton } from '../components/States';
 import { Badge } from '../components/StatusBadge';
 import { VideoPlayer, type PlayerHandle, type TimeMarker } from '../components/VideoPlayer';
-import { useCancelFinalCut, useCreateFinalCut, useOpenInShotcut } from '../hooks/mutations';
+import { mainRevisionApi, useCancelFinalCut, useCreateFinalCut, useOpenInShotcut, useRegradeFinalCut, useRerenderFinalCut, useSyncFinalCut } from '../hooks/mutations';
 import { useFinalCuts, useMeta, useProject, useScenes, useWorkerStatus } from '../hooks/queries';
-import { buildTimeline, cleanAction, finalBlockReason, finalContactUrl, finalStatusLabel, finalVideoUrl, fmtSeconds } from '../lib/finalCut';
+import { aiQueueNote, buildTimeline, cleanAction, creatorText, finalBlockReason, finalContactUrl, finalStatusLabel, finalVideoUrl, fmtSeconds, isWaitingToRender, logoStatusText, renderQueueNote, revisionBlockReason, stageProgressLabel } from '../lib/finalCut';
+import { gradeChips } from '../lib/grade';
 import { fmtDateTime } from '../lib/format';
 import { FINAL_STATUS } from '../lib/status';
 import { toast } from '../lib/toast';
@@ -41,13 +45,15 @@ function StatusBadgeFinal({ fc }: { fc: FinalCut }) {
   const label = finalStatusLabel(fc);
   return (
     <Badge tone={info.tone} live={info.live}>
-      {fc.status === 'rendering' && fc.progress !== null ? `${label} ${Math.round(fc.progress)}%` : label}
+      {fc.status === 'rendering' && fc.progress !== null && !isWaitingToRender(fc) ? `${label} ${Math.round(fc.progress)}%` : label}
     </Badge>
   );
 }
 
 /** Khung 9:16 thay cho trình phát khi bản dựng chưa sẵn sàng. */
 function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: boolean }) {
+  const aiNote = aiQueueNote(fc.ai_queue, workerOnline, fc.parent_id ? 'feedback' : 'cut');
+  const waitNote = renderQueueNote(fc);
   return (
     <div
       className="mx-auto flex flex-col items-center justify-center gap-3 rounded-lg border border-line-strong bg-surface-2 px-5 text-center"
@@ -58,19 +64,33 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: b
           <span className="shimmer grid size-14 place-items-center rounded-full bg-surface-3 text-muted">
             <Icon name="film" size={24} />
           </span>
-          <p className="font-semibold">AI đang chọn điểm cắt</p>
-          <p className="text-[13px] text-muted">
-            {workerOnline ? 'Worker đang xử lý. Video sẽ tự render khi AI gửi điểm cắt.' : 'Worker đang offline: việc này đợi tới khi mở phiên worker AI.'}
+          <p className="font-semibold">{aiNote.title}</p>
+          <p className={`text-[13px] ${aiNote.warn ? 'text-warn-fg' : 'text-muted'}`}>
+            {aiNote.detail ?? (workerOnline ? (fc.parent_id ? 'Worker đang đọc góp ý của bạn.' : 'Worker đang xử lý. Video sẽ tự render khi AI gửi điểm cắt.') : 'Worker đang offline: việc này đợi tới khi mở phiên worker AI.')}
           </p>
         </>
       )}
-      {fc.status === 'rendering' && (
+      {fc.status === 'rendering' && waitNote && (
+        <>
+          <span className="shimmer grid size-14 place-items-center rounded-full bg-surface-3 text-muted">
+            <Icon name="clock" size={24} />
+          </span>
+          <p className="font-semibold">{waitNote.title}</p>
+          <p className="text-[13px] text-muted">{waitNote.detail}</p>
+        </>
+      )}
+      {fc.status === 'rendering' && !waitNote && (
         <>
           <p className="text-3xl font-extrabold tracking-tight">{fc.progress !== null ? `${Math.round(fc.progress)}%` : '...'}</p>
-          <div className="h-2 w-full max-w-[220px] overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={Math.round(fc.progress ?? 0)} aria-valuemin={0} aria-valuemax={100} aria-label={fc.stage === 'clean' ? 'Tiến độ xoá logo Veo' : 'Tiến độ render'}>
+          <div className="h-2 w-full max-w-[220px] overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={Math.round(fc.progress ?? 0)} aria-valuemin={0} aria-valuemax={100} aria-label={stageProgressLabel(fc.stage)}>
             <div className="h-full bg-info-fg transition-[width] duration-500" style={{ width: `${Math.max(3, fc.progress ?? 0)}%` }} />
           </div>
-          {fc.stage === 'clean' ? (
+          {fc.stage === 'grade' ? (
+            <>
+              <p className="font-semibold">Đang chỉnh màu</p>
+              <p className="text-[13px] text-muted">Chỉ chỉnh màu trên bản sạch, không render lại. Video hiện ra ở đây khi xong.</p>
+            </>
+          ) : fc.stage === 'clean' ? (
             <>
               <p className="font-semibold">Đang xoá logo Veo</p>
               <p className="text-[13px] text-muted">Đã render xong. Video hiện ra ở đây khi logo được xoá xong (khoảng 2 giây xử lý cho mỗi giây video).</p>
@@ -85,7 +105,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: b
           <span className="grid size-12 place-items-center rounded-full bg-danger-bg text-danger-fg">
             <Icon name="alert" size={22} />
           </span>
-          <p className="font-semibold">{fc.failed_stage === 'clean' ? 'Xoá logo Veo không thành công' : 'Dựng không thành công'}</p>
+          <p className="font-semibold">{fc.failed_stage === 'clean' ? 'Xoá logo Veo không thành công' : fc.failed_stage === 'grade' ? 'Chỉnh màu không thành công' : fc.parent_id ? 'Góp ý không thành công' : 'Dựng không thành công'}</p>
           <p className="text-[13px] text-muted">{fc.error ?? 'Không có chi tiết.'}</p>
           {fc.failed_stage === 'clean' && (
             <>
@@ -97,7 +117,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: b
       )}
       {fc.status === 'cancelled' && (
         <>
-          <p className="font-semibold text-muted">{fc.failed_stage === 'clean' ? 'Đã hủy giữa bước xoá logo Veo' : 'Bản dựng đã bị hủy'}</p>
+          <p className="font-semibold text-muted">{fc.failed_stage === 'clean' ? 'Đã hủy giữa bước xoá logo Veo' : fc.failed_stage === 'grade' ? 'Đã hủy giữa bước chỉnh màu' : 'Bản dựng đã bị hủy'}</p>
           {fc.failed_stage === 'clean' && <CleanLogoButton fc={fc} size="sm" />}
         </>
       )}
@@ -117,6 +137,9 @@ export default function FinalPage() {
   const create = useCreateFinalCut();
   const cancel = useCancelFinalCut();
   const openShotcut = useOpenInShotcut();
+  const rerender = useRerenderFinalCut();
+  const regrade = useRegradeFinalCut();
+  const syncCut = useSyncFinalCut();
   useDocumentTitle(project.data ? `Bản hoàn chỉnh · ${project.data.name}` : 'Bản hoàn chỉnh');
 
   const [selId, setSelId] = useState<number | null>(null);
@@ -125,6 +148,7 @@ export default function FinalPage() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [playT, setPlayT] = useState<number | null>(null);
   const [seekReq, setSeekReq] = useState<{ t: number; nonce: number } | null>(null);
+  const [fbIntent, setFbIntent] = useState<{ nonce: number; text?: string }>({ nonce: 0 });
   const playerRef = useRef<PlayerHandle>(null);
 
   const list = useMemo(() => cuts.data ?? [], [cuts.data]);
@@ -149,7 +173,7 @@ export default function FinalPage() {
   if (!valid) return <ErrorState title="Mã dự án không hợp lệ" error={new Error('Đường dẫn dự án sai.')} />;
   if (project.error && !project.data) return <ErrorState error={project.error} onRetry={() => void project.refetch()} />;
 
-  const blockReason = finalBlockReason(scenes.data, list[0], project.data?.final_cut_block);
+  const blockReason = finalBlockReason(scenes.data, list[0], project.data?.final_cut_block, project.data?.source);
   const videoUrl = fc ? finalVideoUrl(fc) : null;
   const contactUrl = fc ? finalContactUrl(fc) : null;
   const active = fc && (fc.status === 'planning' || fc.status === 'rendering');
@@ -162,6 +186,17 @@ export default function FinalPage() {
     followLatest.current = id === list[0]?.id;
     setSelId(id);
   };
+  // góp ý / chỉnh màu xong → tới xem phiên bản mới (theo dõi bản mới nhất)
+  const onRevisionCreated = (created: FinalCut) => {
+    syncCut(created);
+    followLatest.current = true;
+    setSelId(created.id);
+  };
+  const feedbackOn = (id: number, text?: string) => {
+    pickVersion(id);
+    setFbIntent((i) => ({ nonce: i.nonce + 1, text }));
+  };
+  const revisionBlock = fc ? revisionBlockReason(fc, list, !!wm?.active) : null;
 
   return (
     <div>
@@ -265,19 +300,31 @@ export default function FinalPage() {
                     {fc.outdated && <Badge tone="warn">Đã cũ vì đổi video</Badge>}
                   </dd>
                   <dt className="text-muted">Người tạo</dt>
-                  <dd>{fc.created_by !== 'user' ? 'AI chọn điểm cắt' : 'Bạn chỉnh điểm cắt'}</dd>
+                  <dd>{creatorText(fc)}</dd>
+                  {fc.parent_id && (
+                    <>
+                      <dt className="text-muted">Từ bản</dt>
+                      <dd>
+                        v{fc.parent_version ?? '?'} · {fc.revision ? (fc.revision.edl_changed ? 'đã đổi điểm cắt' : 'giữ nguyên điểm cắt') : 'đang chờ AI'}
+                      </dd>
+                    </>
+                  )}
+                  {gradeChips(fc).length > 0 && (
+                    <>
+                      <dt className="text-muted">Màu</dt>
+                      <dd className="flex flex-wrap gap-1.5">
+                        {gradeChips(fc).map((c) => (
+                          <span key={c} className="rounded-full border border-line-strong bg-surface-2 px-2 py-0.5 text-xs font-medium">
+                            {c}
+                          </span>
+                        ))}
+                      </dd>
+                    </>
+                  )}
                   <dt className="text-muted">Trình dựng</dt>
                   <dd>{fc.renderer ? RENDERER_LABEL[fc.renderer] : '—'} · chuyển cảnh cắt thẳng</dd>
                   <dt className="text-muted">Logo Veo</dt>
-                  <dd>
-                    {fc.watermark_removed
-                      ? 'Đã xoá'
-                      : fc.status === 'rendering' && fc.stage === 'clean'
-                        ? 'Đang xoá'
-                        : fc.status === 'planning' || (fc.status === 'rendering' && fc.stage !== 'clean')
-                          ? 'Sẽ xoá sau khi render'
-                          : 'Còn logo'}
-                  </dd>
+                  <dd>{logoStatusText(fc)}</dd>
                   <dt className="text-muted">Thời lượng</dt>
                   <dd>{fmtSeconds(fc.duration_s ?? tl?.total ?? null)}</dd>
                   <dt className="text-muted">Tạo lúc</dt>
@@ -334,6 +381,26 @@ export default function FinalPage() {
                 </div>
               </Card>
 
+              {fc.status === 'ready' && (
+                <>
+                  <FeedbackBox fc={fc} api={mainRevisionApi} blockReason={revisionBlock} onCreated={onRevisionCreated} intent={fbIntent} />
+                  <GradePanel key={fc.id} fc={fc} api={mainRevisionApi} blockReason={revisionBlock} onCreated={onRevisionCreated} />
+                </>
+              )}
+              {hasRevisions(list) && (
+                <Card title="Lịch sử góp ý và phiên bản" id="fh-h">
+                  <VersionThread
+                    list={list}
+                    selectedId={fc.id}
+                    onSelect={pickVersion}
+                    onFeedbackOn={feedbackOn}
+                    onRegrade={(c) => regrade.mutate(c.id)}
+                    regradePending={regrade.isPending}
+                    workerOnline={!!worker.data?.online}
+                  />
+                </Card>
+              )}
+
               {tl && (fc.status === 'ready' || fc.status === 'rendering' || fc.edl) && (
                 <Card title="Điểm cắt theo cảnh" id="ft-h">
                   <FinalTimeline tl={tl} currentOut={fc.status === 'ready' ? playT : null} onSeek={seekOut} />
@@ -350,6 +417,7 @@ export default function FinalPage() {
                   <EdlEditor
                     key={fc.id}
                     fc={fc}
+                    rerender={rerender}
                     onRendered={(created) => {
                       followLatest.current = true;
                       setSelId(created.id);
@@ -387,7 +455,9 @@ export default function FinalPage() {
             ? 'Việc chọn điểm cắt của AI sẽ bị hủy. Bạn có thể bấm «Dựng bản mới» để dựng lại.'
             : fc?.stage === 'clean'
               ? 'Việc xoá logo Veo sẽ bị dừng. Bản render còn logo được giữ lại để bấm «Thử xoá logo lại».'
-              : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Dựng bản mới» để dựng lại.'}{' '}
+              : fc?.stage === 'grade'
+                ? 'Việc chỉnh màu sẽ bị dừng. Bản sạch được giữ lại để bấm «Thử chỉnh màu lại» trong lịch sử phiên bản.'
+                : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Dựng bản mới» để dựng lại.'}{' '}
           Không mất credit.
         </p>
       </ConfirmDialog>

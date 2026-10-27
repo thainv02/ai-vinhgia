@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api, type ApiError, type PatchProjectInput } from '../api/client';
-import type { CommentAction, Edl, FinalCut, ProjectDetail, Ref, Scene, Stage, Verdict } from '../api/types';
+import { aiRequest } from '../api/ai';
+import type { CommentAction, Edl, FinalCut, ProjectDetail, ReconcileOutcome, Ref, Scene, Stage, Verdict } from '../api/types';
 import { qk } from './queries';
+import type { RevisionApi } from '../lib/revisionApi';
 import { upsertFinalCut, upsertScene } from './useSSE';
 
 /** Mọi mutation tự báo lỗi bằng toast, trừ khi gọi với `meta: { silent: true }` (nơi gọi tự hiển thị lỗi). */
@@ -45,6 +47,29 @@ export function useCancelJob(opts: { silent?: boolean } = {}) {
       void qc.invalidateQueries({ queryKey: qk.project(job.project_id) });
     },
     meta: opts.silent ? SILENT : undefined,
+  });
+}
+
+/** Đối soát job chờ kết quả tạo ngoài. Nơi gọi tự hiển thị lỗi (silent). */
+export function useReconcileJob() {
+  const qc = useQueryClient();
+  return useMutation<Awaited<ReturnType<typeof api.reconcileJob>>, ApiError, { jobId: number; outcome: ReconcileOutcome; note?: string }>({
+    mutationFn: ({ jobId, outcome, note }) => api.reconcileJob(jobId, outcome, note),
+    onSuccess: ({ scene, job }) => {
+      if (scene) syncScene(qc, scene);
+      void qc.invalidateQueries({ queryKey: ['jobs'] });
+      void qc.invalidateQueries({ queryKey: qk.project(job.project_id) });
+    },
+    meta: SILENT,
+  });
+}
+
+/** "Thử lại ngay" cho job đang chờ tài khoản AI/trình duyệt (không áp dụng cho chờ đối soát). */
+export function useResumeJob() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (jobId) => aiRequest(`/api/ai/jobs/${jobId}/resume`, 'POST', {}),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['jobs'] }); void qc.invalidateQueries({ queryKey: ['scenes'] }); },
   });
 }
 
@@ -243,6 +268,73 @@ export function useCleanFinalCut() {
   });
 }
 
+/** Cập nhật bộ nhớ đệm sau khi tạo phiên bản mới (góp ý / chỉnh màu): hàm dùng cho `onCreated`. */
+export function useSyncFinalCut() {
+  const qc = useQueryClient();
+  return (fc: FinalCut) => syncFinalCut(qc, fc);
+}
+
+/** Thao tác góp ý / chỉnh màu của app chính (xem `lib/revisionApi.ts`). */
+export const mainRevisionApi: RevisionApi = {
+  feedback: (id, text) => api.feedbackFinalCut(id, text),
+  grade: (id, grade, note) => api.gradeFinalCut(id, grade, note),
+  preview: (id, grade) => api.previewGrade(id, grade),
+  regrade: (id) => api.regradeFinalCut(id),
+  colorRefs: {
+    scope: 'app',
+    list: (projectId) => api.listColorRefs(projectId),
+    upload: (projectId, file) => api.uploadColorRef(projectId, file),
+    fromSource: (projectId, src) => api.colorRefFromSource(projectId, src),
+    remove: (projectId, id) => api.deleteColorRef(projectId, id),
+  },
+};
+
+/** Chạy lại bước chỉnh màu của bản lỗi/hủy giữa bước chỉnh màu. */
+export function useRegradeFinalCut() {
+  const qc = useQueryClient();
+  return useMutation<FinalCut, ApiError, number>({
+    mutationFn: (id) => api.regradeFinalCut(id),
+    onSuccess: (fc) => syncFinalCut(qc, fc),
+  });
+}
+
 export function useOpenInShotcut() {
   return useMutation<unknown, ApiError, number>({ mutationFn: (id) => api.openInShotcut(id) });
+}
+
+// ---- thùng rác ----
+function refreshTrash(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: qk.projects });
+  void qc.invalidateQueries({ queryKey: qk.trash });
+  void qc.invalidateQueries({ queryKey: ['jobs'] });
+  void qc.invalidateQueries({ queryKey: ['ref-library'] });
+}
+
+/** Chuyển dự án vào thùng rác. Nơi gọi tự hiển thị lỗi (silent: có lý do bị chặn). */
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation<Awaited<ReturnType<typeof api.deleteProject>>, ApiError, { projectId: number; confirmName: string }>({
+    mutationFn: ({ projectId, confirmName }) => api.deleteProject(projectId, confirmName),
+    onSuccess: (_r, vars) => {
+      qc.removeQueries({ queryKey: qk.project(vars.projectId) });
+      qc.removeQueries({ queryKey: qk.scenes(vars.projectId) });
+      refreshTrash(qc);
+    },
+    onError: (_e, vars) => void qc.invalidateQueries({ queryKey: qk.project(vars.projectId) }),
+    meta: SILENT,
+  });
+}
+
+export function useRestoreProject() {
+  const qc = useQueryClient();
+  return useMutation<ProjectDetail, ApiError, number>({ mutationFn: (id) => api.restoreProject(id), onSuccess: () => refreshTrash(qc), meta: SILENT });
+}
+
+export function usePurgeProject() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, ApiError, { projectId: number; confirmName: string }>({
+    mutationFn: ({ projectId, confirmName }) => api.purgeProject(projectId, confirmName),
+    onSuccess: () => refreshTrash(qc),
+    meta: SILENT,
+  });
 }

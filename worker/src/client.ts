@@ -6,9 +6,8 @@ loadDotEnv(path.join(REPO_ROOT, '.env'));
 export const root = REPO_ROOT;
 export const apiUrl = process.env.AUTOVIDEO_API ?? 'http://127.0.0.1:8787';
 export const workerId = process.env.AUTOVIDEO_WORKER_ID ?? `managed-${process.pid}`;
-export class ApiFailure extends Error {
-  constructor(public code: string, message: string, public details?: { retry_at?: string }) { super(message); }
-}
+import { ApiFailure } from './api-failure.js';
+export { ApiFailure };
 export async function api<T = any>(method: string, url: string, body?: unknown, lease?: string, jobId?: number, extra: Record<string, string> = {}): Promise<T> {
   const res = await fetch(apiUrl + url, { method, headers: {
     Authorization: `Bearer ${process.env.WORKER_TOKEN ?? ''}`, 'X-Worker-Id': workerId,

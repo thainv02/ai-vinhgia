@@ -11,6 +11,20 @@ export interface ShotcutRendererOptions {
   pollMs?: number;
   /** Quá thời gian này thì hủy render (mặc định 20 phút). */
   timeoutMs?: number;
+  /**
+   * Số render server cho chạy cùng lúc (`RENDER_CONCURRENCY`). Shotcut MCP tự giới hạn số render nền đang hoạt động
+   * (`SHOTCUT_MCP_MAX_ACTIVE_RENDERS`, mặc định 2, 1–8, tính chung giữa các tiến trình MCP của cùng người dùng): nếu cấu hình hiện tại thấp hơn
+   * thì nâng lên bằng số này khi mở MCP, nếu không render thứ 3+ bị từ chối. Cấu hình đã đủ cao thì giữ nguyên (không đặt biến).
+   */
+  maxActiveRenders?: number;
+}
+
+/** Giá trị `SHOTCUT_MCP_MAX_ACTIVE_RENDERS` cần đặt khi mở MCP (null = không cần đặt). `current` = giá trị hiện có trong môi trường (không đặt = mặc định 2 của MCP). */
+export function mcpMaxActiveRendersEnv(required: number | undefined, current: string | undefined): string | null {
+  if (!required || required <= 2) return null;
+  const n = Number(current);
+  const effective = current !== undefined && current.trim() !== '' && Number.isFinite(n) ? Math.floor(n) : 2;
+  return required > effective ? String(Math.min(8, required)) : null;
 }
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -29,7 +43,14 @@ export class ShotcutRenderer implements Renderer {
     const client = McpClient.start({
       command: python,
       args: [script],
-      env: { SHOTCUT_MCP_ALLOWED_ROOTS: req.config.rootDir, SHOTCUT_MCP_REQUIRE_ABSOLUTE_PATHS: '1' },
+      env: {
+        SHOTCUT_MCP_ALLOWED_ROOTS: req.config.rootDir,
+        SHOTCUT_MCP_REQUIRE_ABSOLUTE_PATHS: '1',
+        ...(() => {
+          const v = mcpMaxActiveRendersEnv(this.opts.maxActiveRenders, process.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS);
+          return v ? { SHOTCUT_MCP_MAX_ACTIVE_RENDERS: v } : {};
+        })(),
+      },
     });
     let renderRef: string | null = null;
     let cancelling: Promise<unknown> | null = null;

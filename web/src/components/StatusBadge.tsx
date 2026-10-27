@@ -27,3 +27,12 @@ export function VerdictBadge({ verdict }: { verdict: Verdict | null }) {
   const v = VERDICT[verdict];
   return <Badge tone={v.tone}>{v.label}</Badge>;
 }
+
+/** Nhãn "LAN · <người tạo>" cho kế hoạch do người dùng trong mạng LAN tạo qua trang planner. */
+export function LanBadge({ name }: { name?: string | null }) {
+  return (
+    <Badge tone="violet" title="Kế hoạch tạo từ trang planner trong mạng LAN (chỉ lập kế hoạch prompt)">
+      LAN · {name || 'không rõ'}
+    </Badge>
+  );
+}

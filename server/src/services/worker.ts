@@ -34,9 +34,9 @@ export function emitWorkerStatus(ctx: AppContext): void {
 }
 
 /** Mọi request worker hợp lệ gọi hàm này để cập nhật last_seen_at (và phát SSE nếu vừa online trở lại). */
-export function touchWorker(ctx: AppContext, workerId?: string | null): void {
+export function touchWorker(ctx: AppContext, workerId?: string | null, mode: 'legacy' | 'managed' = ctx.config.workerMode): void {
   const wasOnline = isOnline(ctx);
-  if (workerId) ctx.db.prepare("INSERT INTO worker_sessions VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,mode=excluded.mode").run(workerId, ctx.config.workerMode, ctx.now());
+  if (workerId) ctx.db.prepare("INSERT INTO worker_sessions VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,mode=excluded.mode").run(workerId, mode, ctx.now());
   ctx.db
     .prepare('UPDATE worker_state SET last_seen_at = ?, worker_id = COALESCE(?, worker_id) WHERE id = 1')
     .run(ctx.now(), workerId ?? null);
@@ -67,7 +67,9 @@ export function resumeQueue(ctx: AppContext, projectId?: number): void {
     ctx.db.prepare('UPDATE worker_state SET queue_paused = 0, pause_reason = NULL, pause_code = NULL, paused_at = NULL WHERE id = 1').run();
     if (before.queue_paused) {
       // Ghi vào dự án đã bị tạm dừng gần nhất (nếu có) để hiện trên dòng thời gian.
-      const last = ctx.db.prepare("SELECT project_id FROM events WHERE type = 'queue.paused' ORDER BY id DESC LIMIT 1").get() as
+      const last = ctx.db
+        .prepare("SELECT e.project_id FROM events e JOIN projects p ON p.id = e.project_id WHERE e.type = 'queue.paused' AND p.deleted_at IS NULL ORDER BY e.id DESC LIMIT 1")
+        .get() as
         | { project_id: number }
         | undefined;
       const pid = projectId ?? last?.project_id;

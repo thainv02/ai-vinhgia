@@ -1,12 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { ApiError } from '../api/errors';
 import type { LibraryRef } from '../api/types';
-import { useRefLibrary } from '../hooks/queries';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { EmptyState, ErrorState, InlineError, LoadingBlock } from './States';
 
+/** Phần của một mục thư viện mà hộp chọn ảnh cần (app chính trả đủ LibraryRef, trang LAN trả bản rút gọn). */
+export type LibraryEntry = Pick<LibraryRef, 'ref_id' | 'url' | 'label' | 'original_name' | 'content_hash' | 'projects' | 'in_project'>;
+
+/** Nguồn dữ liệu của thư viện: `key` tách bộ nhớ đệm giữa các nguồn, `load` gọi API tương ứng. */
+export interface LibrarySource {
+  key: string;
+  load: (projectId?: number) => Promise<LibraryEntry[]>;
+}
+
 interface Props {
+  /** App chính dùng `mainLibrarySource` (lib/librarySource.ts); trang LAN dùng nguồn riêng chỉ có ảnh của kế hoạch LAN. */
+  source: LibrarySource;
   open: boolean;
   onClose: () => void;
   /** Dự án đang thêm ảnh: ảnh dự án đã có hiện "Đã có" và không chọn được. */
@@ -16,12 +28,12 @@ interface Props {
   pending?: boolean;
   error?: string | null;
   /** Nhận các ảnh đã chọn theo đúng thứ tự chọn. */
-  onConfirm: (refs: LibraryRef[]) => void;
+  onConfirm: (refs: LibraryEntry[]) => void;
 }
 
 /** Hộp thư viện ảnh tham chiếu: ảnh của mọi dự án (gom theo nội dung), chọn nhiều, đánh số theo thứ tự chọn. */
-export function LibraryPickerDialog({ open, onClose, projectId, disabledRefIds = [], pending, error, onConfirm }: Props) {
-  const q = useRefLibrary(projectId, open);
+export function LibraryPickerDialog({ source, open, onClose, projectId, disabledRefIds = [], pending, error, onConfirm }: Props) {
+  const q = useQuery<LibraryEntry[], ApiError>({ queryKey: [source.key, projectId ?? 'all'], queryFn: () => source.load(projectId), enabled: open, staleTime: 0 });
   const [selected, setSelected] = useState<number[]>([]);
   const [filter, setFilter] = useState('');
 
@@ -36,15 +48,15 @@ export function LibraryPickerDialog({ open, onClose, projectId, disabledRefIds =
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
     if (!f) return items;
-    return items.filter((r) => [r.label, r.original_name, ...r.projects.map((p) => p.name)].some((t) => t.toLowerCase().includes(f)));
+    return items.filter((r) => [r.label, r.original_name ?? '', ...r.projects.map((p) => p.name)].some((t) => t.toLowerCase().includes(f)));
   }, [items, filter]);
 
-  const unavailable = (r: LibraryRef) => r.in_project || disabledRefIds.includes(r.ref_id);
-  const toggle = (r: LibraryRef) => {
+  const unavailable = (r: LibraryEntry) => r.in_project || disabledRefIds.includes(r.ref_id);
+  const toggle = (r: LibraryEntry) => {
     if (unavailable(r)) return;
     setSelected((cur) => (cur.includes(r.ref_id) ? cur.filter((id) => id !== r.ref_id) : [...cur, r.ref_id]));
   };
-  const chosen = selected.map((id) => items.find((r) => r.ref_id === id)).filter((r): r is LibraryRef => !!r);
+  const chosen = selected.map((id) => items.find((r) => r.ref_id === id)).filter((r): r is LibraryEntry => !!r);
   const reason = chosen.length === 0 ? 'Chọn ít nhất 1 ảnh' : null;
 
   return (

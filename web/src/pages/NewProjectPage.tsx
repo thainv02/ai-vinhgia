@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../api/client';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
-import { RefUploader, type LibraryItem, type RefItem, type UploadItem } from '../components/RefUploader';
+import { RefUploader, toBatches, type RefItem } from '../components/RefUploader';
+import { mainLibrarySource } from '../lib/librarySource';
 import { InlineError } from '../components/States';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 
@@ -18,19 +19,6 @@ function Field({ label, hint, htmlFor, children }: { label: string; hint?: React
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
-}
-
-type Batch = { kind: 'upload'; items: UploadItem[] } | { kind: 'library'; items: LibraryItem[] };
-
-/** Gom các ảnh liên tiếp cùng loại thành từng lượt, giữ nguyên thứ tự danh sách. */
-function toBatches(items: RefItem[]): Batch[] {
-  const out: Batch[] = [];
-  for (const it of items) {
-    const last = out[out.length - 1];
-    if (last && last.kind === it.kind) (last.items as RefItem[]).push(it);
-    else out.push(it.kind === 'upload' ? { kind: 'upload', items: [it] } : { kind: 'library', items: [it] });
-  }
-  return out;
 }
 
 export default function NewProjectPage() {
@@ -125,7 +113,7 @@ export default function NewProjectPage() {
 
         <div>
           <div className="mb-1 text-[13px] font-semibold">Ảnh tham chiếu sản phẩm</div>
-          <RefUploader items={refs} onChange={setRefs} disabled={!!busy || refBatchesDone > 0} />
+          <RefUploader items={refs} onChange={setRefs} disabled={!!busy || refBatchesDone > 0} librarySource={mainLibrarySource} />
           {refBatchesDone > 0 && <p className="mt-1 text-xs text-muted">Ảnh đã được thêm vào dự án (đã xong {refBatchesDone} lượt thêm). Bấm gửi để tiếp tục.</p>}
         </div>
 

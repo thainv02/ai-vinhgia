@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import type { Budget, ProjectDetail, Scene, SceneStatus } from '../api/types';
 import { ApproveAllDialog } from '../components/ApproveAllDialog';
-import { Button, LinkButton } from '../components/Button';
+import { Button } from '../components/Button';
+import { LinkButton } from '../components/LinkButton';
 import { Icon } from '../components/Icon';
 import { ProjectSettingsDialog } from '../components/ProjectSettingsDialog';
 import { RefManager } from '../components/RefManager';
@@ -11,7 +12,7 @@ import { FinalCutBlock } from '../components/FinalCutBlock';
 import { SceneCard } from '../components/SceneCard';
 import { ConfirmDialog } from '../components/Modal';
 import { EmptyState, ErrorState, InlineError, Skeleton } from '../components/States';
-import { ProjectStatusBadge } from '../components/StatusBadge';
+import { LanBadge, ProjectStatusBadge } from '../components/StatusBadge';
 import { useCancelJob, useSubmitBrief } from '../hooks/mutations';
 import { useApprovePreview, useBudget, useJobs, useProject, useScenes } from '../hooks/queries';
 import { ACTIVE_JOB_STATUSES, SCENE_STATUS, TONE_CLASS } from '../lib/status';
@@ -147,6 +148,8 @@ export default function BoardPage() {
   const project = useProject(valid ? projectId : 0);
   const scenes = useScenes(valid ? projectId : 0);
   const budget = useBudget(valid ? projectId : 0);
+  // Dự án cắt clip có trang riêng: mở nhầm ở đây thì chuyển sang /clips/:id.
+  const isClips = project.data?.kind === 'clips';
   const sbPreview = useApprovePreview(projectId, 'storyboard', valid);
   const vdPreview = useApprovePreview(projectId, 'video', valid);
   const [filter, setFilter] = useState<SceneStatus | null>(null);
@@ -164,6 +167,7 @@ export default function BoardPage() {
   const approveReason = waitingCount > 0 ? null : sbPreview.isLoading || vdPreview.isLoading ? 'Đang tải' : 'Không có cảnh nào đang chờ duyệt';
   const creditPerVideo = p?.credit_per_video ?? budget.data?.credit_per_video ?? 15;
 
+  if (isClips) return <Navigate to={`/clips/${projectId}`} replace />;
   return (
     <div>
       <Link to="/" className="mb-2 inline-flex items-center gap-1 text-[13px] text-muted hover:text-fg">
@@ -177,6 +181,7 @@ export default function BoardPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight">{p.name}</h1>
                 <ProjectStatusBadge status={p.status} />
+                {p.source === 'lan' && <LanBadge name={p.created_by_name} />}
               </div>
             ) : (
               <Skeleton className="h-7 w-56" />
@@ -220,7 +225,7 @@ export default function BoardPage() {
 
         {valid && (
           <div className="mt-3 flex flex-wrap gap-3">
-            <FinalCutBlock projectId={projectId} scenes={scenes.data} serverBlock={p?.final_cut_block} />
+            <FinalCutBlock projectId={projectId} scenes={scenes.data} serverBlock={p?.final_cut_block} source={p?.source} />
           </div>
         )}
 

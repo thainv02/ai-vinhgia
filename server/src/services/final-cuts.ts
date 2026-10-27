@@ -2,14 +2,18 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { isManagedJobType } from '../config.js';
 import type { AppContext } from '../context.js';
 import { AppError, conflict, notFound } from '../lib/errors.js';
 import type { AssetRow, CommentRow, FinalCutRow, FinalCutStatus, JobRow, ProjectRow, SceneRow } from '../db/types.js';
+import { colorRefOfGrade } from './color-refs.js';
+import { gradeChips, isNeutralGrade, parseStoredGrade, type Grade } from './grade.js';
 import { insertJob } from './job-create.js';
+import { aiQueueInfoById } from './job-queue.js';
 import { appendLogRow } from './logmd.js';
 import { probeMedia } from './media.js';
 import { emitProject } from './project-view.js';
-import { commentJson, fileUrl, getJobJson, getProject, logEvent, parseJson } from './repo.js';
+import { commentJson, fileUrl, getJobJson, getProject, getProjectAny, logEvent, parseJson } from './repo.js';
 
 /**
  * Bản dựng hoàn chỉnh (final cut): sau khi mọi cảnh đã chọn video, AI (job `edit_plan`) chọn điểm cắt (EDL),
@@ -56,6 +60,10 @@ export function finalPaths(slug: string, version: number) {
     /** Bản render còn logo (khi bật xoá logo Veo, video_path là bản đã xoá logo). */
     raw_video_path: `${base}/${slug}_final_v${version}_raw.mp4`,
     contact_sheet_path: `${base}/${slug}_final_v${version}_contact.png`,
+    /** Lưới khung hình của bản ĐÃ chỉnh màu (khi `contact_sheet_path` của bước render đã có). */
+    contact_graded_path: `${base}/${slug}_final_v${version}_contact_graded.png`,
+    /** Bản sạch (đã xoá logo) CHƯA chỉnh màu; chỉ có khi grade không trung tính. */
+    base_path: `${base}/${slug}_final_v${version}_base.mp4`,
     project_file_path: `${base}/shotcut/${slug}_final_v${version}.mlt`,
   };
 }
@@ -79,7 +87,7 @@ export function nextVersion(ctx: AppContext, project: ProjectRow): number {
   // phòng hờ: tên file lạ không khớp mẫu nhưng trùng đúng đường dẫn
   for (;;) {
     const p = finalPaths(project.slug, v);
-    if (![p.video_path, p.raw_video_path, p.contact_sheet_path, p.project_file_path].some((rel) => fs.existsSync(path.join(ctx.config.rootDir, rel)))) return v;
+    if (![p.video_path, p.raw_video_path, p.contact_sheet_path, p.contact_graded_path, p.base_path, p.project_file_path].some((rel) => fs.existsSync(path.join(ctx.config.rootDir, rel)))) return v;
     v++;
   }
 }
@@ -124,7 +132,10 @@ export function currentSelection(ctx: AppContext, projectId: number) {
 // ------------------------------------------------------------------ đọc / JSON
 
 export function getFinalCutRow(ctx: AppContext, id: number): FinalCutRow {
-  const row = ctx.db.prepare('SELECT * FROM final_cuts WHERE id = ?').get(id) as FinalCutRow | undefined;
+  // dự án đã xoá (thùng rác) → bản dựng của nó không tồn tại với mọi API
+  const row = ctx.db
+    .prepare('SELECT f.* FROM final_cuts f JOIN projects p ON p.id = f.project_id WHERE f.id = ? AND p.deleted_at IS NULL')
+    .get(id) as FinalCutRow | undefined;
   if (!row) throw notFound('bản dựng hoàn chỉnh');
   return row;
 }
@@ -147,6 +158,10 @@ export function finalCutJson(ctx: AppContext, row: FinalCutRow, currentSig?: str
     return { ...s, video_url: a ? fileUrl(a.file_path) : null, duration_s: a ? sourceDuration(ctx, a) : null };
   });
   const ready = row.status === 'ready';
+  const parentVersion = row.parent_id ? ((ctx.db.prepare('SELECT version FROM final_cuts WHERE id = ?').get(row.parent_id) as { version: number } | undefined)?.version ?? null) : null;
+  const grade = parseStoredGrade(row.grade);
+  // Hàng đợi render (hai bước render + xoá logo dùng chung): `waiting` = đã `rendering` nhưng CHƯA bắt đầu vì đang đợi chỗ trống.
+  const q = row.status === 'rendering' ? (ctx.finalRender?.queueInfo('cut', row.id) ?? null) : null;
   return {
     id: row.id,
     project_id: row.project_id,
@@ -174,13 +189,43 @@ export function finalCutJson(ctx: AppContext, row: FinalCutRow, currentSig?: str
     created_by: row.created_by,
     note: row.note,
     summary: row.summary,
+    /** Phiên bản góp ý / chỉnh màu: bản cha (id + số version), góp ý của người dùng, Grade đã áp (null = chưa chỉnh màu), trả lời của AI. */
+    parent_id: row.parent_id,
+    parent_version: parentVersion,
+    feedback: row.feedback,
+    grade,
+    grade_chips: gradeChips(grade),
+    /** Ảnh mẫu / LUT của `grade.match` (null nếu không dùng): để lịch sử phiên bản hiện chip có ảnh thu nhỏ. */
+    color_ref: colorRefOfGrade(ctx, row.project_id, grade?.match?.ref_id, fileUrl),
+    revision: parseJson<FinalCutRevision | null>(row.revision, null),
+    /** Bản sạch chưa chỉnh màu (chỉ có khi grade không trung tính). */
+    base_path: row.base_path,
     error: row.error,
     created_at: row.created_at,
     finished_at: row.finished_at,
     outdated: row.selection_signature !== sig,
+    /** Chỉ khi `status="rendering"` và việc nằm trong hàng đợi render: `waiting` (chưa bắt đầu) | `running`. */
+    queue_state: q?.state ?? null,
+    /** 1 = sẽ chạy tiếp theo; `null` khi đang chạy hoặc không ở trong hàng đợi. */
+    queue_position: q?.position ?? null,
+    /** Số việc render/xoá logo đang chạy lúc này và số việc được chạy cùng lúc (`RENDER_CONCURRENCY`). */
+    running_count: q?.running_count ?? null,
+    concurrency: q?.concurrency ?? null,
+    /** Chỉ khi `status="planning"`: vị trí job `edit_plan` trong hàng đợi của worker AI (một worker, tuần tự). */
+    ai_queue: row.status === 'planning' ? aiQueueInfoById(ctx, row.job_id) : null,
   };
 }
 export type FinalCutJson = ReturnType<typeof finalCutJson>;
+
+/** Trả lời của AI (hoặc ghi chú chỉnh tay) cho một phiên bản góp ý / chỉnh màu. */
+export interface FinalCutRevision {
+  kind: 'ai' | 'manual';
+  /** true = điểm cắt (EDL) đổi nên đã render + xoá logo lại; false = chỉ đổi màu. */
+  edl_changed: boolean;
+  summary: string;
+  /** Yêu cầu AI nói là không làm được (thêm nhạc, chữ, chuyển cảnh...). */
+  not_done: string[];
+}
 
 export function listFinalCuts(ctx: AppContext, projectId: number): FinalCutJson[] {
   getProject(ctx, projectId);
@@ -198,10 +243,14 @@ export function latestFinalCutBrief(ctx: AppContext, projectId: number) {
   const row = ctx.db.prepare('SELECT * FROM final_cuts WHERE project_id = ? ORDER BY version DESC LIMIT 1').get(projectId) as FinalCutRow | undefined;
   if (!row) return null;
   const sig = currentSelection(ctx, projectId).signature;
+  const q = row.status === 'rendering' ? (ctx.finalRender?.queueInfo('cut', row.id) ?? null) : null;
   return {
     id: row.id,
     version: row.version,
     status: row.status,
+    queue_state: q?.state ?? null,
+    queue_position: q?.position ?? null,
+    ai_queue: row.status === 'planning' ? aiQueueInfoById(ctx, row.job_id) : null,
     progress: row.progress,
     stage: row.stage,
     failed_stage: row.failed_stage,
@@ -233,6 +282,34 @@ export function emitFinalCut(ctx: AppContext, id: number, projectId: number): vo
   ctx.publish('final_cut.updated', projectId, () => ({ final_cut: getFinalCutJson(ctx, id) }), `final_cut:${id}`);
 }
 
+/** Chữ ký vị trí hàng đợi AI đã phát qua SSE cho từng bản `planning` (theo ctx), để chỉ phát khi đổi. */
+const planningSig = new WeakMap<AppContext, Map<number, string>>();
+
+/**
+ * Phát `final_cut.updated` cho bản đang `planning` khi vị trí/tình trạng trong hàng đợi worker AI đổi (job khác được nhận/xong, worker online/offline,
+ * tạm dừng, chờ hạn mức). Được gọi định kỳ bởi timer của server (chỉ khi có người nghe SSE); chính chu kỳ timer là throttle.
+ * Trả về số bản đã phát. Bản hết `planning` được dọn khỏi bộ nhớ.
+ */
+export function emitPlanningQueueChanges(ctx: AppContext): number {
+  const memo = planningSig.get(ctx) ?? planningSig.set(ctx, new Map()).get(ctx)!;
+  const rows = ctx.db.prepare("SELECT id, project_id, job_id FROM final_cuts WHERE status = 'planning' AND job_id IS NOT NULL").all() as { id: number; project_id: number; job_id: number }[];
+  const live = new Set<number>();
+  let emitted = 0;
+  for (const r of rows) {
+    live.add(r.id);
+    const q = aiQueueInfoById(ctx, r.job_id);
+    const sig = q ? JSON.stringify([q.state, q.position, q.running?.type ?? null, q.running?.own ?? null, q.worker.online, q.worker.paused, q.wait_reason]) : 'none';
+    if (memo.get(r.id) === sig) continue;
+    const first = !memo.has(r.id);
+    memo.set(r.id, sig);
+    if (first) continue; // lần đầu thấy: trạng thái khởi tạo đã được phát lúc tạo bản dựng
+    emitFinalCut(ctx, r.id, r.project_id);
+    emitted++;
+  }
+  for (const id of [...memo.keys()]) if (!live.has(id)) memo.delete(id);
+  return emitted;
+}
+
 type CutPatch = Partial<
   Pick<
     FinalCutRow,
@@ -253,6 +330,9 @@ type CutPatch = Partial<
     | 'failed_stage'
     | 'watermark_removed'
     | 'watermark_meta'
+    | 'base_path'
+    | 'grade'
+    | 'revision'
   >
 >;
 
@@ -274,34 +354,55 @@ export function updateCut(ctx: AppContext, id: number, patch: CutPatch): FinalCu
 
 // ------------------------------------------------------------------ tạo bản dựng + job edit_plan
 
-function insertCut(
+export function insertCut(
   ctx: AppContext,
   project: ProjectRow,
-  fields: { status: FinalCutStatus; selection: SelectionItem[]; signature: string; created_by: 'claude' | 'agent' | 'user'; edl?: Edl; note?: string | null },
+  fields: {
+    status: FinalCutStatus;
+    selection: SelectionItem[];
+    signature: string;
+    created_by: 'claude' | 'agent' | 'user';
+    edl?: Edl;
+    note?: string | null;
+    /** Bước đầu của bản `rendering` (mặc định `render`; chỉnh màu thủ công bắt đầu ở `grade`). */
+    stage?: 'render' | 'clean' | 'grade';
+    /** Phiên bản góp ý / chỉnh màu: bản cha, góp ý, grade đã áp (null = trung tính), trả lời, các cột kế thừa từ bản cha. */
+    revision?: { parent_id: number; feedback?: string | null; grade?: Grade | null; revision?: FinalCutRevision | null; inherit?: Partial<Pick<FinalCutRow, 'renderer' | 'duration_s' | 'watermark_removed' | 'raw_video_path'>> };
+  },
 ): number {
   const version = nextVersion(ctx, project);
+  const rv = fields.revision;
   const info = ctx.db
     .prepare(
-      `INSERT INTO final_cuts (project_id, version, status, stage, selection, selection_signature, edl, created_by, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO final_cuts (project_id, version, status, stage, selection, selection_signature, edl, created_by, note, created_at,
+                               parent_id, feedback, grade, revision, renderer, duration_s, watermark_removed, raw_video_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       project.id,
       version,
       fields.status,
-      fields.status === 'rendering' ? 'render' : null,
+      fields.status === 'rendering' ? (fields.stage ?? 'render') : null,
       JSON.stringify(fields.selection),
       fields.signature,
       fields.edl ? JSON.stringify(fields.edl) : null,
       fields.created_by,
       fields.note ?? null,
       ctx.now(),
+      rv?.parent_id ?? null,
+      rv?.feedback ?? null,
+      rv?.grade && !isNeutralGrade(rv.grade) ? JSON.stringify(rv.grade) : null,
+      rv?.revision ? JSON.stringify(rv.revision) : null,
+      rv?.inherit?.renderer ?? null,
+      rv?.inherit?.duration_s ?? null,
+      rv?.inherit?.watermark_removed ?? 0,
+      rv?.inherit?.raw_video_path ?? null,
     );
   return Number(info.lastInsertRowid);
 }
 
 function createPlanning(ctx: AppContext, project: ProjectRow, sel: ReturnType<typeof currentSelection>, reason: string): { cutId: number; jobId: number } {
-  const cutId = insertCut(ctx, project, { status: 'planning', selection: sel.items, signature: sel.signature, created_by: ctx.config.workerMode === 'managed' ? 'agent' : 'claude' });
+  const cutId = insertCut(ctx, project, { status: 'planning', selection: sel.items, signature: sel.signature, created_by: isManagedJobType(ctx.config, 'edit_plan') ? 'agent' : 'claude' });
   const version = getFinalCutRow(ctx, cutId).version;
   const jobId = insertJob(ctx, {
     project_id: project.id,
@@ -325,6 +426,8 @@ function createPlanning(ctx: AppContext, project: ProjectRow, sel: ReturnType<ty
 export function maybeAutoFinalCut(ctx: AppContext, projectId: number): { cutId: number; jobId: number } | null {
   return ctx.tx(() => {
     const project = getProject(ctx, projectId);
+    // Kế hoạch LAN KHÔNG BAO GIỜ tự dựng: người dùng LAN bấm "Dựng bản hoàn chỉnh" (xem lan-final.ts).
+    if (project.source === 'lan') return null;
     const sel = currentSelection(ctx, projectId);
     if (!sel.allDone) return null;
     const dup = ctx.db
@@ -501,12 +604,15 @@ export function editPlanPayload(ctx: AppContext, job: JobRow): Record<string, un
 // ------------------------------------------------------------------ vòng đời theo job edit_plan
 
 export const editPlanResult = z.object({
-  edl: z.unknown().optional(), // thiếu → validateEdl báo INVALID_EDL
+  edl: z.unknown().optional(), // thiếu → validateEdl báo INVALID_EDL (bản góp ý: null/thiếu = giữ nguyên điểm cắt)
   summary: z.string().trim().min(1, 'cần tóm tắt 1–3 câu').max(2000),
+  /** Chỉ bản góp ý (`payload.revision`): Grade đầy đủ (thiếu → giữ grade của bản cha) và các yêu cầu AI không làm được. */
+  grade: z.unknown().optional(),
+  not_done: z.array(z.string().trim().min(1).max(500)).max(10).optional(),
 });
 
 /** Worker hoàn thành job edit_plan: kiểm tra EDL (sai → 400 INVALID_EDL, job giữ nguyên), lưu, chuyển `rendering` và xếp hàng render. */
-export function completeEditPlan(ctx: AppContext, job: JobRow, result: { edl?: unknown; summary: string }): number {
+export function completeEditPlan(ctx: AppContext, job: JobRow, result: { edl?: unknown; summary: string; grade?: unknown; not_done?: string[] }): number {
   const cut = ctx.db.prepare('SELECT * FROM final_cuts WHERE job_id = ?').get(job.id) as FinalCutRow | undefined;
   if (!cut) throw conflict('INVALID_STATE', `Job #${job.id} không gắn với bản dựng hoàn chỉnh nào`);
   if (cut.status !== 'planning') throw conflict('INVALID_STATE', `Bản hoàn chỉnh v${cut.version} đang ở trạng thái ${cut.status}, không nhận kế hoạch dựng`);
@@ -581,7 +687,8 @@ export function cancelFinalCut(ctx: AppContext, id: number): FinalCutRow {
       status: 'cancelled',
       finished_at: ctx.now(),
       error: null,
-      failed_stage: cut.stage === 'clean' && cut.raw_video_path ? 'clean' : null,
+      // Hủy giữa bước chỉnh màu: bản sạch/bản cha còn nguyên nên bấm «Thử chỉnh màu lại» chạy lại được (failed_stage='grade')
+      failed_stage: cut.stage === 'clean' && cut.raw_video_path ? 'clean' : cut.stage === 'grade' ? 'grade' : null,
       stage: null,
     });
     logEvent(ctx, { project_id: cut.project_id, type: 'final_cut.cancelled', message: `Bản hoàn chỉnh v${cut.version} đã bị hủy` });
@@ -597,6 +704,8 @@ export function markReady(
     renderer: 'shotcut' | 'ffmpeg' | null;
     video_path: string;
     raw_video_path?: string | null;
+    /** Bản sạch chưa chỉnh màu (chỉ khi có chỉnh màu); undefined = giữ nguyên. */
+    base_path?: string | null;
     contact_sheet_path: string | null;
     project_file_path: string | null;
     duration_s: number | null;
@@ -618,11 +727,12 @@ export function markReady(
       renderer,
       video_path: r.video_path,
       raw_video_path: r.raw_video_path === undefined ? cut.raw_video_path : r.raw_video_path,
+      base_path: r.base_path === undefined ? cut.base_path : r.base_path,
       contact_sheet_path: r.contact_sheet_path ?? cut.contact_sheet_path,
       project_file_path: r.project_file_path ?? cut.project_file_path,
       duration_s: r.duration_s,
       watermark_removed: r.watermark_removed ? 1 : 0,
-      watermark_meta: r.watermark_meta === undefined || r.watermark_meta === null ? null : JSON.stringify(r.watermark_meta),
+      watermark_meta: r.watermark_meta === undefined || r.watermark_meta === null ? (r.watermark_meta === undefined ? cut.watermark_meta : null) : JSON.stringify(r.watermark_meta),
       progress: 100,
       error: null,
       finished_at: ctx.now(),
@@ -631,25 +741,31 @@ export function markReady(
     logEvent(ctx, {
       project_id: cut.project_id,
       type: 'final_cut.ready',
-      message: `Bản hoàn chỉnh v${cut.version} sẵn sàng (${renderer}${dur}${r.watermark_removed ? ', đã xoá logo Veo' : r.cleanOnly ? '' : ', chưa xoá logo Veo'})`,
+      message: `Bản hoàn chỉnh v${cut.version} sẵn sàng (${renderer}${dur}${r.watermark_removed ? ', đã xoá logo Veo' : r.cleanOnly ? '' : ', chưa xoá logo Veo'}${gradeNote(cut)})`,
     });
     appendLogRow(
       ctx,
       project.slug,
       r.cleanOnly
         ? { clip: 'FINAL', attempt: `v${cut.version}`, type: 'xoá logo Veo', issue: `Bản dựng v${cut.version} đã xoá logo Veo (bản gốc còn logo: ${path.basename(r.raw_video_path ?? cut.raw_video_path ?? '')})`, conclusion: 'Sẵn sàng' }
-        : { clip: 'FINAL', attempt: `v${cut.version}`, type: finalLogType(renderer, r.watermark_removed), issue: cut.summary ?? cut.note ?? '', conclusion: 'Sẵn sàng' },
+        : { clip: 'FINAL', attempt: `v${cut.version}`, type: finalLogType(renderer, r.watermark_removed, parseStoredGrade(cut.grade)), issue: cut.summary ?? cut.note ?? '', conclusion: 'Sẵn sàng' },
     );
     return true;
   });
 }
 
 /** Cột "loại" của dòng log.md cho bản dựng. */
-export const finalLogType = (renderer: string | null, watermarkRemoved: boolean): string =>
-  `bản dựng (${renderer ?? '?'}, cắt thẳng${watermarkRemoved ? '; đã xoá logo Veo' : ''})`;
+export const finalLogType = (renderer: string | null, watermarkRemoved: boolean, grade?: Grade | null): string =>
+  `bản dựng (${renderer ?? '?'}, cắt thẳng${watermarkRemoved ? '; đã xoá logo Veo' : ''}${grade && !isNeutralGrade(grade) ? '; đã chỉnh màu' : ''})`;
+
+/** ", đã chỉnh màu (Ấm 7200K, Tương phản 1.15)" cho thông báo; rỗng khi chưa chỉnh màu. */
+const gradeNote = (cut: FinalCutRow): string => {
+  const g = parseStoredGrade(cut.grade);
+  return g && !isNeutralGrade(g) ? `, đã chỉnh màu (${gradeChips(g).join(', ')})` : '';
+};
 
 /** Thất bại ở bước `render` hoặc `clean`. Với `clean`, GIỮ `raw_video_path` (không hiển thị raw như bản hoàn chỉnh). */
-export function markFailed(ctx: AppContext, id: number, error: string, failedStage: 'render' | 'clean' = 'render'): boolean {
+export function markFailed(ctx: AppContext, id: number, error: string, failedStage: 'render' | 'clean' | 'grade' = 'render'): boolean {
   return ctx.tx(() => {
     const cut = getFinalCutRow(ctx, id);
     if (cut.status !== 'rendering') return false;
@@ -657,7 +773,7 @@ export function markFailed(ctx: AppContext, id: number, error: string, failedSta
     logEvent(ctx, {
       project_id: cut.project_id,
       type: 'final_cut.failed',
-      message: `Bản hoàn chỉnh v${cut.version} ${failedStage === 'clean' ? '' : 'render '}lỗi: ${error}`,
+      message: `Bản hoàn chỉnh v${cut.version} ${failedStage === 'render' ? 'render ' : ''}lỗi: ${error}`,
     });
     return true;
   });
@@ -672,22 +788,29 @@ export function recoverRenderingCuts(ctx: AppContext): number {
     const rows = ctx.db.prepare("SELECT * FROM final_cuts WHERE status = 'rendering'").all() as FinalCutRow[];
     for (const cut of rows) {
       const cleaning = cut.stage === 'clean';
-      const project = getProject(ctx, cut.project_id);
-      if (cleaning) {
-        const tmp = tmpCleanPath(ctx.config.rootDir, finalPaths(project.slug, cut.version).video_path);
-        ctx.afterCommit(() => fs.rmSync(tmp, { force: true }));
+      const grading = cut.stage === 'grade';
+      const project = getProjectAny(ctx, cut.project_id); // khởi động không được hỏng vì dự án nằm trong thùng rác
+      if (cleaning || grading) {
+        // file tạm của bước xoá logo (ra bản chính hoặc bản sạch khi có chỉnh màu) và của bước chỉnh màu
+        const p = finalPaths(project.slug, cut.version);
+        const tmps = [tmpCleanPath(ctx.config.rootDir, p.video_path), tmpCleanPath(ctx.config.rootDir, p.base_path)];
+        ctx.afterCommit(() => tmps.forEach((t) => fs.rmSync(t, { force: true })));
       }
       updateCut(ctx, cut.id, {
         status: 'failed',
         stage: null,
-        failed_stage: cleaning ? 'clean' : 'render',
-        error: cleaning ? 'Server khởi động lại trong lúc xoá logo Veo; bấm Thử xoá logo lại' : 'Server khởi động lại trong lúc render; bấm Render lại',
+        failed_stage: grading ? 'grade' : cleaning ? 'clean' : 'render',
+        error: grading
+          ? 'Server khởi động lại trong lúc chỉnh màu; bấm Thử chỉnh màu lại'
+          : cleaning
+            ? 'Server khởi động lại trong lúc xoá logo Veo; bấm Thử xoá logo lại'
+            : 'Server khởi động lại trong lúc render; bấm Render lại',
         finished_at: ctx.now(),
       });
       logEvent(ctx, {
         project_id: cut.project_id,
         type: 'final_cut.failed',
-        message: `Bản hoàn chỉnh v${cut.version}: server khởi động lại trong lúc ${cleaning ? 'xoá logo Veo' : 'render'}`,
+        message: `Bản hoàn chỉnh v${cut.version}: server khởi động lại trong lúc ${grading ? 'chỉnh màu' : cleaning ? 'xoá logo Veo' : 'render'}`,
       });
     }
     return rows.length;
@@ -716,6 +839,10 @@ export function cleanFinalCut(ctx: AppContext, id: number, wm: { active: boolean
       throw conflict('INVALID_STATE', `Bản hoàn chỉnh v${cut.version} đang ở trạng thái ${cut.status}${cut.watermark_removed ? ' (đã xoá logo)' : ''}; chỉ xoá logo lại được bản lỗi ở bước xoá logo hoặc bản đã sẵn sàng nhưng còn logo`);
     }
     if (!wm.active) throw conflict('WATERMARK_REMOVER_UNAVAILABLE', `Không xoá logo Veo được: ${wm.reason}`);
+    // Bản đã chỉnh màu mà chưa có bản gốc còn logo (render lúc tool xoá logo tắt): video hiện có đã bị đổi màu nên KHÔNG được coi là bản raw (xoá logo sau chỉnh màu sẽ để lại vết)
+    if (legacy && !cut.raw_video_path && !isNeutralGrade(parseStoredGrade(cut.grade))) {
+      throw conflict('GRADED_CUT', `Bản hoàn chỉnh v${cut.version} đã chỉnh màu nên không xoá logo sau được (chỉnh màu phải chạy SAU xoá logo). Hãy «Edit tự động» lại để tạo bản mới`);
+    }
     const root = ctx.config.rootDir;
     const paths = finalPaths(project.slug, cut.version);
     let rawRel = cut.raw_video_path;

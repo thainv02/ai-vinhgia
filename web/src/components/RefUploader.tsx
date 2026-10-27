@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { LibraryRef } from '../api/types';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { checkImageFiles, defaultLabel, isFileDrag } from '../lib/refFiles';
 import { Button } from './Button';
 import { Icon } from './Icon';
-import { LibraryPickerDialog } from './LibraryPickerDialog';
+import { LibraryPickerDialog, type LibraryEntry, type LibrarySource } from './LibraryPickerDialog';
 
 interface ItemBase {
   key: string;
@@ -24,13 +23,26 @@ export interface LibraryItem extends ItemBase {
 }
 export type RefItem = UploadItem | LibraryItem;
 
+export type Batch = { kind: 'upload'; items: UploadItem[] } | { kind: 'library'; items: LibraryItem[] };
+
+/** Gom các ảnh liên tiếp cùng loại thành từng lượt, giữ nguyên thứ tự danh sách (mỗi lượt là một lần gọi API). */
+export function toBatches(items: RefItem[]): Batch[] {
+  const out: Batch[] = [];
+  for (const it of items) {
+    const last = out[out.length - 1];
+    if (last && last.kind === it.kind) (last.items as RefItem[]).push(it);
+    else out.push(it.kind === 'upload' ? { kind: 'upload', items: [it] } : { kind: 'library', items: [it] });
+  }
+  return out;
+}
+
 let seq = 0;
 
 /**
  * Chọn ảnh tham chiếu cho dự án mới: kéo thả hoặc chọn từ máy, hoặc "Chọn từ thư viện" (ảnh của các dự án trước).
  * Mọi ảnh nằm chung một danh sách: đổi nhãn, kéo đổi thứ tự (hoặc nút lên/xuống), xóa.
  */
-export function RefUploader({ items, onChange, disabled }: { items: RefItem[]; onChange: (items: RefItem[]) => void; disabled?: boolean }) {
+export function RefUploader({ items, onChange, disabled, librarySource, maxItems }: { items: RefItem[]; onChange: (items: RefItem[]) => void; disabled?: boolean; librarySource: LibrarySource; maxItems?: number }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileDrag, setFileDrag] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
@@ -48,7 +60,11 @@ export function RefUploader({ items, onChange, disabled }: { items: RefItem[]; o
   );
 
   const addFiles = (files: FileList | File[]) => {
-    const { ok, errors } = checkImageFiles(files);
+    const { ok: checked, errors } = checkImageFiles(files);
+    // maxItems: chỉ nhận thêm tới giới hạn, phần dư báo lỗi rõ ràng
+    const room = maxItems === undefined ? Infinity : Math.max(0, maxItems - items.length);
+    const ok = checked.slice(0, room);
+    if (checked.length > ok.length) errors.push(`Chỉ được tối đa ${maxItems} ảnh; ${checked.length - ok.length} ảnh bị bỏ qua`);
     setProblems(errors);
     if (ok.length) {
       const next: UploadItem[] = ok.map((f) => ({ key: `u${++seq}`, kind: 'upload', file: f, url: URL.createObjectURL(f), label: defaultLabel(f.name) }));
@@ -56,8 +72,8 @@ export function RefUploader({ items, onChange, disabled }: { items: RefItem[]; o
     }
   };
 
-  const addLibrary = (refs: LibraryRef[]) => {
-    const next: LibraryItem[] = refs.map((r) => ({
+  const addLibrary = (refs: LibraryEntry[]) => {
+    const next: LibraryItem[] = refs.slice(0, maxItems === undefined ? refs.length : Math.max(0, maxItems - items.length)).map((r) => ({
       key: `l${++seq}`,
       kind: 'library',
       refId: r.ref_id,
@@ -177,6 +193,7 @@ export function RefUploader({ items, onChange, disabled }: { items: RefItem[]; o
       )}
 
       <LibraryPickerDialog
+        source={librarySource}
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         disabledRefIds={items.filter((i): i is LibraryItem => i.kind === 'library').map((i) => i.refId)}

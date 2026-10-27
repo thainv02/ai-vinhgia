@@ -222,4 +222,35 @@ describe('chọn trình dựng (FINAL_RENDERER) và chạy thật qua app với 
     expect(tools()).toContain('cancel_render');
     expect((await sc.user.get(`/api/final-cuts/${cut.id}`)).body.status).toBe('cancelled');
   });
+
+  for (const n of [2, 3]) {
+    it(`RENDER_CONCURRENCY=${n}: ${n} bản Shotcut chạy cùng lúc, mỗi bản một tiến trình MCP riêng; ${n > 2 ? 'MCP được nâng SHOTCUT_MCP_MAX_ACTIVE_RENDERS' : 'không đặt SHOTCUT_MCP_MAX_ACTIVE_RENDERS (mặc định 2 của MCP đã đủ)'}`, async () => {
+      const saved = process.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS;
+      delete process.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS;
+      try {
+        process.env.FAKE_MCP_MODE = 'hang';
+        env = await makeEnv({ config: { ...shotcutCfg, finalRenderer: 'shotcut', renderConcurrency: n }, finalRender: { shotcut: { pollMs: 10 }, progressThrottleMs: 0 } });
+        const cuts: { sc: Awaited<ReturnType<typeof setupAllDone>>; id: number }[] = [];
+        for (let i = 0; i < n + 1; i++) {
+          const sc = await setupAllDone(env, { scenes: 1, project: { name: `Song song ${i}` } });
+          const job = await claimEditPlan(sc);
+          const cut = (await sc.user.get(`/api/final-cuts/${job.payload.final_cut_id}`)).body;
+          await sc.worker.post(`/api/worker/jobs/${job.id}/complete`, { result: { edl: edlFor(sc, cut), summary: 'ok' } });
+          cuts.push({ sc, id: cut.id });
+        }
+        for (let i = 0; i < 200 && tools().filter((t) => t === 'start_render').length < n; i++) await new Promise((r) => setTimeout(r, 20));
+        await new Promise((r) => setTimeout(r, 60));
+        expect(tools().filter((t) => t === 'start_render')).toHaveLength(n); // đúng n bản đang render, bản thứ n+1 đang đợi
+        const starts = logLines().filter((l) => l.started);
+        expect(starts).toHaveLength(n); // mỗi bản một tiến trình MCP riêng
+        for (const s of starts) expect(s.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS).toBe(n > 2 ? String(n) : undefined);
+        expect((await cuts[n]!.sc.user.get(`/api/final-cuts/${cuts[n]!.id}`)).body).toMatchObject({ status: 'rendering', queue_state: 'waiting', queue_position: 1, running_count: n, concurrency: n });
+        for (const c of cuts) await c.sc.user.post(`/api/final-cuts/${c.id}/cancel`, {});
+        await env.ctx.finalRender!.idle();
+      } finally {
+        if (saved === undefined) delete process.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS;
+        else process.env.SHOTCUT_MCP_MAX_ACTIVE_RENDERS = saved;
+      }
+    });
+  }
 });

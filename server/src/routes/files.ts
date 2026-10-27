@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import type { AppContext } from '../context.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { cleanRelPath, resolveInside } from '../lib/paths.js';
+import { isHiddenByTrash } from '../services/trash.js';
 
 const FILE_PREFIXES = ['output', 'refs'];
 
@@ -26,7 +27,7 @@ export async function registerFileRoutes(app: FastifyInstance, ctx: AppContext):
     } catch {
       throw notFound('file');
     }
-    if (!resolveInside(root, rel, FILE_PREFIXES)) throw notFound('file');
+    if (isHiddenByTrash(ctx, rel) || !resolveInside(root, rel, FILE_PREFIXES)) throw notFound('file'); // dự án trong thùng rác: không phục vụ
     reply.header('Cache-Control', 'no-cache');
     reply.header('X-Content-Type-Options', 'nosniff');
     void reply.sendFile(rel, root, { cacheControl: false });
