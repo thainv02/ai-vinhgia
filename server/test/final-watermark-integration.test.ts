@@ -39,7 +39,7 @@ function regionDiff(a: string, b: string, t: number, crop: string): number {
 
 (available ? describe : describe.skip)('tool xoá logo Veo THẬT', () => {
   it('clip Cacao 2,5 giây → final dựng bằng ffmpeg → xoá logo bằng tool thật → ready: raw + bản sạch, đúng thời lượng, còn âm thanh, vùng logo thay đổi', async () => {
-    env = await makeEnv({ config: { finalRenderer: 'ffmpeg', watermarkRemover: 'auto', gwrCli: CLI, gwrTimeoutMs: 8 * 60_000 } });
+    env = await makeEnv({ config: { watermarkRemover: 'auto', gwrCli: CLI, gwrTimeoutMs: 8 * 60_000 } });
     const wm = await env.ctx.finalRender!.watermarkStatus(true);
     expect(wm, JSON.stringify(wm)).toMatchObject({ mode: 'auto', active: true });
 

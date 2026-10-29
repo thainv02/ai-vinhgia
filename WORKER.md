@@ -377,7 +377,7 @@ jq -n --rawfile prompt /tmp/autovideo-worker/C1_new_prompt.txt --arg reason 'Th�
 
 ## 4.5 `edit_plan`: chọn điểm cắt cho bản hoàn chỉnh
 
-Khi **mọi cảnh của dự án đã có video được chọn**, web tự giao job này (hoặc người dùng bấm "Dựng bản mới"). Việc của bạn: xem kỹ video từng cảnh rồi quyết định **đoạn nào giữ, đoạn nào cắt** để ghép các cảnh thành một video hoàn chỉnh (chuyển cảnh là **cắt thẳng**, không hiệu ứng). Bạn **chỉ trả bản kế hoạch cắt (EDL)**; **server tự render** bằng Shotcut (hoặc ffmpeg) sau khi bạn `complete`. Job này **không mở Chrome/Flow/ChatGPT**, **không tốn credit**, **không có `assets`**, **không có `credits_cost`**.
+Khi **mọi cảnh của dự án đã có video được chọn**, web tự giao job này (hoặc người dùng bấm "Dựng bản mới"). Việc của bạn: xem kỹ video từng cảnh rồi quyết định **đoạn nào giữ, đoạn nào cắt** để ghép các cảnh thành một video hoàn chỉnh (chuyển cảnh là **cắt thẳng**, không hiệu ứng). Bạn **chỉ trả bản kế hoạch cắt (EDL)**; **server tự render** bằng ffmpeg sau khi bạn `complete`. Job này **không mở Chrome/Flow/ChatGPT**, **không tốn credit**, **không có `assets`**, **không có `credits_cost`**.
 
 Payload:
 
@@ -387,7 +387,7 @@ Payload:
                "video_path", "abs_path", "duration_s", "fps", "width", "height", "grid_path",
                "verdict", "verdict_note", "comments":[ {id, body, timecode, …} ] } ],   // theo ĐÚNG thứ tự cảnh
   "constraints":{ "aspect":"9:16", "transition":"cut", "min_segment_s":0.3, "keep_scene_order":true },
-  "output":{ "video_path", "project_file_path", "contact_sheet_path" },   // chỉ để biết, server tự ghi
+  "output":{ "video_path", "contact_sheet_path" },   // chỉ để biết, server tự ghi
   "requeued":false }
 ```
 
@@ -414,7 +414,7 @@ done
 
    Nếu `drawtext` có sẵn thì thêm mốc giây vào từng ô: `-vf "fps=4,scale=216:-1,drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='%{pts\:flt}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=4x5:padding=2"`. Mở ảnh bằng công cụ đọc ảnh của bạn để xem.
 2. Soi một khoảnh khắc: `ffmpeg -y -loglevel error -ss 3.25 -i "$ABS" -frames:v 1 /tmp/autovideo-worker/C1_3_25.png`.
-3. Nếu phiên có công cụ MCP `shotcut`: được dùng `probe_media`, `analyze_media_quality`, `render_preview_batch` để soi đúng khung. **CẤM** `start_render`, `create_project`, `edit_project` và mọi công cụ Shotcut ghi/render file: server tự render, bạn làm sẽ đè bản của server.
+3. Không tự render hay ghi file bản dựng: server tự render bằng ffmpeg, bạn làm sẽ đè bản của server.
 4. Kiểm tra mạch nối giữa cảnh: xem 1 giây cuối của cảnh trước và 1 giây đầu của cảnh sau cạnh nhau.
 
 **Luật cho EDL** (server kiểm tra, sai thì `400 INVALID_EDL` kèm cảnh/đoạn lỗi)

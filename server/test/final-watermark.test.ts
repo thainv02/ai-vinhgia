@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -48,7 +49,7 @@ async function mk(extra: Partial<Parameters<typeof makeEnv>[0]> = {}, renderer =
 }
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(process.env.TMPDIR ?? '/tmp', 'autovideo-gwr-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'autovideo-gwr-'));
   process.env.FAKE_GWR_LOG = logFile();
   process.env.FAKE_GWR_MODE = 'ok';
   process.env.FAKE_GWR_HELP = 'ok';

@@ -6,6 +6,7 @@ import { AppError } from '../lib/errors.js';
 import { intParam, parse } from '../lib/validate.js';
 import { COMMENT_ACTIONS } from '../db/types.js';
 import { createComment } from '../services/comments.js';
+import { warmPlanningCuts } from '../services/final-cuts.js';
 import { claimNext, completeBody, completeJob, failBody, failJob, heartbeat } from '../services/jobs.js';
 import { commentJson, getComment, getJobJson, getScene } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
@@ -43,6 +44,7 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // Nhận (claim) job tiếp theo: 200 + job | 204 không có việc | 503 QUEUE_PAUSED
     w.get('/api/worker/next', async (req, reply) => {
+      await warmPlanningCuts(ctx); // payload edit_plan cần thời lượng/fps (ffprobe async, đọc từ cache)
       const job = claimNext(ctx, workerIdOf(req));
       if (!job) return reply.code(204).send();
       return job;
@@ -58,6 +60,7 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
     w.post('/api/worker/jobs/:id/complete', async (req) => {
       const id = intParam((req.params as { id: string }).id);
       const body = parse(completeBody, req.body ?? {});
+      await warmPlanningCuts(ctx); // validate EDL cần thời lượng video nguồn
       return { job: completeJob(ctx, id, body) };
     });
 

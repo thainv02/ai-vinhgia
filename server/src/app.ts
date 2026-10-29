@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { defaultConfig, type Config } from './config.js';
 import { AppContext } from './context.js';
-import { openDb, runMigrations } from './db/index.js';
+import { backupBeforeMigrate, openDb, runMigrations, type Migration } from './db/index.js';
 import { type Clock, systemClock } from './lib/clock.js';
 import { AppError } from './lib/errors.js';
 import { registerErrorHandling } from './routes/errors.js';
@@ -37,9 +37,15 @@ export interface BuildAppOptions {
   config?: Partial<Config>;
   clock?: Clock;
   logger?: boolean;
-  /** Ép trình dựng bản hoàn chỉnh (test): bỏ qua FINAL_RENDERER / Shotcut / ffmpeg. */
+  /** Mức log (mặc định LOG_LEVEL hoặc `info`). */
+  logLevel?: string;
+  /** Ghi log vào stream này (vd file xoay vòng) thay vì stdout. */
+  logStream?: { write(msg: string): void };
+  /** Danh sách migration (mặc định: nhúng trong bundle hoặc đọc từ server/migrations/). */
+  migrations?: Migration[] | string;
+  /** Ép trình dựng bản hoàn chỉnh (test): bỏ qua ffmpeg thật. */
   finalRenderer?: Renderer;
-  /** Tùy chọn khác của dịch vụ render bản hoàn chỉnh (opener Shotcut, throttle progress, thời gian poll…). */
+  /** Tùy chọn khác của dịch vụ render bản hoàn chỉnh (throttle progress, thời gian nhớ trạng thái…). */
   finalRender?: Omit<FinalRenderOptions, 'renderer'>;
   /** true: bật timer quét job mất heartbeat (30s) và phát worker.status (10s). Test để false. */
   startTimers?: boolean;
@@ -58,18 +64,27 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
   fs.mkdirSync(rootDir, { recursive: true });
 
   const db = openDb(dbPath);
-  runMigrations(db);
+  // Có migration đang chờ và DB không rỗng: PHẢI sao lưu xong mới migrate; sao lưu lỗi thì không migrate.
+  let preMigrationBackup: string | null = null;
+  try {
+    preMigrationBackup = await backupBeforeMigrate(db, dbPath, opts.migrations);
+  } catch (err) {
+    db.close();
+    throw new Error(`Sao lưu DB trước khi migrate thất bại, không migrate: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  runMigrations(db, opts.migrations);
   const ctx = new AppContext(db, config, opts.clock ?? systemClock, new SseHub());
   backfillRefHashes(ctx); // migration 002: điền content_hash còn thiếu của ảnh tham chiếu
   ctx.finalRender = new FinalRenderService(ctx, { ...opts.finalRender, renderer: opts.finalRenderer });
   recoverRenderingCuts(ctx); // bản đang `rendering` của tiến trình cũ (đã chết) → failed
 
   const app = Fastify({
-    logger: opts.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
+    logger: opts.logger === false ? false : { level: opts.logLevel ?? process.env.LOG_LEVEL ?? 'info', ...(opts.logStream ? { stream: opts.logStream } : {}) },
     bodyLimit: 2 * 1024 * 1024,
     trustProxy: false,
   }) as unknown as App;
   app.decorate('ctx', ctx);
+  if (preMigrationBackup) app.log.warn(`Đã sao lưu DB trước khi migrate: ${preMigrationBackup}`);
 
   // JSON body rỗng (vd. POST không có thân nhưng vẫn gửi Content-Type: application/json) được coi là {}.
   app.removeContentTypeParser('application/json');

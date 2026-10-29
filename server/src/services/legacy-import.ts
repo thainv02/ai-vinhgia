@@ -822,7 +822,7 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
         selectionSignature(rows.map((r) => [r.scene_id, r.selected_video_id])),
         JSON.stringify(edl),
         rel.video_path,
-        exists(rel.project_file_path) ? rel.project_file_path : null,
+        exists(rel.legacy_project_file_path) ? rel.legacy_project_file_path : null,
         exists(rel.contact_sheet_path) ? rel.contact_sheet_path : null,
         typeof duration === 'number' ? Math.round(duration * 1000) / 1000 : null,
         LEGACY_TRIAL_FINAL.note,

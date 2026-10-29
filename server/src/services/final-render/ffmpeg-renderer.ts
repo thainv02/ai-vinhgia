@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { ffmpegOf, probeMedia } from '../media.js';
+import { ffmpegOf, probeMedia, type MediaInfo } from '../media.js';
 import { RenderCancelled, type RenderOutcome, type RenderRequest, type RenderSegment, type Renderer } from './types.js';
 
 export interface FfmpegProfile {
@@ -110,14 +110,20 @@ export class FfmpegRenderer implements Renderer {
   readonly name = 'ffmpeg' as const;
 
   async render(req: RenderRequest): Promise<RenderOutcome> {
-    const bin = ffmpegOf(req.config);
+    const bin = await ffmpegOf(req.config);
     if (!bin) throw new Error('Không tìm thấy ffmpeg (đặt FFMPEG_PATH hoặc cài ffmpeg)');
     if (req.segments.length === 0) throw new Error('EDL không có đoạn nào để dựng');
     // Không bao giờ ghi đè (ffmpeg 8 với -n vẫn thoát mã 0 khi file đã có): kiểm tra trước, TRƯỚC khối try/dọn dẹp bên dưới
     if (fs.existsSync(req.out.videoAbs)) throw new Error(`File ${path.basename(req.out.videoAbs)} đã tồn tại; không ghi đè`);
     fs.mkdirSync(path.dirname(req.out.videoAbs), { recursive: true });
 
-    const infos = req.segments.map((s) => probeMedia(req.config, s.path));
+    let infos: (MediaInfo | null)[];
+    try {
+      infos = await Promise.all(req.segments.map((s) => probeMedia(req.config, s.path, { signal: req.signal }))); // media.ts giới hạn số ffprobe chạy cùng lúc
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw new RenderCancelled();
+      throw err;
+    }
     const first = infos[0];
     const profile: FfmpegProfile = {
       width: even(first?.width ?? 720),
@@ -148,7 +154,7 @@ export class FfmpegRenderer implements Renderer {
     let contactAbs: string | null = null;
     if (!fs.existsSync(req.out.contactAbs)) {
       try {
-        const dur = probeMedia(req.config, req.out.videoAbs)?.duration_s ?? total;
+        const dur = (await probeMedia(req.config, req.out.videoAbs, { signal: req.signal }))?.duration_s ?? total;
         const vf = `fps=12/${f3(Math.max(dur, 1))},scale=240:-2,tile=4x3:padding=2:margin=2`;
         await run(bin, ['-n', '-hide_banner', '-loglevel', 'error', '-i', req.out.videoAbs, '-vf', vf, '-frames:v', '1', req.out.contactAbs], req.signal);
         contactAbs = req.out.contactAbs;
@@ -160,6 +166,6 @@ export class FfmpegRenderer implements Renderer {
         }
       }
     }
-    return { renderer: 'ffmpeg', videoAbs: req.out.videoAbs, contactAbs, projectFileAbs: null };
+    return { renderer: 'ffmpeg', videoAbs: req.out.videoAbs, contactAbs};
   }
 }

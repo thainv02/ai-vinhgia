@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../components/Modal';
 import { Alert, EmptyState, ErrorState, Skeleton } from '../components/States';
 import { Badge } from '../components/StatusBadge';
 import { VideoPlayer, type PlayerHandle, type TimeMarker } from '../components/VideoPlayer';
-import { useCancelFinalCut, useCreateFinalCut, useOpenInShotcut } from '../hooks/mutations';
+import { useCancelFinalCut, useCreateFinalCut } from '../hooks/mutations';
 import { useFinalCuts, useMeta, useProject, useScenes, useWorkerStatus } from '../hooks/queries';
 import { buildTimeline, cleanAction, finalBlockReason, finalContactUrl, finalStatusLabel, finalVideoUrl, fmtSeconds } from '../lib/finalCut';
 import { fmtDateTime } from '../lib/format';
@@ -20,7 +20,7 @@ import { toast } from '../lib/toast';
 import { errorMessage } from '../api/client';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 
-const RENDERER_LABEL: Record<string, string> = { shotcut: 'Shotcut', ffmpeg: 'ffmpeg' };
+const RENDERER_LABEL: Record<string, string> = { shotcut: 'Shotcut (bản cũ)', ffmpeg: 'ffmpeg' };
 
 function Card({ title, id, children, aside }: { title: string; id: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
@@ -116,7 +116,6 @@ export default function FinalPage() {
   const meta = useMeta();
   const create = useCreateFinalCut();
   const cancel = useCancelFinalCut();
-  const openShotcut = useOpenInShotcut();
   useDocumentTitle(project.data ? `Bản hoàn chỉnh · ${project.data.name}` : 'Bản hoàn chỉnh');
 
   const [selId, setSelId] = useState<number | null>(null);
@@ -155,7 +154,7 @@ export default function FinalPage() {
   const active = fc && (fc.status === 'planning' || fc.status === 'rendering');
   const fr = meta.data?.final_renderer;
   const wm = meta.data?.watermark_remover;
-  const rendererText = fr ? `${fr.active === 'shotcut' ? 'Shotcut' : fr.active === 'ffmpeg' ? 'ffmpeg' : 'chưa có trình dựng khả dụng'}${fr.reason ? ` (${fr.reason})` : ''}` : null;
+  const rendererText = fr ? `${fr.active === 'ffmpeg' ? 'ffmpeg' : 'chưa có trình dựng khả dụng'}${fr.reason ? ` (${fr.reason})` : ''}` : null;
 
   const seekOut = (t: number) => setSeekReq({ t, nonce: (seekReq?.nonce ?? 0) + 1 });
   const pickVersion = (id: number) => {
@@ -310,14 +309,6 @@ export default function FinalPage() {
                     </a>
                   )}
                   <CleanLogoButton fc={fc} />
-                  {fc.project_file_path && (
-                    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <Button loading={openShotcut.isPending} onClick={() => openShotcut.mutate(fc.id, { onSuccess: () => toast.success('Đã mở dự án trong Shotcut') })}>
-                        Mở trong Shotcut
-                      </Button>
-                      <span className="text-xs text-muted">Dự án Shotcut dùng video gốc nên vẫn còn logo Veo.</span>
-                    </span>
-                  )}
                   <Button icon={<Icon name="edit" size={14} />} onClick={() => setEditing((v) => !v)} disabledReason={fc.edl ? null : 'Chưa có điểm cắt để chỉnh'}>
                     {editing ? 'Đóng trình chỉnh' : 'Chỉnh điểm cắt'}
                   </Button>

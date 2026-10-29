@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sweepStaleJobs } from '../src/services/jobs.js';
 import { workerStatusTick } from '../src/services/worker.js';
 import {
+  CAN_SYMLINK,
   PNG_BYTES,
   bareScenario,
   claim,
@@ -456,7 +457,7 @@ describe('complete: kiểm tra file và kết quả', () => {
     expect((await complete(sc, job, [{ kind: 'storyboard', file_path: p }])).status).toBe(200);
   });
 
-  it('file là symlink trỏ ra ngoài output/ bị từ chối', async () => {
+  it.skipIf(!CAN_SYMLINK)('file là symlink trỏ ra ngoài output/ bị từ chối', async () => {
     const { sc, job } = await runningStoryboard();
     const fs = await import('node:fs');
     const outside = path.join(env.root, 'secret.png');

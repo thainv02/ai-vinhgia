@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { JPG_BYTES, PNG_BYTES, client, makeEnv, multipart, setupProject, userClient, writeFile, type Env } from './helpers.js';
+import { CAN_SYMLINK, JPG_BYTES, PNG_BYTES, client, makeEnv, multipart, setupProject, userClient, writeFile, type Env } from './helpers.js';
 
 let env: Env;
 beforeEach(async () => {
@@ -51,6 +51,16 @@ describe('Host / Origin', () => {
     await env.close();
     env = await makeEnv({ config: { extraAllowedOrigins: ['http://localhost:5174'] } });
     expect((await userClient(env.app).post('/api/projects', { name: 'A' }, { origin: 'http://localhost:5174' })).status).toBe(201);
+  });
+
+  it('origin theo đúng cổng đang chạy (--port) được phép, cổng khác thì không', async () => {
+    await env.close();
+    env = await makeEnv({ config: { port: 9123 } });
+    const u = userClient(env.app);
+    for (const origin of ['http://localhost:9123', 'http://127.0.0.1:9123']) {
+      expect((await u.post('/api/projects', { name: 'P ' + origin }, { origin })).status, origin).toBe(201);
+    }
+    expect((await u.post('/api/projects', { name: 'Q' }, { origin: 'http://127.0.0.1:9124' })).status).toBe(403);
   });
 
   it('thân JSON hỏng → 400 INVALID_JSON; Content-Type lạ → 415; thân rỗng với content-type json được coi là {}', async () => {
@@ -243,7 +253,7 @@ describe('phục vụ file tĩnh /files', () => {
     }
   });
 
-  it('symlink trong output/ trỏ ra ngoài bị chặn', async () => {
+  it.skipIf(!CAN_SYMLINK)('symlink trong output/ trỏ ra ngoài bị chặn', async () => {
     writeFile(env.root, 'secret.txt', 'bí mật');
     fs.mkdirSync(path.join(env.root, 'output'), { recursive: true });
     fs.symlinkSync(path.join(env.root, 'secret.txt'), path.join(env.root, 'output', 'link.txt'));

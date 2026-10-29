@@ -12,10 +12,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { REPO_ROOT, loadConfig } from '../config.js';
+import { ENV_FILE, loadConfig } from '../config.js';
 import { loadDotEnv } from '../lib/env.js';
 
-loadDotEnv(path.join(REPO_ROOT, '.env'));
+loadDotEnv(ENV_FILE);
 
 // ------------------------------------------------------------------ tham số
 function parseArgs(argv: string[]) {

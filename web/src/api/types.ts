@@ -263,11 +263,9 @@ export interface AppEvent {
 export interface Meta {
   /** Trình dựng bản hoàn chỉnh đang dùng và lý do. */
   final_renderer?: {
-    mode: string;
-    active: 'shotcut' | 'ffmpeg' | null;
+    active: 'ffmpeg' | null;
     reason: string;
-    shotcut?: { configured: boolean; ready: boolean; detail: string | null };
-    ffmpeg?: { available: boolean; path: string | null };
+    ffmpeg: { available: boolean; path: string | null };
   };
   /** Tool xoá logo Veo chạy sau khi render bản hoàn chỉnh. */
   watermark_remover?: {
@@ -328,8 +326,10 @@ export interface FinalCut {
   selection: FinalCutSelection[];
   selection_signature: string;
   edl: Edl | null;
+  /** 'shotcut' chỉ có ở bản dựng cũ (lịch sử); bản mới luôn là 'ffmpeg'. */
   renderer: 'shotcut' | 'ffmpeg' | null;
   video_path: string | null;
+  /** Lịch sử: .mlt của bản Shotcut cũ; bản mới luôn null. */
   project_file_path: string | null;
   contact_sheet_path: string | null;
   /** URL tĩnh (/files/...) nếu server trả; web tự dựng từ *_path khi vắng. */
@@ -337,6 +337,7 @@ export interface FinalCut {
   contact_sheet_url?: string | null;
   duration_s: number | null;
   job_id: number | null;
+  /** Lịch sử: mã job render của Shotcut MCP (bản cũ). */
   render_ref: string | null;
   /** 0–100, riêng cho từng bước (`stage`). */
   progress: number | null;
