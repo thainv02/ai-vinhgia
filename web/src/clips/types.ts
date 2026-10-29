@@ -1,3 +1,4 @@
+import type { CaptionLayout } from './subtitleBox';
 // Kiểu dữ liệu của tính năng "Cắt clip từ video dài" (hợp đồng: clips-spec.md mục 5). Dùng chung cho app chính và trang planner LAN.
 
 export type SourceStatus = 'uploaded' | 'transcribing' | 'transcribed' | 'failed' | 'cancelled';
@@ -44,7 +45,7 @@ export interface ClipCut {
   error: string | null;
   aspect: string;
   reframe: { mode?: ReframeMode } | null;
-  captions: { preset?: CaptionPreset } | null;
+  captions: { preset?: CaptionPreset; layout?: CaptionLayout | null } | null;
   duration_s: number | null;
   video_url: string | null;
   srt_url: string | null;
@@ -64,6 +65,11 @@ export interface ClipVerify {
 export interface CaptionWord {
   i: number;
   w: string;
+}
+
+export interface ClipCaptionStyle {
+  preset: CaptionPreset;
+  layout: CaptionLayout | null;
 }
 
 export interface Clip {
@@ -91,6 +97,10 @@ export interface Clip {
   caption_edited: boolean;
   /** Đề xuất bổ sung hợp đồng: chữ phụ đề hiện tại (đã sửa tay hoặc đã khôi phục dấu câu). Vắng thì dùng chữ ASR. */
   caption_words?: CaptionWord[] | null;
+  /** Kiểu phụ đề đã lưu của clip; `layout` null = căn giữa-dưới mặc định. */
+  captions?: ClipCaptionStyle;
+  /** Bản dựng gần nhất dùng kiểu/vị trí phụ đề khác kiểu đang lưu. */
+  captions_outdated?: boolean;
   latest_cut: ClipCut | null;
   cuts_count: number;
 }

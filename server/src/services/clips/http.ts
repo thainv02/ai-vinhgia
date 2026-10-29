@@ -18,6 +18,7 @@ import { zipChunks } from '../zip.js';
 import { captionsBody, clipsZipEntries, createClipBody, createManualClip, patchClip, patchClipBody, putCaptions } from './clips.js';
 import { clipLimits } from './lan.js';
 import { clipPlanBody, createClipPlan } from './plan.js';
+import { previewBody, renderPreviewFrame } from './preview-frame.js';
 import { cancelClipCut, renderBody, startClipRender } from './render.js';
 import { getClipProject, getClipRow, getCutRow, getSourceRow, projectClips, projectSource, readTranscript } from './repo.js';
 import { assertDiskRoom, assertSourceProbe, createClipProject, createClipProjectBody, makePoster, patchClipProject, patchClipProjectBody, queuePreview, registerSource, sourceLimits, sourceTmpDir } from './source.js';
@@ -238,6 +239,13 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     const { clip } = clipOf(asId(req));
     const body = parse(captionsBody, req.body ?? {});
     return limited(env, 'edit', req, reply, () => ({ clip: clipJson(ctx, putCaptions(ctx, clip.id, body), env.view(req)) }));
+  });
+
+  // Xem thử một khung hình (ffmpeg + ASS thật): cùng hạn mức với sửa clip; tối đa 1 tiến trình, yêu cầu mới thay yêu cầu cũ.
+  app.post(`${p}/clips/:id/preview-frame`, async (req, reply) => {
+    const { clip } = clipOf(asId(req));
+    const body = parse(previewBody, req.body ?? {});
+    return limited(env, 'edit', req, reply, () => renderPreviewFrame(ctx, clip.id, body, { lan: env.lan }));
   });
 
   // ---------------------------------------------------------------- dựng

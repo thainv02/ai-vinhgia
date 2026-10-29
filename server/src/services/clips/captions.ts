@@ -5,7 +5,8 @@
  * louisedesadeleer/clipify (MIT); quy tắc ngắt cụm (ngắt cứng ở khoảng lặng ≥ 0.6 s, ngắt mềm ở dấu phẩy hoặc khoảng lặng ≥ 0.35 s) tự viết lại.
  * Phần còn lại (độ dài cụm, ASS/SRT bằng TypeScript, escape, ẩn từ, gộp từ khi sửa tay) là code của dự án này.
  */
-import type { CaptionPreset } from '../../db/types.js';
+import { z } from 'zod';
+import { CAPTION_PRESETS, type CaptionPreset } from '../../db/types.js';
 import { pauseBefore, srtTime, type Transcript } from './transcript.js';
 
 export interface CapWord {
@@ -94,6 +95,60 @@ export function assTime(sec: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(total % 100).padStart(2, '0')}`;
 }
 
+/**
+ * Vị trí hộp phụ đề, tỉ lệ 0–1 của khung ĐẦU RA: `left` = mép trái, `width` = bề rộng hộp, `bottom` = khoảng cách từ đáy khung tới đáy hộp.
+ * Thiếu layout = căn giữa-dưới như mặc định.
+ */
+export const captionLayoutSchema = z
+  .object({
+    left: z.number().min(0).max(1),
+    width: z.number().min(0.25).max(1),
+    bottom: z.number().min(0).max(0.9),
+  })
+  .refine((l) => l.left + l.width <= 1 + 1e-9, { message: 'left + width không được vượt quá 1' });
+export type CaptionLayout = z.infer<typeof captionLayoutSchema>;
+
+/** Lề ASS theo layout: MarginL/MarginR/MarginV (px của PlayRes). */
+export function layoutMargins(l: CaptionLayout, width: number, height: number): { marginL: number; marginR: number; marginV: number } {
+  return {
+    marginL: Math.max(0, Math.round(l.left * width)),
+    marginR: Math.max(0, Math.round((1 - l.left - l.width) * width)),
+    marginV: Math.max(0, Math.round(l.bottom * height)),
+  };
+}
+
+export interface CaptionStyle {
+  preset: CaptionPreset;
+  layout: CaptionLayout | null;
+}
+
+/** Kiểu phụ đề từ JSON đã lưu (clip hoặc bản dựng): preset mặc định `highlight`, layout hỏng/ngoài khoảng bị bỏ (về mặc định). */
+export function parseCaptionStyle(raw: string | null | undefined): CaptionStyle {
+  let o: { preset?: unknown; layout?: unknown } = {};
+  try {
+    const v = raw ? (JSON.parse(raw) as unknown) : null;
+    if (v && typeof v === 'object') o = v as typeof o;
+  } catch {
+    /* JSON hỏng: dùng mặc định */
+  }
+  const preset = (CAPTION_PRESETS as readonly string[]).includes(o.preset as string) ? (o.preset as CaptionPreset) : 'highlight';
+  const lay = captionLayoutSchema.safeParse(o.layout);
+  return { preset, layout: lay.success ? lay.data : null };
+}
+
+/** Hai kiểu có giống nhau không (layout so sánh tới 4 chữ số thập phân). */
+export function sameCaptionStyle(a: CaptionStyle, b: CaptionStyle): boolean {
+  if (a.preset !== b.preset) return false;
+  if (!a.layout || !b.layout) return !a.layout && !b.layout;
+  const r = (x: number): number => Math.round(x * 1e4);
+  return r(a.layout.left) === r(b.layout.left) && r(a.layout.width) === r(b.layout.width) && r(a.layout.bottom) === r(b.layout.bottom);
+}
+
+/** JSON lưu vào `clips.captions` / `clip_cuts.captions`: `{preset}` và thêm `layout` chỉ khi có (bản mặc định giữ đúng dạng cũ). */
+export function captionStyleJson(s: CaptionStyle): string {
+  return JSON.stringify(s.layout ? { preset: s.preset, layout: s.layout } : { preset: s.preset });
+}
+
 export interface AssOptions {
   preset: Exclude<CaptionPreset, 'none'>;
   /** Độ phân giải đầu ra (PlayRes). */
@@ -103,6 +158,8 @@ export interface AssOptions {
   /** Giây tuyệt đối của đầu clip: mọi thời gian trong ASS tính từ đây. */
   clipStart: number;
   clipEnd: number;
+  /** Vị trí hộp phụ đề do người dùng kéo; thiếu = mặc định (căn giữa-dưới). */
+  layout?: CaptionLayout | null;
 }
 
 /** Cỡ chữ, viền, lề theo kích thước khung (chuẩn của đặc tả: 1080×1920, viền 8, bóng 3, MarginV 300). */
@@ -146,6 +203,12 @@ export function lineBreakIndex(words: string[], maxLineChars: number): number | 
  */
 export function buildAss(words: CapWord[], o: AssOptions): string {
   const m = assMetrics(o.width, o.height, o.preset);
+  const lay = o.layout ? layoutMargins(o.layout, o.width, o.height) : null;
+  const marginL = lay?.marginL ?? m.marginX;
+  const marginR = lay?.marginR ?? m.marginX;
+  const marginV = lay?.marginV ?? m.marginV;
+  // có layout: ngắt dòng theo bề rộng hộp (đã trừ lề) và để libass tự xuống dòng nếu vẫn tràn (WrapStyle 0); mặc định giữ nguyên WrapStyle 2
+  const maxLineChars = lay ? Math.max(4, Math.floor((o.width - lay.marginL - lay.marginR) / (m.fontSize * 0.6))) : m.maxLineChars;
   const font = o.font.replace(/[,\r\n]/g, ' ').trim() || 'Arial';
   const color = o.preset === 'karaoke' ? KARAOKE_COLOR : HIGHLIGHT_COLOR;
   const lines: string[] = [
@@ -154,12 +217,12 @@ export function buildAss(words: CapWord[], o: AssOptions): string {
     'ScriptType: v4.00+',
     `PlayResX: ${o.width}`,
     `PlayResY: ${o.height}`,
-    'WrapStyle: 2',
+    `WrapStyle: ${lay ? 0 : 2}`,
     'ScaledBorderAndShadow: yes',
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,${font},${m.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,${m.outline},${m.shadow},2,${m.marginX},${m.marginX},${m.marginV},1`,
+    `Style: Default,${font},${m.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,${m.outline},${m.shadow},2,${marginL},${marginR},${marginV},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Name, Style, MarginL, MarginR, MarginV, Effect, Text',
@@ -168,7 +231,7 @@ export function buildAss(words: CapWord[], o: AssOptions): string {
   const groups = groupWords(words, o.preset);
   groups.forEach((g, gi) => {
     const texts = g.map((w) => escapeAssText(w.w));
-    const brk = lineBreakIndex(texts, m.maxLineChars);
+    const brk = lineBreakIndex(texts, maxLineChars);
     const render = (active: number | null): string =>
       texts
         .map((t, k) => {

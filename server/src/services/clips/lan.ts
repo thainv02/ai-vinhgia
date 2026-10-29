@@ -30,7 +30,8 @@ export function isLanClipServable(ctx: AppContext, rel: string): boolean {
   const isPreview = sub === 'source/preview_480p.mp4';
   const isThumb = sub === 'thumbs/poster.jpg' || /^thumbs\/K\d+\.jpg$/.test(sub);
   const isCut = /^clips\/K\d+_v\d+\.(mp4|srt)$/.test(sub);
-  if (!isPreview && !isThumb && !isCut) return false;
+  const isFrame = /^frames\/K\d+_[a-z0-9]+\.jpg$/.test(sub); // khung xem thử phụ đề
+  if (!isPreview && !isThumb && !isCut && !isFrame) return false;
   const proj = ctx.db.prepare("SELECT id FROM projects WHERE lower(slug) = lower(?) AND source = 'lan' AND kind = 'clips' AND deleted_at IS NULL").get(m[1]!) as { id: number } | undefined;
   if (!proj) return false;
   if (isCut) {

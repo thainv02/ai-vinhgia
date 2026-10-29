@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export type Route = { name: 'list' } | { name: 'new' } | { name: 'plan'; id: number } | { name: 'tool' } | { name: 'clips' } | { name: 'clip'; id: number };
+export type Route = { name: 'list' } | { name: 'new' } | { name: 'plan'; id: number } | { name: 'tool' } | { name: 'clips' } | { name: 'clip'; id: number } | { name: 'settings' };
 
 /** Đường dẫn dạng hash (#/, #/new, #/plan/12, #/tools/remove-logo, #/clips, #/clips/5): listener LAN chỉ cần phục vụ một trang planner.html. */
 export function parseHash(hash: string): Route {
@@ -9,6 +9,7 @@ export function parseHash(hash: string): Route {
   const c = /^#\/clips\/(\d+)$/.exec(hash);
   if (c) return { name: 'clip', id: Number(c[1]) };
   if (hash === '#/clips') return { name: 'clips' };
+  if (hash === '#/settings') return { name: 'settings' };
   if (hash === '#/new') return { name: 'new' };
   if (hash === '#/tools/remove-logo') return { name: 'tool' };
   return { name: 'list' };
@@ -17,6 +18,8 @@ export function parseHash(hash: string): Route {
 export const hrefOf = (route: Route): string =>
   route.name === 'plan'
     ? `#/plan/${route.id}`
+    : route.name === 'settings'
+      ? '#/settings'
     : route.name === 'new'
       ? '#/new'
       : route.name === 'tool'

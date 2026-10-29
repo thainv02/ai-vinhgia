@@ -10,6 +10,7 @@ import { lanFileUrl, scrubForLan } from '../lan-common.js';
 import { fileUrl, parseJson } from '../repo.js';
 import { projectDeleteBlocks } from '../trash.js';
 import { abs, getClipRow, getCutRow, getSourceRow, latestCut, posterRel, previewRel, projectClips, projectSource, readTranscript, thumbRel } from './repo.js';
+import { parseCaptionStyle, sameCaptionStyle } from './captions.js';
 import { excerptOf, type Transcript } from './transcript.js';
 
 export interface ViewOpts {
@@ -138,6 +139,7 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
   }
   const cut = latestCut(ctx, row.id);
   const cuts = (ctx.db.prepare('SELECT COUNT(*) AS n FROM clip_cuts WHERE clip_id = ?').get(row.id) as { n: number }).n;
+  const style = parseCaptionStyle(row.captions);
   return {
     id: row.id,
     project_id: row.project_id,
@@ -162,6 +164,10 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
     caption_edited: row.caption_source === 'user',
     /** Đề xuất bổ sung hợp đồng: chữ phụ đề hiện tại `[{i, w}]` (đã khôi phục dấu câu / sửa tay); null = dùng chữ ASR. */
     caption_words: cw,
+    /** Kiểu phụ đề đã lưu của clip: `layout` = null nghĩa là căn giữa-dưới mặc định. */
+    captions: style,
+    /** Bản dựng gần nhất (đã xong) dùng kiểu/vị trí phụ đề khác với kiểu đang lưu → cần dựng lại. */
+    captions_outdated: !!cut && cut.status === 'ready' && !sameCaptionStyle(parseCaptionStyle(cut.captions), style),
     latest_cut: cut ? cutJson(ctx, cut, o) : null,
     cuts_count: cuts,
   };
