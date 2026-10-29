@@ -1,9 +1,11 @@
+import type { CaptionLayout } from './subtitleBox';
 import type {
   Clip,
   ClipCut,
   ClipProjectDetail,
   ClipProjectSummary,
   ClipServerStatus,
+  CaptionPreset,
   CaptionWord,
   PlanInput,
   PlanJob,
@@ -50,13 +52,15 @@ export function makeClipApi(base: '/api' | '/lan/api', io: ClipIo) {
     transcript: (sourceId: number, from: number, limit: number) => io.get<TranscriptPage>(`${base}/sources/${sourceId}/transcript?from=${from}&limit=${limit}`),
     transcriptUrl: (sourceId: number, ext: 'srt' | 'txt') => `${base}/sources/${sourceId}/transcript.${ext}`,
     clipPlan: async (projectId: number, input: PlanInput) => unwrap<'job', PlanJob>(await io.post<{ job: PlanJob } | PlanJob>(`${base}/projects/${projectId}/clip-plan`, input), 'job'),
-    patchClip: async (id: number, input: { status?: Clip['status']; title?: string; start_word?: number; end_word?: number }) =>
+    patchClip: async (id: number, input: { status?: Clip['status']; title?: string; start_word?: number; end_word?: number; captions?: { preset?: CaptionPreset; layout?: CaptionLayout | null } }) =>
       unwrap<'clip', Clip>(await io.patch<{ clip: Clip } | Clip>(`${base}/clips/${id}`, input), 'clip'),
     createClip: async (projectId: number, input: { start_word: number; end_word: number; title?: string }) =>
       unwrap<'clip', Clip>(await io.post<{ clip: Clip } | Clip>(`${base}/projects/${projectId}/clips`, input), 'clip'),
     putCaptions: async (id: number, words: CaptionWord[]) => unwrap<'clip', Clip>(await io.put<{ clip: Clip } | Clip>(`${base}/clips/${id}/captions`, { words }), 'clip'),
     renderClip: async (id: number, input: RenderInput) => unwrap<'cut', ClipCut>(await io.post<{ cut: ClipCut } | ClipCut>(`${base}/clips/${id}/render`, input), 'cut'),
     clipStatus: () => io.get<ClipServerStatus>(`${base}/clip-status`),
+    /** Dựng MỘT khung hình thật (ffmpeg + ASS) để xem thử; `at` = giây tính từ đầu clip. */
+    previewFrame: (id: number, input: { at?: number; captions?: { preset?: CaptionPreset; layout?: CaptionLayout | null } }) => io.post<{ url: string; at: number; width: number; height: number }>(`${base}/clips/${id}/preview-frame`, input),
     cancelCut: (id: number) => io.post<unknown>(`${base}/clip-cuts/${id}/cancel`),
     zipUrl: (projectId: number) => `${base}/projects/${projectId}/clips.zip`,
   };

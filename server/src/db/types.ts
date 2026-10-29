@@ -342,6 +342,8 @@ export interface ClipRow {
   job_id: number | null;
   caption_words: string | null;
   caption_source: 'ai' | 'user' | null;
+  /** JSON {preset?, layout?} kiểu phụ đề đã lưu; null = mặc định. */
+  captions: string | null;
   created_at: string;
   updated_at: string;
 }

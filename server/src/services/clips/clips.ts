@@ -5,13 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { AppContext } from '../../context.js';
-import { CLIP_STATUSES, type ClipRow, type ProjectRow, type SourceVideoRow } from '../../db/types.js';
+import { CAPTION_PRESETS, CLIP_STATUSES, type ClipRow, type ProjectRow, type SourceVideoRow } from '../../db/types.js';
 import { AppError, badRequest, conflict } from '../../lib/errors.js';
 import { run } from '../final-render/ffmpeg-renderer.js';
 import { ffmpegOf } from '../media.js';
 import { emitProject } from '../project-view.js';
 import { logEvent } from '../repo.js';
 import type { ZipEntry } from '../zip.js';
+import { captionLayoutSchema, captionStyleJson, parseCaptionStyle } from './captions.js';
 import { abs, getClipProject, getClipRow, getSourceRow, projectClips, projectSource, readTranscript, thumbRel, thumbsDirRel } from './repo.js';
 import { sourceFileOk } from './source.js';
 import { sentenceOfWord, snapBounds, type Transcript } from './transcript.js';
@@ -25,7 +26,9 @@ const noControl = (s: string) => !/[\u0000-\u001f\u007f]/.test(s);
 const title = z.string().trim().max(200).refine(noControl, 'tiêu đề không được chứa ký tự điều khiển');
 const wordIdx = z.number().int().min(0);
 
-export const patchClipBody = z.object({ status: z.enum(CLIP_STATUSES), title, start_word: wordIdx, end_word: wordIdx }).partial();
+/** Kiểu phụ đề của clip: `preset` và/hoặc `layout` (null = về vị trí mặc định). Trường vắng giữ nguyên giá trị đã lưu. */
+export const captionStyleBody = z.object({ preset: z.enum(CAPTION_PRESETS), layout: captionLayoutSchema.nullable() }).partial();
+export const patchClipBody = z.object({ status: z.enum(CLIP_STATUSES), title, start_word: wordIdx, end_word: wordIdx, captions: captionStyleBody }).partial();
 export const createClipBody = z.object({ start_word: wordIdx, end_word: wordIdx, title: title.optional() });
 export const captionsBody = z.object({
   words: z
@@ -179,6 +182,14 @@ export function patchClip(ctx: AppContext, id: number, body: z.infer<typeof patc
         rangeChanged = true;
       }
     }
+    let styleChanged = false;
+    if (body.captions !== undefined) {
+      const cur = parseCaptionStyle(row.captions);
+      const next = { preset: body.captions.preset ?? cur.preset, layout: body.captions.layout === undefined ? cur.layout : body.captions.layout };
+      sets.push('captions = ?');
+      args.push(captionStyleJson(next));
+      styleChanged = true;
+    }
     if (!sets.length) return row;
     sets.push('updated_at = ?');
     args.push(ctx.now());
@@ -187,7 +198,7 @@ export function patchClip(ctx: AppContext, id: number, body: z.infer<typeof patc
     logEvent(ctx, {
       project_id: row.project_id,
       type: 'clip.updated',
-      message: `Clip ${row.code}: ${[body.status ? `trạng thái ${body.status}` : '', body.title !== undefined ? 'đổi tiêu đề' : '', rangeChanged ? `đổi điểm cắt (từ ${after.start_word}–${after.end_word}, ${after.start_s}–${after.end_s}s)` : ''].filter(Boolean).join(', ')}`,
+      message: `Clip ${row.code}: ${[body.status ? `trạng thái ${body.status}` : '', body.title !== undefined ? 'đổi tiêu đề' : '', rangeChanged ? `đổi điểm cắt (từ ${after.start_word}–${after.end_word}, ${after.start_s}–${after.end_s}s)` : '', styleChanged ? 'đổi kiểu/vị trí phụ đề' : ''].filter(Boolean).join(', ')}`,
     });
     if (rangeChanged) ctx.afterCommit(() => queueThumb(ctx, id));
     emitClip(ctx, id, row.project_id);

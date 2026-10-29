@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError, errorMessage } from '../api/errors';
-import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { InlineError } from '../components/States';
 import { fmtSeconds } from '../lib/finalCut';
@@ -9,8 +8,8 @@ import { fmtRelative } from '../lib/format';
 import { toast } from '../lib/toast';
 import { useNow } from '../lib/useNow';
 import { planner } from './api';
-import { Badge } from '../components/StatusBadge';
-import { fmtMB, ProgressBar, StepHeader } from './parts';
+import { fmtMB, ProgressBar } from './parts';
+import { Btn } from './ws-ui';
 import type { SceneVideo, SceneVideoLimits, ScenePlanView } from './types';
 
 /** Kiểm tra nhanh phía trình duyệt trước khi gửi (server vẫn kiểm tra lại magic bytes, dung lượng, thời lượng bằng ffprobe). */
@@ -22,33 +21,29 @@ export function checkVideoFile(file: File, maxBytes: number): string | null {
   return null;
 }
 
-/** Một bản video đã tải lên: trình phát nhỏ 9:16, thông tin và nút chọn bản này. */
+/** Một bản video đã tải lên: trình phát nhỏ 9:16, thông tin và nút chọn lại. */
 function VideoCard({ v, busy, onSelect }: { v: SceneVideo; busy: boolean; onSelect: () => void }) {
   const now = useNow();
   return (
-    <li className={`scene-video-card flex min-w-0 flex-col gap-2 rounded-lg border bg-surface p-2 ${v.selected ? 'border-ok-fg ring-1 ring-ok-fg' : 'border-line'}`}>
-      <div className="mx-auto w-full max-w-[190px] overflow-hidden rounded-md bg-ink">
-        {/* #t=0.5: hiện một khung hình thật thay vì khung đầu (thường đen) khi chưa phát */}
-        <video src={`${v.url}#t=0.5`} controls preload="metadata" playsInline aria-label={`Video bản ${v.attempt}: ${v.file_name}`} className="aspect-[9/16] w-full object-contain" />
-      </div>
-      <div className="min-w-0 text-xs">
+    <li className={`ws-vid ${v.selected ? 'sel' : ''}`}>
+      {/* #t=0.5: hiện một khung hình thật thay vì khung đầu (thường đen) khi chưa phát */}
+      <video src={`${v.url}#t=0.5`} controls preload="metadata" playsInline aria-label={`Video bản ${v.attempt}: ${v.file_name}`} />
+      <div className="ws-vid-meta">
         <div className="flex flex-wrap items-center gap-1.5">
-          <strong className="text-[13px]">Bản {v.attempt}</strong>
-          {v.selected && <Badge tone="ok">Đang dùng</Badge>}
+          <strong>Bản {v.attempt}</strong>
+          {v.selected && <span className="av-badge av-badge-ok">Đang dùng</span>}
         </div>
-        <p className="truncate text-muted" title={v.file_name}>
-          {v.file_name}
-        </p>
-        <p className="text-muted">
+        <p title={v.file_name}>{v.file_name}</p>
+        <p>
           {v.duration_s !== null ? fmtSeconds(v.duration_s) : '—'} · {v.width && v.height ? `${v.width}×${v.height}` : '—'} · {fmtMB(v.bytes)}
           {v.has_audio === false ? ' · không có âm thanh' : ''}
         </p>
-        <p className="text-muted">Tải lên {fmtRelative(v.uploaded_at, now)}</p>
+        <p>Tải lên {fmtRelative(v.uploaded_at, now)}</p>
       </div>
       {!v.selected && (
-        <Button size="sm" loading={busy} onClick={onSelect} aria-label={`Chọn bản ${v.attempt} làm video của cảnh`}>
-          Dùng bản này
-        </Button>
+        <Btn size="sm" loading={busy} onClick={onSelect} aria-label={`Chọn bản ${v.attempt} làm video của cảnh`}>
+          Chọn lại bản này
+        </Btn>
       )}
     </li>
   );
@@ -108,10 +103,13 @@ export function VideoStep({ planId, scene, limits }: { planId: number; scene: Sc
   const verifying = !!up && up.total > 0 && up.loaded >= up.total;
 
   return (
-    <section className="video-step bg-surface p-4" aria-label={`${scene.code}: Bước 3, tải lên video đã tạo`}>
-      <StepHeader n={3} title="Tải lên video đã tạo" sub={`Video Google Flow của cảnh ${scene.code}: mp4 hoặc mov, tối đa ${fmtMB(limits.max_bytes)}, dài ${limits.min_s}–${limits.max_s} giây`} />
-      <div className="video-upload-layout">
-        <div className="space-y-2">
+    <section className="av-card ws-card now" aria-label={`${scene.code}: Bước 3, tải lên video đã tạo`}>
+      <div className="ws-card-head">
+        <h3>Bước 3 · Tải video đã tạo lên</h3>
+        <span className="av-muted" style={{ fontSize: 12 }}>{vs.count}/{vs.max} bản</span>
+      </div>
+      <div className="ws-upload">
+        <div className="ws-col">
           <div
             onDragOver={(e) => {
               if (!reason) {
@@ -126,17 +124,15 @@ export function VideoStep({ planId, scene, limits }: { planId: number; scene: Sc
               const f = e.dataTransfer.files?.[0];
               if (f && !reason) start(f);
             }}
-            className={`video-dropzone rounded-md border border-dashed p-3 text-center ${dragging ? 'border-info-fg bg-info-bg' : 'border-line-strong bg-surface-2'}`}
+            className={`av-drop ${dragging ? 'over' : ''}`}
           >
-            <Icon name="upload" size={20} className="mx-auto text-muted" />
-            <p className="mt-1 text-[13px] font-medium">Kéo video vào đây hoặc</p>
-            <div className="mt-1.5">
-              <Button variant="primary" size="sm" icon={<Icon name="upload" size={14} />} disabledReason={reason} onClick={() => input.current?.click()}>
-                {vs.count > 0 ? 'Tải thêm một bản' : 'Chọn video để tải lên'}
-              </Button>
-            </div>
-            <p className="mt-1.5 text-xs text-muted">{vs.count}/{vs.max} bản đã tải lên cho cảnh này</p>
-            {reason && !up && <p className="mt-1 text-xs text-warn-fg">{reason}</p>}
+            <Icon name="upload" size={22} className="av-muted" />
+            <span className="ws-drop-title">Kéo video từ thư mục Tải xuống vào đây</span>
+            <span className="av-muted" style={{ fontSize: 12 }}>mp4 hoặc mov, {limits.min_s}–{limits.max_s} giây, tối đa {fmtMB(limits.max_bytes)}</span>
+            <Btn size="sm" icon="upload" disabledReason={reason} onClick={() => input.current?.click()}>
+              {vs.count > 0 ? 'Chọn thêm một bản…' : 'Chọn file…'}
+            </Btn>
+            {reason && !up && <span style={{ fontSize: 12, color: 'var(--warn-fg)' }}>{reason}</span>}
           </div>
           <input
             ref={input}
@@ -151,28 +147,21 @@ export function VideoStep({ planId, scene, limits }: { planId: number; scene: Sc
             }}
           />
           {up && (
-            <div className="space-y-1.5 rounded-md border border-line bg-surface-2 p-2.5" role="status">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0 truncate font-medium" title={up.name}>
-                  {up.name}
-                </span>
-                <span className="shrink-0 text-muted">{verifying ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}</span>
+            <div className="ws-progress" role="status">
+              <div className="ws-progress-row">
+                <span title={up.name}>{up.name}</span>
+                <span className="av-muted">{verifying ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}</span>
               </div>
               <ProgressBar value={verifying ? null : pct} label={`Tiến độ tải video ${scene.code}`} />
-              <Button size="sm" onClick={() => abortRef.current?.()}>
-                Hủy tải lên
-              </Button>
+              <Btn size="sm" onClick={() => abortRef.current?.()}>Hủy tải lên</Btn>
             </div>
           )}
           {(problem || select.isError) && <InlineError>{problem ?? errorMessage(select.error)}</InlineError>}
-          <p className="text-xs text-muted">Video mới tải lên tự thành video của cảnh để «Edit tự động». Có thể chọn lại bản khác bên cạnh.</p>
         </div>
 
         <div className="min-w-0">
-          {vs.items.length === 0 ? (
-            <p className="rounded-md bg-surface-2 px-3 py-6 text-center text-[13px] text-muted">Chưa có video nào cho {scene.code}. Tạo video trên Google Flow rồi tải lên đây.</p>
-          ) : (
-            <ul className="scene-video-grid">
+          {vs.items.length > 0 && (
+            <ul className="ws-vids">
               {vs.items.map((v) => (
                 <VideoCard key={v.id} v={v} busy={select.isPending && select.variables === v.id} onSelect={() => select.mutate(v.id)} />
               ))}

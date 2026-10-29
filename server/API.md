@@ -1021,6 +1021,7 @@ Clip = {
   transcript_excerpt,                         // ≤ 400 ký tự (chữ phụ đề hiện tại, từ ẩn bỏ qua)
   caption_edited,                             // true nếu người dùng sửa tay chữ phụ đề
   caption_words: [{i, w}] | null,             // (bổ sung hợp đồng) chữ phụ đề hiện tại: đã khôi phục dấu câu (AI) hoặc sửa tay; null = dùng chữ ASR
+  captions: {preset, layout: {left, width, bottom} | null},  // kiểu phụ đề đã lưu (PATCH captions); captions_outdated: bản dựng gần nhất (ready) dùng kiểu khác kiểu đang lưu
   latest_cut: ClipCut | null, cuts_count
 }
 
@@ -1060,7 +1061,10 @@ PlanJob = {
 | `PATCH /api/clips/:id {status?, title?, start_word?, end_word?}` | `{clip}`. Đổi điểm cắt bằng chỉ số từ: server tính lại câu và giây (14.4); độ dài 3–300 giây (`400 CLIP_LENGTH`), chỉ số sai `400 INVALID_WORD_RANGE`. Chữ phụ đề đã sửa của các từ còn trong khoảng mới được giữ |
 | `POST /api/projects/:id/clips {start_word, end_word, title?}` | `201 {clip}` tạo tay (`created_by:'user'`, `status:'approved'`) |
 | `PUT /api/clips/:id/captions {words:[{i, w}]}` | `{clip}`. Sửa chữ từng từ, giữ mốc thời gian; `w:""` = ẩn từ (thời gian cộng vào từ hiển thị đứng trước, nên "ca cao a tiso" → `ca="Cacao"`, `cao=""`, `a="Actiso"`, `tiso=""`). Gửi một phần cũng được (server gộp với chữ hiện có); `i` ngoài clip → `400 INVALID_WORD_RANGE`; mỗi chữ ≤ 60 ký tự |
-| `POST /api/clips/:id/render {aspect?, reframe_mode?, captions_preset?}` | `201 {cut: ClipCut}`. `aspect` mặc định `9:16`; `reframe_mode` ∈ `fit`(nền mờ, mặc định khi nguồn ngang)\|`center`, bỏ qua khi nguồn đã đúng tỉ lệ; `captions_preset` mặc định `highlight`. Xếp vào hàng đợi render chung (app trước LAN, `RENDER_CONCURRENCY`) |
+| `POST /api/clips/:id/render {aspect?, reframe_mode?, captions_preset?, captions_layout?}` | `201 {cut: ClipCut}`. `aspect` mặc định `9:16`; `reframe_mode` ∈ `fit`(nền mờ, mặc định khi nguồn ngang)\|`center`, bỏ qua khi nguồn đã đúng tỉ lệ; `captions_preset`/`captions_layout` vắng = dùng kiểu đã lưu của clip (`clip.captions`; mặc định `highlight`, không layout), `captions_layout:null` = vị trí mặc định. Bản dựng ghi lại `captions` = `{preset}` hoặc `{preset, layout}`. Xếp vào hàng đợi render chung (app trước LAN, `RENDER_CONCURRENCY`) |
+| `PATCH /api/clips/:id {captions: {preset?, layout?}}` | `{clip}`. Lưu kiểu phụ đề của clip. `layout` = `{left, width, bottom}` là tỉ lệ 0–1 của khung đầu ra (mép trái, bề rộng hộp, khoảng cách từ đáy khung tới đáy hộp); kiểm tra `left ≥ 0`, `0.25 ≤ width ≤ 1`, `left + width ≤ 1`, `0 ≤ bottom ≤ 0.9` (sai → `400`); `layout:null` xoá về căn giữa-dưới mặc định; trường vắng giữ nguyên. ASS: `Alignment 2`, `MarginL = round(left·W)`, `MarginR = round((1−left−width)·W)`, `MarginV = round(bottom·H)`, `WrapStyle 0` (chỉ khi có layout) |
+| `POST /api/clips/:id/preview-frame {at?, captions?: {preset?, layout?}}` | `200 {url, at, width, height}`. Dựng MỘT khung jpg (ffmpeg + ASS + font như bản dựng) ở giây `at` tính từ đầu clip (mặc định 40%); `captions` chưa lưu chỉ để xem thử, vắng thì dùng kiểu đã lưu. Tối đa 1 ffmpeg xem thử cùng lúc: yêu cầu mới thay yêu cầu đang chạy (cái cũ → `409 PREVIEW_STALE`). Ảnh ở `output/<slug>/clips/frames/<code>_<mã>.jpg`, giữ 6 ảnh gần nhất. LAN: tính vào hạn mức sửa clip |
+
 | `POST /api/clip-cuts/:id/cancel` | `{cut}`: hủy bản đang dựng, kill ffmpeg, xoá file dở |
 | `GET /api/projects/:id/clips.zip` | ZIP: mọi clip có bản `ready` mới nhất (`K1_<tieu-de>_v2.mp4` + `.srt`); không có gì → `404` |
 | `GET /api/projects/:id/clips` · `GET /api/clips/:id` · `GET /api/clips/:id/cuts` | (bổ sung) danh sách clip · một clip `{clip}` · mọi phiên bản dựng của clip (mới nhất trước) |

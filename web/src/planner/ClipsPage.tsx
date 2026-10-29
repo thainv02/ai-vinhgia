@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from '../components/Button';
-import { Icon } from '../components/Icon';
-import { ClipEnvProvider, type ClipEnv, type ClipQuota } from '../clips/env';
-import { ClipWorkspace } from '../clips/ClipWorkspace';
-import { useClipProjectList } from '../clips/hooks';
-import { NewClipProjectDialog } from '../clips/NewProjectDialog';
-import { ClipProjectList, type LinkComp } from '../clips/ProjectList';
+import { ErrorState, Skeleton } from '../components/States';
+import { fmtRelative } from '../lib/format';
 import { toast } from '../lib/toast';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
-import { lanClipApi, lanDeleteClipProject, planner } from './api';
+import { useNow } from '../lib/useNow';
+import { ClipEnvProvider, type ClipEnv, type ClipQuota } from '../clips/env';
+import { DesktopClipWorkspace } from '../clips/DesktopWorkspace';
+import { useClipProjectList } from '../clips/hooks';
+import { clock, SOURCE_STATUS_LABEL } from '../clips/lib';
+import { NewClipProjectDialog } from '../clips/NewProjectDialog';
+import type { ClipProjectSummary } from '../clips/types';
+import '../clips/clips-desktop.css';
+import { lanClipApi, lanDeleteClipProject } from './api';
 import type { PlannerStatus } from './types';
 import { hrefOf, navigate } from './useHashRoute';
 
@@ -21,7 +23,7 @@ const pick = (r: PlannerStatus['remaining'] | undefined, ...keys: string[]): num
   return null;
 };
 
-/** Hạn mức còn lại của chính người dùng trong giờ này, lấy từ `/lan/api/status` → `remaining`. */
+/** Hạn mức còn lại của chính người dùng trong giờ này, lấy từ `/lan/api/status` → `remaining` (giữ lại cho trang LAN; app desktop không hiển thị). */
 export function toClipQuota(status: PlannerStatus | undefined): ClipQuota | null {
   const r = status?.remaining;
   if (!r) return null;
@@ -37,30 +39,21 @@ export function toClipQuota(status: PlannerStatus | undefined): ClipQuota | null
   return q;
 }
 
-function useLanClipEnv(): ClipEnv {
-  const qc = useQueryClient();
-  const status = useQuery({ queryKey: ['status'], queryFn: planner.status, refetchInterval: 10_000 });
-  return {
-    api: lanClipApi,
-    scope: 'lan',
-    quota: toClipQuota(status.data),
-    refreshQuota: () => void qc.invalidateQueries({ queryKey: ['status'] }),
-    deleteProject: (id) => lanDeleteClipProject(id),
-  };
-}
+/** App desktop một người dùng: không có hạn mức theo người, nên không truy vấn/hiển thị số lượt còn lại. */
+const desktopEnv: ClipEnv = {
+  api: lanClipApi,
+  scope: 'lan',
+  quota: null,
+  deleteProject: (id) => lanDeleteClipProject(id),
+};
 
-const AnchorLink: LinkComp = ({ id, className, children }) => (
-  <a href={hrefOf({ name: 'clip', id })} className={className}>
-    {children}
-  </a>
-);
+const BADGE: Record<string, string> = { transcribed: 'ok', transcribing: 'warn', uploaded: 'warn', failed: 'danger', cancelled: 'neutral' };
 
-/** Tab "Cắt clip" của trang LAN: danh sách dự án của mọi người trong mạng + tạo dự án mới. */
+/** Màn "Cắt clip": danh sách dự án cắt clip + tạo dự án mới. */
 export function ClipsPage() {
   useDocumentTitle('Cắt clip');
-  const env = useLanClipEnv();
   return (
-    <ClipEnvProvider value={env}>
+    <ClipEnvProvider value={desktopEnv}>
       <ClipsList />
     </ClipEnvProvider>
   );
@@ -69,37 +62,81 @@ export function ClipsPage() {
 function ClipsList() {
   const [creating, setCreating] = useState(false);
   const q = useClipProjectList();
+  const now = useNow();
+  const rows: ClipProjectSummary[] = q.data ?? [];
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Cắt clip từ video dài</h1>
-          <p className="text-[13px] text-muted">Tải lên video dài có tiếng nói, AI chọn các đoạn hay, bạn duyệt rồi dựng clip 9:16 có phụ đề tiếng Việt và tải về.</p>
-        </div>
-        <Button variant="primary" icon={<Icon name="plus" />} onClick={() => setCreating(true)}>
+    <div className="cd-list-page">
+      <div className="av-page-head">
+        <h1 style={{ flex: '1 1 auto' }}>Cắt clip</h1>
+        <button type="button" className="av-btn av-btn-primary" onClick={() => setCreating(true)}>
           Dự án cắt clip mới
-        </Button>
+        </button>
       </div>
-      <ClipProjectList projects={q.data} loading={q.isLoading} error={q.error} onRetry={() => void q.refetch()} onCreate={() => setCreating(true)} Link={AnchorLink} />
+      <div className="cd-table-wrap">
+        {q.isLoading ? (
+          <Skeleton className="h-40" />
+        ) : q.error ? (
+          <ErrorState error={q.error} onRetry={() => void q.refetch()} />
+        ) : rows.length === 0 ? (
+          <div className="av-card cd-empty">Chưa có dự án cắt clip nào.</div>
+        ) : (
+          <div className="av-card av-table-wrap">
+            <table className="av-table">
+              <thead>
+                <tr>
+                  <th>Tên dự án</th>
+                  <th>Video nguồn</th>
+                  <th>Clip</th>
+                  <th>Cập nhật</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <a className="cd-row-link" href={hrefOf({ name: 'clip', id: p.id })}>
+                        {p.name}
+                      </a>
+                    </td>
+                    <td>
+                      {p.source_video ? (
+                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                          <span className={`av-badge av-badge-${BADGE[p.source_video.status] ?? 'neutral'}`}>{SOURCE_STATUS_LABEL[p.source_video.status] ?? p.source_video.status}</span>
+                          {p.source_video.duration_s ? <span className="av-muted av-mono">{clock(p.source_video.duration_s)}</span> : null}
+                        </span>
+                      ) : (
+                        <span className="av-muted">Chưa tải video</span>
+                      )}
+                    </td>
+                    <td>{p.clip_count ?? 0}</td>
+                    <td className="av-muted">{fmtRelative(p.updated_at ?? p.created_at, now)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <a className="av-btn av-btn-sm" href={hrefOf({ name: 'clip', id: p.id })}>
+                        Mở
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
       <NewClipProjectDialog key={creating ? 'o' : 'c'} open={creating} onClose={() => setCreating(false)} onCreated={(id) => navigate({ name: 'clip', id })} />
     </div>
   );
 }
 
-/** Trang một dự án cắt clip trên LAN: cùng luồng với app chính (gọn hơn), kèm số lượt còn lại. */
+/** Trang một dự án cắt clip. */
 export function ClipProjectPage({ id }: { id: number }) {
-  const env = useLanClipEnv();
   return (
-    <ClipEnvProvider value={env}>
-      <ClipWorkspace
+    <ClipEnvProvider value={desktopEnv}>
+      <DesktopClipWorkspace
         projectId={id}
-        back={
-          <a href={hrefOf({ name: 'clips' })} className="inline-flex items-center gap-1 text-[13px] text-muted hover:text-fg">
-            <Icon name="arrowLeft" size={14} /> Cắt clip
-          </a>
-        }
+        crumb={<a href={hrefOf({ name: 'clips' })}>Cắt clip</a>}
         onDeleted={() => {
-          toast.success('Đã xoá dự án (chủ máy khôi phục được trong 30 ngày).');
+          toast.success('Đã xoá dự án.');
           navigate({ name: 'clips' });
         }}
       />

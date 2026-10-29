@@ -1,49 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, errorMessage } from '../api/errors';
-import { Button, buttonClass } from '../components/Button';
 import { Icon } from '../components/Icon';
-import { Alert, EmptyState, ErrorState, InlineError, Skeleton } from '../components/States';
-import { Badge } from '../components/StatusBadge';
-import { fmtSeconds, renderQueueTitle } from '../lib/finalCut';
-import { fmtDateTime, fmtRelative } from '../lib/format';
+import { EmptyState, ErrorState, InlineError, Skeleton } from '../components/States';
+import { fmtSeconds } from '../lib/finalCut';
+import { fmtDateTime } from '../lib/format';
 import { toast } from '../lib/toast';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
-import { useNow } from '../lib/useNow';
 import { planner } from './api';
-import { fmtMB, ProgressBar } from './parts';
+import { fmtMB } from './parts';
 import type { ToolJob, ToolJobStatus, ToolStatus } from './types';
 
-const NAME_KEY = 'lan-tool-name';
-const readName = (): string => {
-  try {
-    return window.localStorage.getItem(NAME_KEY) ?? '';
-  } catch {
-    return '';
-  }
-};
-const saveName = (v: string) => {
-  try {
-    window.localStorage.setItem(NAME_KEY, v);
-  } catch {
-    /* trình duyệt chặn lưu: bỏ qua */
-  }
+const STATUS: Record<ToolJobStatus, { label: string; cls: string }> = {
+  queued: { label: 'Đang chờ', cls: 'av-badge-neutral' },
+  processing: { label: 'Đang xoá', cls: 'av-badge-info' },
+  ready: { label: 'Xong', cls: 'av-badge-ok' },
+  failed: { label: 'Lỗi', cls: 'av-badge-danger' },
+  cancelled: { label: 'Đã huỷ', cls: 'av-badge-neutral' },
+  expired: { label: 'Đã hết hạn', cls: 'av-badge-neutral' },
 };
 
-const STATUS: Record<ToolJobStatus, { label: string; tone: 'neutral' | 'info' | 'ok' | 'danger' | 'warn'; live?: boolean }> = {
-  queued: { label: 'Đang xếp hàng', tone: 'info', live: true },
-  processing: { label: 'Đang xoá logo', tone: 'info', live: true },
-  ready: { label: 'Sẵn sàng', tone: 'ok' },
-  failed: { label: 'Lỗi', tone: 'danger' },
-  cancelled: { label: 'Đã hủy', tone: 'neutral' },
-  expired: { label: 'Đã hết hạn', tone: 'neutral' },
-};
-
-const daysLeft = (iso: string, now: number): number => Math.max(0, Math.ceil((Date.parse(iso) - now) / 86_400_000));
-
-function JobCard({ job, onChanged }: { job: ToolJob; onChanged: () => void }) {
-  const now = useNow();
-  const cancel = useMutation({ mutationFn: () => planner.cancelToolJob(job.id), meta: { silent: true }, onSuccess: onChanged });
+function JobRow({ job, onChanged, onPreview }: { job: ToolJob; onChanged: () => void; onPreview: (j: ToolJob) => void }) {
+  const cancel = useMutation({ mutationFn: () => planner.cancelToolJob(job.id), meta: { silent: true }, onSuccess: onChanged, onError: (e) => toast.error(errorMessage(e)) });
   const retry = useMutation({
     mutationFn: () => planner.retryToolJob(job.id),
     meta: { silent: true },
@@ -51,209 +29,201 @@ function JobCard({ job, onChanged }: { job: ToolJob; onChanged: () => void }) {
       toast.success('Đã xếp lại hàng đợi');
       onChanged();
     },
+    onError: (e) => toast.error(errorMessage(e)),
   });
-  const st = STATUS[job.status];
   const waiting = job.status === 'queued' || job.status === 'processing';
   const download = `${job.original_name.replace(/\.[^.]+$/, '') || 'video'}_sach.mp4`;
+  const dims = job.input ? [job.input.width && job.input.height ? `${job.input.width}×${job.input.height}` : null, fmtMB(job.input.bytes)].filter(Boolean).join(' · ') : '';
   return (
-    <li className="rounded-lg border border-line bg-surface p-3 sm:p-4" aria-label={`Việc xoá logo: ${job.original_name}`}>
-      <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-        {job.output ? (
-          <div className="mx-auto w-full max-w-[170px] overflow-hidden rounded-md bg-ink sm:mx-0">
-            <video src={`${job.output.url}#t=0.5`} controls preload="metadata" playsInline aria-label={`Bản đã xoá logo: ${job.original_name}`} className="aspect-[9/16] w-full object-contain" />
-          </div>
-        ) : (
-          <div className="hidden aspect-[9/16] w-[170px] place-items-center rounded-md border border-dashed border-line-strong bg-surface-2 text-muted sm:grid" aria-hidden="true">
-            <Icon name="film" size={26} />
-          </div>
-        )}
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="min-w-0 truncate text-[15px] font-semibold" title={job.original_name}>
-              {job.original_name}
-            </h3>
-            <Badge tone={st.tone} live={st.live}>
-              {job.status === 'processing' && job.progress !== null ? `${st.label} ${Math.round(job.progress)}%` : job.status === 'queued' && job.queue_position ? `Chờ xoá logo (vị trí ${job.queue_position})` : st.label}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted">
-            {job.input ? `${fmtSeconds(job.input.duration_s)} · ${job.input.width && job.input.height ? `${job.input.width}×${job.input.height} · ` : ''}${fmtMB(job.input.bytes)}` : ''} · tải lên {fmtRelative(job.created_at, now)} ({fmtDateTime(job.created_at)})
-            {job.created_by_name ? ` · ${job.created_by_name}` : ''}
-          </p>
-
-          {job.status === 'processing' && (
-            <div className="space-y-1">
-              <ProgressBar value={job.progress} label={`Tiến độ xoá logo ${job.original_name}`} />
-              <p className="text-xs text-muted">
-                Khoảng 2 giây xử lý cho mỗi giây video. Có thể rời trang, việc vẫn chạy.
-                {job.running_count && job.concurrency ? ` Máy chủ đang chạy ${job.running_count}/${job.concurrency} việc.` : ''}
-              </p>
+    <tr>
+      <td>
+        <strong title={job.original_name}>{job.original_name}</strong>
+        {dims && <div className="av-muted" style={{ fontSize: 12, marginTop: 3 }}>{dims}</div>}
+      </td>
+      <td>{job.input ? fmtSeconds(job.input.duration_s) : '—'}</td>
+      <td>
+        {job.status === 'processing' ? (
+          <div className="flex items-center gap-2.5" style={{ minWidth: 170 }}>
+            <div className="av-bar" style={{ width: 110 }} role="progressbar" aria-label={`Tiến độ xoá logo ${job.original_name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={job.progress === null ? undefined : Math.round(job.progress)}>
+              <i style={{ width: `${Math.max(3, job.progress ?? 3)}%` }} />
             </div>
-          )}
-          {job.status === 'queued' && (
-            <p className="text-[13px] text-muted">
-              <Icon name="clock" size={13} className="mr-1 inline" />
-              {renderQueueTitle('xoá logo', { position: job.queue_position, running_count: job.running_count, concurrency: job.concurrency })}.
-              <span className="block text-xs">Có chỗ trống là tự bắt đầu, không cần làm gì thêm. Có thể rời trang, việc vẫn xếp hàng.</span>
-            </p>
-          )}
-          {job.status === 'ready' && job.output && (
-            <p className="text-xs text-muted">
-              Bản sạch {job.output.duration_s ? fmtSeconds(job.output.duration_s) : ''}
-              {job.output.bytes ? ` · ${fmtMB(job.output.bytes)}` : ''}. Giữ trên máy chủ {daysLeft(job.expires_at, now)} ngày nữa rồi tự xoá.
-            </p>
-          )}
-          {job.status === 'failed' && <InlineError>{job.error ?? 'Xoá logo không thành công.'}</InlineError>}
-          {job.status === 'cancelled' && <p className="text-[13px] text-muted">Đã hủy. Video gốc vẫn được giữ, bấm «Thử lại» để xử lý tiếp.</p>}
-          {job.status === 'expired' && <p className="text-[13px] text-muted">Đã quá 7 ngày nên file đã bị xoá. Hãy tải video lên lại.</p>}
-          {(cancel.isError || retry.isError) && <InlineError>{errorMessage(cancel.error ?? retry.error)}</InlineError>}
-
-          <div className="flex flex-wrap items-center gap-2">
-            {job.output && (
-              <a href={job.output.url} download={download} className={buttonClass('primary', 'md')}>
-                <Icon name="download" /> Tải bản sạch
-              </a>
-            )}
-            {waiting && (
-              <Button variant="danger" loading={cancel.isPending} onClick={() => cancel.mutate()}>
-                Hủy
-              </Button>
-            )}
-            {job.can_retry && (
-              <Button icon={<Icon name="refresh" size={14} />} loading={retry.isPending} onClick={() => retry.mutate()}>
-                Thử lại
-              </Button>
-            )}
+            <span style={{ fontSize: 12.5 }}>{job.progress !== null ? `${Math.round(job.progress)}%` : 'Đang xoá'}</span>
           </div>
-        </div>
-      </div>
-    </li>
+        ) : job.status === 'failed' ? (
+          <span className="av-badge av-badge-danger" title={job.error ?? undefined}>
+            Lỗi{job.error ? `: ${job.error}` : ''}
+          </span>
+        ) : (
+          <span className={`av-badge ${STATUS[job.status].cls}`}>{job.status === 'queued' && job.queue_position ? `Đang chờ · vị trí ${job.queue_position}` : STATUS[job.status].label}</span>
+        )}
+      </td>
+      <td className="av-muted" style={{ fontSize: 12.5 }}>
+        {fmtDateTime(job.finished_at ?? job.created_at)}
+      </td>
+      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+        {job.output && (
+          <>
+            <button type="button" className="av-btn av-btn-sm" onClick={() => onPreview(job)}>
+              Xem
+            </button>{' '}
+            <a href={job.output.url} download={download} className="av-btn av-btn-sm av-btn-primary">
+              Tải về
+            </a>
+          </>
+        )}
+        {waiting && (
+          <button type="button" className="av-btn av-btn-sm" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
+            Huỷ
+          </button>
+        )}
+        {job.can_retry && (
+          <button type="button" className="av-btn av-btn-sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
+            Thử lại
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
 
-function UploadCard({ status, onCreated }: { status: ToolStatus; onCreated: () => void }) {
+function checkFile(file: File, r: ToolStatus['remove_logo']): string | null {
+  const ext = /\.(mp4|mov)$/i.test(file.name) || /^video\/(mp4|quicktime)$/.test(file.type);
+  if (!ext) return `"${file.name}" không phải video mp4 hoặc mov.`;
+  if (file.size === 0) return `"${file.name}" là file rỗng.`;
+  if (file.size > r.max_bytes) return `"${file.name}" nặng ${fmtMB(file.size)}, vượt giới hạn ${fmtMB(r.max_bytes)}.`;
+  return null;
+}
+
+/** Vùng kéo thả: nhiều video được tải lên lần lượt (API nhận một file mỗi lượt), job nào xong lượt tải là vào hàng đợi xử lý ngay. */
+function DropCard({ status, onCreated }: { status: ToolStatus; onCreated: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
-  const [name, setName] = useState(readName);
-  const [up, setUp] = useState<{ name: string; loaded: number; total: number } | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const cancelled = useRef(false);
+  const [up, setUp] = useState<{ name: string; loaded: number; total: number; left: number } | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [over, setOver] = useState(false);
   const r = status.remove_logo;
-  useEffect(() => () => abortRef.current?.(), []);
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+      abortRef.current?.();
+    },
+    [],
+  );
 
-  const reason = up
-    ? 'Đang tải lên'
-    : !r.available
-      ? `Tool xoá logo Veo đang tắt hoặc lỗi: ${r.reason ?? 'chưa sẵn sàng'}`
-      : r.remaining <= 0
-        ? `Bạn đã xoá logo ${r.rate.max} lần trong giờ này, hãy thử lại sau`
-        : status.queue.total >= status.queue.cap
-          ? 'Hàng đợi đang đầy, thử lại sau'
-          : null;
+  const blocked = up ? 'Đang tải lên' : !r.available ? `Công cụ xoá logo đang tắt hoặc lỗi: ${r.reason ?? 'chưa sẵn sàng'}` : null;
 
-  const start = (file: File) => {
-    const ext = /\.(mp4|mov)$/i.test(file.name) || /^video\/(mp4|quicktime)$/.test(file.type);
-    const bad = !ext ? `"${file.name}" không phải video mp4 hoặc mov.` : file.size === 0 ? `"${file.name}" là file rỗng.` : file.size > r.max_bytes ? `"${file.name}" nặng ${fmtMB(file.size)}, vượt giới hạn ${fmtMB(r.max_bytes)}.` : null;
-    setProblem(bad);
-    if (bad) return;
-    saveName(name.trim());
-    const { promise, abort } = planner.createToolJob(file, name, (loaded, total) => setUp({ name: file.name, loaded, total }));
-    abortRef.current = abort;
-    setUp({ name: file.name, loaded: 0, total: file.size });
-    promise
-      .then(() => {
-        toast.success('Đã tải lên, việc xoá logo đang xếp hàng');
+  const run = async (files: File[]) => {
+    cancelled.current = false;
+    const errs: string[] = [];
+    const ok = files.filter((f) => {
+      const bad = checkFile(f, r);
+      if (bad) errs.push(bad);
+      return !bad;
+    });
+    setProblems(errs);
+    for (let i = 0; i < ok.length && !cancelled.current; i++) {
+      const file = ok[i]!;
+      const { promise, abort } = planner.createToolJob(file, '', (loaded, total) => setUp({ name: file.name, loaded, total, left: ok.length - i - 1 }));
+      abortRef.current = abort;
+      setUp({ name: file.name, loaded: 0, total: file.size, left: ok.length - i - 1 });
+      try {
+        await promise;
         onCreated();
-      })
-      .catch((e: unknown) => {
-        if (!(e instanceof ApiError && e.code === 'ABORTED')) setProblem(errorMessage(e));
-        onCreated(); // làm mới hạn mức/hàng đợi dù lỗi
-      })
-      .finally(() => {
-        abortRef.current = null;
-        setUp(null);
-      });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'ABORTED') {
+          cancelled.current = true;
+        } else {
+          errs.push(`${file.name}: ${errorMessage(e)}`);
+          setProblems([...errs]);
+        }
+        onCreated();
+      }
+    }
+    abortRef.current = null;
+    setUp(null);
+  };
+
+  const pick = (list: FileList | null | undefined) => {
+    const files = list ? Array.from(list) : [];
+    if (files.length && !blocked) void run(files);
   };
   const pct = up && up.total > 0 ? (up.loaded / up.total) * 100 : 0;
-  const verifying = !!up && up.total > 0 && up.loaded >= up.total;
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-3 sm:p-4" aria-labelledby="tool-upload-h">
-      <h2 id="tool-upload-h" className="text-[15px] font-semibold">
-        Tải video lên
-      </h2>
-      <p className="mt-0.5 text-xs text-muted">
-        mp4 hoặc mov, tối đa {fmtMB(r.max_bytes)}, dài {r.min_s}–{r.max_s} giây. Còn {Math.max(0, r.remaining)}/{r.rate.max} lượt xoá logo trong giờ này.
-      </p>
-      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-        <div>
-          <label htmlFor="tool-name" className="mb-1 block text-xs font-semibold text-muted">
-            Tên của bạn (tuỳ chọn)
-          </label>
-          <input id="tool-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Vd: Lan" disabled={!!up} />
-        </div>
-        <div
-          onDragOver={(e) => {
-            if (!reason) {
-              e.preventDefault();
-              setDragging(true);
-            }
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
+    <div className="av-card" style={{ padding: 8 }}>
+      <div
+        className={`av-drop ${over ? 'over' : ''}`}
+        style={{ padding: '34px 24px', gap: 10 }}
+        onDragOver={(e) => {
+          if (!blocked) {
             e.preventDefault();
-            setDragging(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f && !reason) start(f);
-          }}
-          className={`rounded-md border border-dashed p-3 text-center ${dragging ? 'border-info-fg bg-info-bg' : 'border-line-strong bg-surface-2'}`}
-        >
-          <Icon name="upload" size={20} className="mx-auto text-muted" />
-          <p className="mt-1 text-[13px] font-medium">Kéo video vào đây hoặc</p>
-          <div className="mt-1.5">
-            <Button variant="primary" icon={<Icon name="upload" size={14} />} disabledReason={reason} onClick={() => input.current?.click()}>
-              Chọn video để xoá logo
-            </Button>
-          </div>
-          {reason && !up && <p className="mt-1.5 text-xs text-warn-fg">{reason}</p>}
-        </div>
+            setOver(true);
+          }
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          pick(e.dataTransfer.files);
+        }}
+      >
+        <span aria-hidden="true" className="grid size-11 place-items-center rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--muted)' }}>
+          <Icon name="upload" size={22} />
+        </span>
+        <span className="text-[15px] font-bold">Kéo một hoặc nhiều video vào đây</span>
+        <span className="av-muted text-[12.5px]">
+          mp4 hoặc mov, mỗi video {r.min_s}–{r.max_s} giây, tối đa {fmtMB(r.max_bytes)}
+        </span>
+        <button type="button" className="av-btn av-btn-primary" style={{ marginTop: 4 }} disabled={!!blocked} title={blocked ?? undefined} onClick={() => input.current?.click()}>
+          Chọn video…
+        </button>
+        {blocked && !up && <span className="text-xs" style={{ color: 'var(--warn-fg)' }}>{blocked}</span>}
       </div>
       <input
         ref={input}
         type="file"
+        multiple
         accept="video/mp4,video/quicktime,.mp4,.mov"
         hidden
         aria-label="Chọn video cần xoá logo Veo"
         onChange={(e) => {
-          const f = e.target.files?.[0];
+          const files = e.target.files;
+          pick(files);
           e.target.value = '';
-          if (f) start(f);
         }}
       />
       {up && (
-        <div className="mt-3 space-y-1.5 rounded-md border border-line bg-surface-2 p-2.5" role="status">
+        <div className="flex flex-col gap-1.5 px-3 pb-3 pt-3" role="status">
           <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="min-w-0 truncate font-medium" title={up.name}>
-              {up.name}
+            <span className="min-w-0 truncate font-medium">{up.name}</span>
+            <span className="av-muted shrink-0">
+              {up.total > 0 && up.loaded >= up.total ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}
+              {up.left > 0 ? ` · còn ${up.left} video` : ''}
             </span>
-            <span className="shrink-0 text-muted">{verifying ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}</span>
           </div>
-          <ProgressBar value={verifying ? null : pct} label="Tiến độ tải video lên" />
-          <Button size="sm" onClick={() => abortRef.current?.()}>
-            Hủy tải lên
-          </Button>
+          <div className="av-bar">
+            <i style={{ width: `${Math.max(2, pct)}%` }} />
+          </div>
+          <div>
+            <button type="button" className="av-btn av-btn-sm" onClick={() => { cancelled.current = true; abortRef.current?.(); }}>
+              Huỷ tải lên
+            </button>
+          </div>
         </div>
       )}
-      {problem && (
-        <div className="mt-3">
-          <InlineError>{problem}</InlineError>
+      {problems.length > 0 && (
+        <div className="flex flex-col gap-1 px-3 pb-3 pt-2">
+          {problems.map((p, i) => (
+            <InlineError key={i}>{p}</InlineError>
+          ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
-/** Công cụ độc lập "Xoá logo Veo": tải một video lên, xếp hàng chung với bản dựng (chạy song song tối đa `RENDER_CONCURRENCY` việc), tải bản sạch về. Chỉ thấy việc của trình duyệt này. */
+/** Công cụ "Xoá logo Veo": thả một hay nhiều video, theo dõi từng việc, xem và tải bản sạch. */
 export function ToolPage() {
   useDocumentTitle('Xoá logo Veo');
   const qc = useQueryClient();
@@ -263,59 +233,81 @@ export function ToolPage() {
     queryFn: planner.toolJobs,
     refetchInterval: (q) => (q.state.data?.some((j) => j.status === 'queued' || j.status === 'processing') ? 3000 : 15_000),
   });
+  const [preview, setPreview] = useState<ToolJob | null>(null);
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['tool-jobs'] });
     void qc.invalidateQueries({ queryKey: ['tool-status'] });
   };
+  const render = status.data?.render;
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold tracking-tight">Xoá logo Veo</h1>
-        <p className="text-[13px] text-muted">Xoá logo Veo khỏi bất kỳ video nào, không cần kế hoạch. Việc xếp hàng chung với bản dựng hoàn chỉnh; máy chủ chạy song song một vài việc cùng lúc, còn lại chờ tới lượt. File giữ 7 ngày rồi tự xoá.</p>
-      </div>
-
-      {status.isLoading ? (
-        <Skeleton className="h-40" />
-      ) : status.error || !status.data ? (
-        <ErrorState title="Không đọc được trạng thái công cụ" error={status.error} onRetry={() => void status.refetch()} />
-      ) : (
-        <div className="space-y-4">
-          {!status.data.remove_logo.available && (
-            <Alert tone="warn" icon="alert">
-              <strong>Công cụ xoá logo Veo đang tắt hoặc lỗi.</strong> {status.data.remove_logo.reason ?? ''} Nút tải lên bị khóa tới khi chủ máy bật lại.
-            </Alert>
-          )}
-          <UploadCard status={status.data} onCreated={refresh} />
-          <p className="text-xs text-muted" aria-live="polite">
-            {status.data.render ? `Máy chủ đang chạy ${status.data.render.running_count}/${status.data.render.concurrency} việc, ${status.data.render.waiting_count} việc đang chờ. ` : ''}
-            Hàng đợi LAN: {status.data.queue.total}/{status.data.queue.cap} việc ({status.data.queue.cuts} bản dựng, {status.data.queue.tools} xoá logo). Chỉ trình duyệt này thấy các việc bên dưới; xoá cookie hoặc đổi trình duyệt sẽ không xem lại được.
-          </p>
-
-          <section aria-labelledby="tool-jobs-h">
-            <h2 id="tool-jobs-h" className="mb-2 text-[15px] font-semibold">
-              Việc của bạn
-            </h2>
-            {jobs.isLoading ? (
-              <div aria-busy="true" className="space-y-3">
-                <Skeleton className="h-32" />
-              </div>
-            ) : jobs.error ? (
-              <ErrorState error={jobs.error} onRetry={() => void jobs.refetch()} />
-            ) : jobs.data && jobs.data.length === 0 ? (
-              <EmptyState icon="film" title="Chưa có việc nào">
-                Tải một video lên ở trên. Khi xong, bản sạch hiện ở đây để xem và tải về.
-              </EmptyState>
-            ) : (
-              <ul className="space-y-3">
-                {jobs.data?.map((j) => (
-                  <JobCard key={j.id} job={j} onChanged={refresh} />
-                ))}
-              </ul>
-            )}
-          </section>
+    <>
+      <header className="av-header">
+        <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1">
+          <h1>Xoá logo Veo</h1>
+          <p className="av-muted text-[13px]">Xoá logo khỏi bất kỳ video Veo nào, không cần kế hoạch.</p>
         </div>
-      )}
-    </div>
+      </header>
+
+      <section className="av-page" style={{ gap: 20 }}>
+        {status.isLoading ? (
+          <Skeleton className="h-40" />
+        ) : status.error || !status.data ? (
+          <ErrorState title="Không đọc được trạng thái công cụ" error={status.error} onRetry={() => void status.refetch()} />
+        ) : (
+          <DropCard status={status.data} onCreated={refresh} />
+        )}
+
+        <div className="flex items-center gap-3">
+          <h2 className="flex-1 text-[15px] font-bold">Việc xoá logo</h2>
+          {render && (
+            <span className="av-muted text-[12.5px]" aria-live="polite">
+              {render.running_count} đang chạy · {render.waiting_count} chờ · tối đa {render.concurrency} việc cùng lúc
+            </span>
+          )}
+        </div>
+
+        {jobs.isLoading ? (
+          <Skeleton className="h-32" />
+        ) : jobs.error ? (
+          <ErrorState error={jobs.error} onRetry={() => void jobs.refetch()} />
+        ) : jobs.data && jobs.data.length === 0 ? (
+          <EmptyState icon="film" title="Chưa có việc nào" />
+        ) : (
+          <div className="av-card av-table-wrap">
+            <table className="av-table">
+              <thead>
+                <tr>
+                  <th>Video</th>
+                  <th>Thời lượng</th>
+                  <th>Trạng thái</th>
+                  <th>Thời gian</th>
+                  <th>
+                    <span className="av-sr">Thao tác</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobs.data?.map((j) => (
+                  <JobRow key={j.id} job={j} onChanged={refresh} onPreview={setPreview} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {preview?.output && (
+          <div className="av-card flex flex-col gap-2 p-3" style={{ alignSelf: 'flex-start' }}>
+            <div className="flex items-center gap-2">
+              <strong className="min-w-0 flex-1 truncate text-[13px]">{preview.original_name}</strong>
+              <button type="button" className="av-btn av-btn-sm av-btn-ghost" aria-label="Đóng xem trước" onClick={() => setPreview(null)}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+            <video src={`${preview.output.url}#t=0.5`} controls autoPlay playsInline aria-label={`Bản đã xoá logo: ${preview.original_name}`} style={{ maxHeight: 420, maxWidth: '100%', background: 'var(--stage)', borderRadius: 8 }} />
+          </div>
+        )}
+      </section>
+    </>
   );
 }

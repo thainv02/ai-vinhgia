@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { ApiError } from '../api/errors';
 import { useClipEnv } from './env';
 import { projectNeedsPolling } from './lib';
-import type { Clip, ClipCut, ClipProjectDetail, SourceVideo, TranscriptSentence } from './types';
+import type { CaptionLayout } from './subtitleBox';
+import type { CaptionPreset, Clip, ClipCut, ClipProjectDetail, SourceVideo, TranscriptSentence } from './types';
 
 export const clipKeys = {
   project: (scope: string, id: number) => ['clip-project', scope, id] as const,
@@ -74,7 +75,7 @@ export function useClipActions(projectId: number) {
   };
 
   const patchClip = useMutation({
-    mutationFn: (v: { id: number; status?: Clip['status']; title?: string; start_word?: number; end_word?: number }) => {
+    mutationFn: (v: { id: number; status?: Clip['status']; title?: string; start_word?: number; end_word?: number; captions?: { preset?: CaptionPreset; layout?: CaptionLayout | null } }) => {
       const { id, ...rest } = v;
       return api.patchClip(id, rest);
     },

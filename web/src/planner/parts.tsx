@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge } from '../components/StatusBadge';
 import { Button } from '../components/Button';
 import { Icon, type IconName } from '../components/Icon';
 import { copyText } from '../lib/clipboard';
@@ -7,7 +6,7 @@ import { toast } from '../lib/toast';
 import type { PlanStatus } from './types';
 
 export const PLAN_STATUS: Record<PlanStatus, { label: string; tone: 'neutral' | 'info' | 'ok' | 'danger'; live?: boolean }> = {
-  draft: { label: 'Nháp', tone: 'neutral' },
+  draft: { label: 'Bản nháp', tone: 'neutral' },
   analyzing: { label: 'Đang phân tích', tone: 'info', live: true },
   ready: { label: 'Đã phân tích', tone: 'ok' },
   failed: { label: 'Lỗi', tone: 'danger' },
@@ -15,10 +14,12 @@ export const PLAN_STATUS: Record<PlanStatus, { label: string; tone: 'neutral' | 
 
 export function PlanStatusBadge({ status }: { status: PlanStatus }) {
   const s = PLAN_STATUS[status];
+  const cls = { neutral: 'av-badge-neutral', info: 'av-badge-info', ok: 'av-badge-ok', danger: 'av-badge-danger' }[s.tone];
   return (
-    <Badge tone={s.tone} live={s.live}>
+    <span className={`av-badge ${cls}`}>
+      {s.live && <span aria-hidden="true" className="av-dot" style={{ background: 'currentColor', width: 6, height: 6 }} />}
       {s.label}
-    </Badge>
+    </span>
   );
 }
 

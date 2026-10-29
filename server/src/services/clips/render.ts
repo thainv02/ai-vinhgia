@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { AppContext } from '../../context.js';
-import { CAPTION_PRESETS, CLIP_ASPECTS, REFRAME_MODES, type CaptionPreset, type ClipAspect, type ClipCutRow, type ClipRow, type ProjectRow, type ReframeMode, type SourceVideoRow } from '../../db/types.js';
+import { CAPTION_PRESETS, CLIP_ASPECTS, REFRAME_MODES, type ClipAspect, type ClipCutRow, type ClipRow, type ProjectRow, type ReframeMode, type SourceVideoRow } from '../../db/types.js';
 import { conflict } from '../../lib/errors.js';
 import { run } from '../final-render/ffmpeg-renderer.js';
 import { RenderCancelled } from '../final-render/types.js';
@@ -16,19 +16,23 @@ import { assertLanQueueRoom } from '../lan-queue.js';
 import { ffmpegOf, probeMedia } from '../media.js';
 import { emitProject } from '../project-view.js';
 import { getProject, logEvent, parseJson } from '../repo.js';
-import { buildAss, buildClipSrt, displayWords } from './captions.js';
+import { buildAss, buildClipSrt, captionLayoutSchema, captionStyleJson, displayWords, parseCaptionStyle } from './captions.js';
 import { abs, cutsDirRel, getClipProject, getClipRow, getCutRow, getSourceRow, readTranscript } from './repo.js';
 import { assertDiskRoom, sourceFileOk } from './source.js';
 import { captionWordsOf, emitClip, emitCut } from './view.js';
 
 export const FADE_S = 0.06;
+const f3 = (x: number): string => (Math.round(x * 1000) / 1000).toFixed(3);
 export const CAPTION_FFMPEG_MISSING =
   'ffmpeg trên máy chủ chưa hỗ trợ phụ đề (thiếu libass/bộ lọc "subtitles"). Cài ffmpeg có libass (vd `brew install ffmpeg-full`) hoặc đặt CLIP_FFMPEG_PATH trong .env rồi khởi động lại; hoặc chọn "Không phụ đề".';
 
 export const renderBody = z.object({
   aspect: z.enum(CLIP_ASPECTS).default('9:16'),
   reframe_mode: z.enum(REFRAME_MODES).optional(),
-  captions_preset: z.enum(CAPTION_PRESETS).default('highlight'),
+  /** Vắng: dùng kiểu đã lưu của clip (mặc định highlight). */
+  captions_preset: z.enum(CAPTION_PRESETS).optional(),
+  /** Vắng: dùng vị trí đã lưu của clip; null = vị trí mặc định. */
+  captions_layout: captionLayoutSchema.nullable().optional(),
 });
 export type RenderBody = z.infer<typeof renderBody>;
 
@@ -131,12 +135,23 @@ export function escapeFilterValue(s: string): string {
   return opt.replace(/[\\',[\];]/g, (m) => `\\${m}`);
 }
 
+/**
+ * Đường dẫn file đưa vào bộ lọc, đặt TRONG dấu nháy đơn (`filename='...'`). Trên Windows: đổi dấu gạch chéo ngược thành `/` (nó là ký tự escape của ffmpeg nên
+ * `C:\a\b.ass` hỏng) và chỉ escape dấu `:` của ổ đĩa MỘT lần (trong dấu nháy, tầng filtergraph không giải escape nên escape hai tầng như `escapeFilterValue`
+ * sẽ để lại `\` và làm `:` tách tuỳ chọn). Hệ khác dùng `escapeFilterValue` như trước.
+ */
+export function escapeFilterPath(p: string, win: boolean = process.platform === 'win32'): string {
+  return win ? p.replaceAll('\\', '/').replace(/'/g, "'\\''").replace(/:/g, '\\:') : escapeFilterValue(p);
+}
+
 export interface GraphInput {
   srcW: number;
   srcH: number;
   aspect: ClipAspect;
   reframe: ResolvedReframe;
   ass: { file: string; fontsDir: string | null } | null;
+  /** Xem thử một khung: dịch mốc thời gian khung lên `ptsOffsetS` giây trước khi cháy phụ đề (vì `-ss` đầu vào đưa khung về 0). */
+  ptsOffsetS?: number;
 }
 
 /** filter_complex một lượt: reframe → (phụ đề) → nhãn `[v]`. */
@@ -164,8 +179,9 @@ export function buildFilterGraph(g: GraphInput): { graph: string; width: number;
     );
   }
   if (g.ass) {
-    const fonts = g.ass.fontsDir ? `:fontsdir='${escapeFilterValue(g.ass.fontsDir)}'` : '';
-    parts.push(`[base]subtitles=filename='${escapeFilterValue(g.ass.file)}'${fonts},format=yuv420p[v]`);
+    const fonts = g.ass.fontsDir ? `:fontsdir='${escapeFilterPath(g.ass.fontsDir)}'` : '';
+    const shift = g.ptsOffsetS ? `setpts=PTS+${f3(g.ptsOffsetS)}/TB,` : '';
+    parts.push(`[base]${shift}subtitles=filename='${escapeFilterPath(g.ass.file)}'${fonts},format=yuv420p[v]`);
   } else {
     parts.push('[base]format=yuv420p[v]');
   }
@@ -180,8 +196,6 @@ export interface ArgsInput {
   hasAudio: boolean;
   out: string;
 }
-
-const f3 = (x: number): string => (Math.round(x * 1000) / 1000).toFixed(3);
 
 /** Tham số ffmpeg đầy đủ: `-ss` TRƯỚC `-i` (mã hoá lại nên cắt chính xác), `-t`, afade 0.06 s hai đầu, x264 crf 18, aac 160k, faststart. */
 export function buildClipArgs(a: ArgsInput): string[] {
@@ -222,7 +236,9 @@ export function startClipRender(ctx: AppContext, clipId: number, body: RenderBod
     const source = getSourceRow(ctx, clip.source_id);
     if (!sourceFileOk(ctx, source)) throw conflict('SOURCE_DELETED', 'Video gốc đã bị xoá nên không dựng clip mới được (vẫn tải được các clip đã dựng)');
     if (!ffmpegOf(ctx.config)) throw conflict('NO_FFMPEG', 'Không tìm thấy ffmpeg trên máy chủ');
-    if (body.captions_preset !== 'none' && !captionSupport(ctx).available) throw conflict('CAPTIONS_UNAVAILABLE', CAPTION_FFMPEG_MISSING);
+    const stored = parseCaptionStyle(clip.captions);
+    const style = { preset: body.captions_preset ?? stored.preset, layout: body.captions_layout === undefined ? stored.layout : body.captions_layout };
+    if (style.preset !== 'none' && !captionSupport(ctx).available) throw conflict('CAPTIONS_UNAVAILABLE', CAPTION_FFMPEG_MISSING);
     const busy = ctx.db.prepare("SELECT version FROM clip_cuts WHERE clip_id = ? AND status = 'rendering' LIMIT 1").get(clipId) as { version: number } | undefined;
     if (busy) throw conflict('CUT_ACTIVE', `Clip ${clip.code} đang dựng bản v${busy.version}; hãy đợi hoặc hủy trước`);
     assertDiskRoom(ctx, Math.round((clip.end_s - clip.start_s) * 2_000_000), 1);
@@ -238,9 +254,11 @@ export function startClipRender(ctx: AppContext, clipId: number, body: RenderBod
         `INSERT INTO clip_cuts (clip_id, project_id, version, status, stage, progress, aspect, reframe, captions, start_s, end_s, created_at)
          VALUES (?, ?, ?, 'rendering', 'prepare', 0, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(clip.id, project.id, version, body.aspect, JSON.stringify(reframe), JSON.stringify({ preset: body.captions_preset }), clip.start_s, clip.end_s, ctx.now());
+      .run(clip.id, project.id, version, body.aspect, JSON.stringify(reframe), captionStyleJson(style), clip.start_s, clip.end_s, ctx.now());
     const id = Number(info.lastInsertRowid);
-    logEvent(ctx, { project_id: project.id, type: 'clip.render', message: `Clip ${clip.code}: dựng bản v${version} (${body.aspect}, ${resolved === 'native' ? 'đúng tỉ lệ nguồn' : resolved === 'fit' ? 'nền mờ' : 'cắt giữa'}, phụ đề ${body.captions_preset})` });
+    // kiểu đã dùng để dựng thành kiểu đang lưu của clip (để "cần dựng lại" chỉ bật khi người dùng đổi sau đó)
+    if (clip.captions !== captionStyleJson(style) && (body.captions_preset !== undefined || body.captions_layout !== undefined)) ctx.db.prepare('UPDATE clips SET captions = ? WHERE id = ?').run(captionStyleJson(style), clip.id);
+    logEvent(ctx, { project_id: project.id, type: 'clip.render', message: `Clip ${clip.code}: dựng bản v${version} (${body.aspect}, ${resolved === 'native' ? 'đúng tỉ lệ nguồn' : resolved === 'fit' ? 'nền mờ' : 'cắt giữa'}, phụ đề ${style.preset}${style.layout ? ' có vị trí riêng' : ''})` });
     emitCut(ctx, id, project.id);
     emitClip(ctx, clip.id, project.id);
     emitProject(ctx, project.id);
@@ -299,7 +317,7 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
   const rel = { video: `${base}.mp4`, srt: `${base}.srt`, ass: `${base}.ass` };
   const dir = path.dirname(abs(ctx, rel.video));
   const tmpVideo = path.join(dir, `.${clip.code}_v${cut.version}.tmp.mp4`);
-  const preset = parseJson<{ preset?: CaptionPreset }>(cut.captions, {}).preset ?? 'highlight';
+  const { preset, layout } = parseCaptionStyle(cut.captions);
   const created: string[] = [];
   try {
     for (const r of [rel.video, rel.srt, rel.ass]) {
@@ -329,7 +347,7 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
       if (!sup.available || !sup.ffmpeg) throw new Error(CAPTION_FFMPEG_MISSING);
       bin = sup.ffmpeg;
       const fonts = captionFonts(ctx);
-      fs.writeFileSync(abs(ctx, rel.ass), buildAss(words, { preset, width: w, height: h, font: fonts.family, clipStart: cut.start_s, clipEnd: cut.end_s }), { flag: 'wx' });
+      fs.writeFileSync(abs(ctx, rel.ass), buildAss(words, { preset, width: w, height: h, font: fonts.family, clipStart: cut.start_s, clipEnd: cut.end_s, layout }), { flag: 'wx' });
       created.push(rel.ass);
       ass = { file: abs(ctx, rel.ass), fontsDir: fonts.fontsDir };
     }

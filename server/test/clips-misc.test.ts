@@ -114,7 +114,7 @@ describe('migration 014_clips', () => {
     expect(refTables).toEqual(['ai_attempts', 'assets', 'browser_leases', 'credit_ledger', 'external_actions', 'final_cuts', 'job_reconciliations']);
     expect(seqBefore).toBe(3);
 
-    expect(runMigrations(db)).toEqual(['014_clips']);
+    expect(runMigrations(db)).toEqual(['014_clips', '015_clip_captions']);
     expect(runMigrations(db)).toEqual([]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
