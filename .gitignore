@@ -13,3 +13,7 @@ gemini-watermark-remover/
 .ai-local/
 *.sqlite*
 *.db
+
+# Bản build Windows và cache tải về (scripts/build-win.mjs)
+dist-win/
+.build-cache/

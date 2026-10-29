@@ -5,8 +5,8 @@ import { resolveBinary } from '../src/services/media.js';
 import type { RenderOutcome, RenderRequest, Renderer } from '../src/services/final-render/index.js';
 import { PNG_BYTES } from './helpers.js';
 
-export const FFMPEG = resolveBinary('ffmpeg', null);
-export const FFPROBE = resolveBinary('ffprobe', null);
+export const FFMPEG = await resolveBinary('ffmpeg', null);
+export const FFPROBE = await resolveBinary('ffprobe', null);
 
 /** Tạo video thử thật bằng ffmpeg (testsrc2 + sine, 160x284, 24fps). */
 export function makeTestVideo(abs: string, seconds = 3, opts: { audio?: boolean; size?: string; fps?: number } = {}): void {
@@ -26,7 +26,7 @@ export function ffprobeJson(abs: string): any {
   return JSON.parse(r.stdout);
 }
 
-/** Renderer giả: ghi file giả, báo tiến độ, có thể giữ lại (gate) / lỗi / ghi .mlt như Shotcut. */
+/** Renderer giả: ghi file giả, báo tiến độ, có thể giữ lại (gate) / lỗi. */
 export class FakeRenderer implements Renderer {
   calls: RenderRequest[] = [];
   aborted: number[] = [];
@@ -40,7 +40,7 @@ export class FakeRenderer implements Renderer {
   /** Đặt để ghi video THẬT (ffmpeg testsrc) thay vì chữ giả — cần cho bước xoá logo (ffprobe kiểm tra). */
   realVideo: { seconds: number; audio?: boolean } | null = null;
 
-  constructor(public name: 'shotcut' | 'ffmpeg' = 'ffmpeg') {}
+  readonly name = 'ffmpeg' as const;
 
   hold(): void {
     let release!: () => void;
@@ -57,12 +57,6 @@ export class FakeRenderer implements Renderer {
     this.concurrent++;
     this.maxConcurrent = Math.max(this.maxConcurrent, this.concurrent);
     try {
-      if (this.name === 'shotcut') {
-        fs.mkdirSync(path.dirname(req.out.mltAbs), { recursive: true });
-        fs.writeFileSync(req.out.mltAbs, '<mlt/>');
-        req.onProjectFile(req.out.mltAbs);
-        req.onRenderRef(`fake-render-${req.cutId}`);
-      }
       if (this.gate) {
         const gate = this.gate;
         await new Promise<void>((resolve) => {
@@ -84,7 +78,6 @@ export class FakeRenderer implements Renderer {
         renderer: this.name,
         videoAbs: req.out.videoAbs,
         contactAbs: req.out.contactAbs,
-        projectFileAbs: this.name === 'shotcut' ? req.out.mltAbs : null,
       };
     } finally {
       this.concurrent--;

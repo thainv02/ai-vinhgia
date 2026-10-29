@@ -1,15 +1,14 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
-import { conflict } from '../lib/errors.js';
-import { cleanRelPath, resolveInside } from '../lib/paths.js';
 import { intParam, parse } from '../lib/validate.js';
 import {
   cancelFinalCut,
   cleanFinalCut,
   createFinalCutManual,
+  currentSelection,
   getFinalCutJson,
+  warmCutMedia,
+  warmSourceMedia,
   getFinalCutRow,
   listFinalCuts,
   rerenderBody,
@@ -19,20 +18,31 @@ import { getJobJson, getProject } from '../services/repo.js';
 
 /** Bản dựng hoàn chỉnh (final cut): xem docs mục "Bản dựng hoàn chỉnh" trong server/API.md. */
 export function registerFinalCutRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get('/api/projects/:id/final-cuts', async (req) => listFinalCuts(ctx, intParam((req.params as { id: string }).id)));
+  app.get('/api/projects/:id/final-cuts', async (req) => {
+    const id = intParam((req.params as { id: string }).id);
+    const rows = ctx.db.prepare('SELECT selection FROM final_cuts WHERE project_id = ?').all(id) as { selection: string }[];
+    await Promise.all(rows.map((r) => warmCutMedia(ctx, r.selection)));
+    return listFinalCuts(ctx, id);
+  });
 
   app.post('/api/projects/:id/final-cuts', async (req, reply) => {
     const id = intParam((req.params as { id: string }).id);
     getProject(ctx, id);
+    // làm nóng cache ffprobe để payload job edit_plan và validate EDL có thời lượng/fps của video đã chọn
+    await warmSourceMedia(ctx, currentSelection(ctx, id).items.map((i) => i.asset_id));
     const { cutId, jobId } = createFinalCutManual(ctx, id);
     return reply.code(201).send({ final_cut: getFinalCutJson(ctx, cutId), job: getJobJson(ctx, jobId) });
   });
 
-  app.get('/api/final-cuts/:id', async (req) => getFinalCutJson(ctx, intParam((req.params as { id: string }).id)));
+  app.get('/api/final-cuts/:id', async (req) => {
+    const id = intParam((req.params as { id: string }).id);
+    await warmCutMedia(ctx, getFinalCutRow(ctx, id).selection);
+    return getFinalCutJson(ctx, id);
+  });
 
   app.post('/api/final-cuts/:id/rerender', async (req, reply) => {
     const id = intParam((req.params as { id: string }).id);
-    getFinalCutRow(ctx, id);
+    await warmCutMedia(ctx, getFinalCutRow(ctx, id).selection); // validate EDL cần thời lượng video nguồn
     const body = parse(rerenderBody, req.body ?? {});
     const newId = rerenderFinalCut(ctx, id, { edl: body.edl, note: body.note });
     return reply.code(201).send({ final_cut: getFinalCutJson(ctx, newId) });
@@ -51,26 +61,5 @@ export function registerFinalCutRoutes(app: FastifyInstance, ctx: AppContext): v
     const wm = await ctx.finalRender!.watermarkStatus();
     cleanFinalCut(ctx, id, wm);
     return { final_cut: getFinalCutJson(ctx, id) };
-  });
-
-  app.post('/api/final-cuts/:id/open-in-shotcut', async (req) => {
-    const id = intParam((req.params as { id: string }).id);
-    const cut = getFinalCutRow(ctx, id);
-    if (!cut.project_file_path) {
-      throw conflict('NO_PROJECT_FILE', `Bản hoàn chỉnh v${cut.version} không có file dự án Shotcut (.mlt) — chỉ bản dựng bằng Shotcut mới có`);
-    }
-    let abs: string | null = null;
-    try {
-      abs = resolveInside(ctx.config.rootDir, cleanRelPath(cut.project_file_path, ['output']), ['output']);
-    } catch {
-      abs = null;
-    }
-    if (!abs || !fs.existsSync(abs)) throw conflict('NO_PROJECT_FILE', `File dự án ${path.basename(cut.project_file_path)} không còn tồn tại`);
-    try {
-      await ctx.finalRender!.openInShotcut(abs);
-    } catch (err) {
-      throw conflict('SHOTCUT_UNAVAILABLE', `Không mở được Shotcut: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    return { ok: true, project_file_path: cut.project_file_path };
   });
 }

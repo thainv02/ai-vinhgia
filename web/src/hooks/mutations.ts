@@ -242,7 +242,3 @@ export function useCleanFinalCut() {
     onSuccess: (fc) => syncFinalCut(qc, fc),
   });
 }
-
-export function useOpenInShotcut() {
-  return useMutation<unknown, ApiError, number>({ mutationFn: (id) => api.openInShotcut(id) });
-}

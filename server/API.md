@@ -44,10 +44,12 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 
 Đọc từ `.env` ở thư mục gốc repo (xem `.env.example`) và biến môi trường (biến môi trường thắng). Lần chạy server đầu tiên nếu thiếu `WORKER_TOKEN` thì tự sinh ngẫu nhiên và ghi vào `.env`.
 
+**Thư mục cài đặt / dữ liệu** (bản đóng gói, `dist-win/`): `--app-dir <dir>` (hoặc env `APP_DIR`) = thư mục chỉ đọc chứa `web/`, `bin/`, `tools/gwr/`; `--data-dir <dir>` (hoặc env `DATA_DIR`) = nơi ghi `config.env` (thay cho `.env`), `data/app.db`, `data/backup/`, `output/`, `refs/`, `logs/`; `--port <n>` thay `PORT`. Không truyền thì cả hai mặc định là thư mục gốc repo và dùng `.env` (dev, test). Origin được phép gọi API ghi luôn gồm `http://localhost:<port>` và `http://127.0.0.1:<port>` của cổng đang chạy.
+
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `PORT` | `8787` | Cổng API |
-| `HOST` | `127.0.0.1` | Địa chỉ bind (đừng đổi ra ngoài máy) |
+| `HOST` | (đã bỏ) | Server luôn bind `127.0.0.1`, không còn cấu hình |
 | `ROOT_DIR` | thư mục gốc repo | Nơi chứa `output/` và `refs/` (đường dẫn trong DB tính từ đây) |
 | `DB_PATH` | `data/app.db` | File SQLite (tương đối so với `ROOT_DIR`). WAL, `foreign_keys=ON`, `busy_timeout=5000` |
 | `WORKER_TOKEN` | tự sinh | Token worker |
@@ -56,19 +58,18 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 | `HEARTBEAT_STALE_MINUTES` | `5` | Job claimed/running không heartbeat quá số phút này bị trả về `queued` |
 | `WORKER_ONLINE_SECONDS` | `90` | Worker online nếu có request hợp lệ trong số giây này |
 | `EXTRA_ALLOWED_ORIGINS` | rỗng | Origin bổ sung (cách nhau dấu phẩy) |
-| `FINAL_RENDERER` | `auto` | Trình dựng bản hoàn chỉnh: `auto` (Shotcut nếu cấu hình đủ và `--check` của MCP chạy được, ngược lại ffmpeg) · `shotcut` · `ffmpeg` |
-| `SHOTCUT_MCP_PYTHON` | rỗng | Đường dẫn **tuyệt đối** tới Python chạy Shotcut MCP (vd `…/cpython-3.12-macos-aarch64-none/bin/python3.12`) |
-| `SHOTCUT_MCP_SERVER_SCRIPT` | rỗng | Đường dẫn tuyệt đối tới `shotcut_mcp_server.py`. Server chạy `<python> <script>` với `SHOTCUT_MCP_ALLOWED_ROOTS=<ROOT_DIR>` và `SHOTCUT_MCP_REQUIRE_ABSOLUTE_PATHS=1` |
+> `FINAL_RENDERER`, `SHOTCUT_MCP_PYTHON`, `SHOTCUT_MCP_SERVER_SCRIPT` của bản cũ đã bị gỡ; nếu còn trong `.env`/`config.env` thì được bỏ qua (không lỗi).
+
 | `WATERMARK_REMOVER` | `auto` | Xoá logo Veo trên bản dựng hoàn chỉnh: `auto` (bật nếu `GWR_CLI` tồn tại và `node <GWR_CLI> --help` chạy được) · `off` (bỏ qua bước này) |
 | `GWR_CLI` | `<repo>/gemini-watermark-remover/bin/gwr.mjs` | Đường dẫn **tuyệt đối** tới `bin/gwr.mjs` của tool xoá logo Veo. Server chạy `node <GWR_CLI> remove <raw> --output <tmp> --json …` với `cwd` = thư mục repo của tool |
 | `GWR_VIDEO_BITRATE_MBPS` | rỗng | Truyền `--video-bitrate-mbps N` cho tool; trống = mặc định của tool |
 | `GWR_TIMEOUT_MS` | `1800000` (30 phút) | Truyền `--video-timeout-ms` cho tool; quá hạn (+30 giây) server dừng cả cây tiến trình và báo lỗi |
-| `FFMPEG_PATH` / `FFPROBE_PATH` | rỗng | Tùy chọn; mặc định tìm trong `PATH`, rồi `/Applications/Shotcut.app/Contents/MacOS/`, rồi Homebrew |
-| `NODE_ENV` | | `production` (do `npm start` đặt) → phục vụ `web/dist` |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | rỗng | Tùy chọn; mặc định tìm: đường dẫn cấu hình → (Windows) `<APP_DIR>/bin/*.exe` → `PATH` → (macOS) Homebrew |
+| `NODE_ENV` | | `production` (do `npm start` / bản build đặt trong code, `src/start.ts`) → phục vụ web (`<APP_DIR>/web` hoặc `web/dist`), log mức `warn` vào `<DATA_DIR>/logs/server.log` (xoay vòng 5 × 5MB) |
 
 Cấu hình hiệu lực (không gồm token) có ở `GET /api/meta` → `config`.
 
-Server làm gì khi khởi động / định kỳ: chạy migration (`server/migrations/NNN_*.sql`, bảng `schema_migrations`), sao lưu DB vào `data/backup/app-<timestamp>.db` bằng `db.backup()` (giữ 20 bản mới nhất), timer 30 giây quét job mất heartbeat, timer 10 giây phát SSE `worker.status` khi online/offline đổi, **bản dựng hoàn chỉnh đang `rendering` của tiến trình cũ được đánh dấu `failed`** ("Server khởi động lại trong lúc render; bấm Render lại"), và điền `content_hash` còn thiếu của ảnh tham chiếu. **Bản đang `rendering` ở bước xoá logo** → `failed` với `failed_stage="clean"` ("Server khởi động lại trong lúc xoá logo Veo; bấm Thử xoá logo lại"; bản raw còn nguyên, file tạm bị dọn). Migration `004_watermark.sql` chỉ `ALTER TABLE final_cuts ADD COLUMN` (stage, raw_video_path, failed_stage, watermark_removed, watermark_meta). Migration `003_final_cuts.sql` dựng lại bảng `jobs` (thêm `edit_plan`) — runner tắt `foreign_keys` rồi chạy `PRAGMA foreign_key_check` trước khi commit (directive `-- migrate:foreign-keys-off`).
+Server làm gì khi khởi động / định kỳ: chạy migration (`server/migrations/NNN_*.sql`, bảng `schema_migrations`), sao lưu DB vào `data/backup/app-<timestamp>.db` bằng `db.backup()` (giữ 20 bản mới nhất; **trước** khi migrate, nếu có migration chờ và DB không rỗng, server chờ sao lưu `data/backup/app-pre-<version>-<timestamp>.db` xong mới migrate — lỗi sao lưu thì không migrate và không khởi động; giữ 3 bản `pre` gần nhất, không tính vào 20 bản kia), timer 30 giây quét job mất heartbeat, timer 10 giây phát SSE `worker.status` khi online/offline đổi, **bản dựng hoàn chỉnh đang `rendering` của tiến trình cũ được đánh dấu `failed`** ("Server khởi động lại trong lúc render; bấm Render lại"), và điền `content_hash` còn thiếu của ảnh tham chiếu. **Bản đang `rendering` ở bước xoá logo** → `failed` với `failed_stage="clean"` ("Server khởi động lại trong lúc xoá logo Veo; bấm Thử xoá logo lại"; bản raw còn nguyên, file tạm bị dọn). Migration `004_watermark.sql` chỉ `ALTER TABLE final_cuts ADD COLUMN` (stage, raw_video_path, failed_stage, watermark_removed, watermark_meta). Migration `003_final_cuts.sql` dựng lại bảng `jobs` (thêm `edit_plan`) — runner tắt `foreign_keys` rồi chạy `PRAGMA foreign_key_check` trước khi commit (directive `-- migrate:foreign-keys-off`).
 
 ---
 
@@ -130,7 +131,7 @@ Ngoài bảng → `409 INVALID_TRANSITION`. Mỗi lần chuyển ghi `events` (t
 | `project.status` | `draft` (chưa gửi brief, hoặc phân tích lỗi/bị hủy khi chưa có cảnh) · `analyzing` (có job analyze_brief chưa xong) · `active` (đã phân tích) · `archived` (dành sẵn, chưa có API đặt) |
 | `final_cut.status` | `planning` (Claude đang chọn điểm cắt) · `rendering` (server đang render / đang xếp hàng render) · `ready` · `failed` · `cancelled` |
 | `final_cut.created_by` | `claude` (tự kích hoạt hoặc `POST /final-cuts`, EDL do Claude) · `user` (`rerender`, EDL do người dùng chỉnh; bản thử nhập từ dữ liệu cũ) |
-| `final_cut.renderer` | `shotcut` · `ffmpeg` · `null` (chưa render) |
+| `final_cut.renderer` | `ffmpeg` · `null` (chưa render) · `shotcut` (chỉ ở bản dựng cũ trước khi bỏ Shotcut; lịch sử, vẫn xem/tải được) |
 | `final_cut.stage` | khi `status="rendering"`: `render` (đang dựng) · `clean` (đang xoá logo Veo); `null` ở mọi trạng thái khác |
 | `final_cut.failed_stage` | khi `failed` (hoặc `cancelled` giữa bước xoá logo): `render` · `clean`; `null` nếu không lỗi/hủy ở bước nào |
 | mã lỗi worker `fail.code` | `CAPTCHA` · `LOGIN_REQUIRED` · `FLOW_OUT_OF_CREDIT` · `UI_CHANGED` (4 mã này tạm dừng hàng đợi) · `OTHER` |
@@ -265,12 +266,12 @@ PromptVersion: `{ "id", "scene_id", "version", "prompt", "reason", "created_by":
   "selection_signature": "<sha256 hex>",
   "edl": { "scenes": [ { "scene_id": 1, "asset_id": 5, "segments": [ { "in_s": 0, "out_s": 9.5 } ],
                           "removed": [ { "from_s": 9.5, "to_s": 10.005, "reason": "Cuối khung đứng yên" } ], "note": "" } ] },
-  "renderer": "shotcut",
+  "renderer": "ffmpeg",
   "video_path": "output/<slug>/final/<slug>_final_v2.mp4", "video_url": "/files/output/<slug>/final/<slug>_final_v2.mp4",
   "raw_video_path": "output/<slug>/final/<slug>_final_v2_raw.mp4", "raw_video_url": "/files/output/<slug>/final/<slug>_final_v2_raw.mp4",
   "stage": null, "failed_stage": null, "watermark_removed": true,
   "watermark_meta": { "input": "…", "output": "…", "kind": "video", "meta": { "status": "processed", "denoiseBackend": "…", "actualControls": { "videoBitrateMbps": 12 } } },
-  "project_file_path": "output/<slug>/final/shotcut/<slug>_final_v2.mlt",
+  "project_file_path": null,
   "contact_sheet_path": "output/<slug>/final/<slug>_final_v2_contact.png", "contact_sheet_url": "/files/output/<slug>/final/<slug>_final_v2_contact.png",
   "duration_s": 38.2, "job_id": 41, "render_ref": "e1b9…", "progress": 100,
   "created_by": "claude", "note": null, "summary": "Cắt khoảng đứng yên đầu/cuối mỗi cảnh…", "error": null,
@@ -280,11 +281,11 @@ PromptVersion: `{ "id", "scene_id", "version", "prompt", "reason", "created_by":
 - `selection` = video đang được chọn của từng cảnh **lúc tạo bản dựng**, theo thứ tự cảnh (`video_url`, `duration_s` là phần bổ sung để vẽ timeline/trình phát nguồn; `duration_s` có thể `null` nếu không đọc được). `selection_signature` = sha256 của danh sách `(scene_id, asset_id)`.
 - `outdated` = `selection_signature` khác lựa chọn video **hiện tại** của dự án (đã đổi video được chọn sau khi dựng).
 - `edl` là `null` khi còn `planning` (và ở bản `failed`/`cancelled` trước bước chọn điểm cắt). Dạng đã **chuẩn hóa** (số làm tròn mili giây, luôn có `removed` và `note`; nếu EDL gửi lên không có `removed` thì server suy ra từ khoảng trống giữa các đoạn với lý do "Bỏ khi chỉnh tay").
-- **Xoá logo Veo** (bước bắt buộc sau render, trừ khi `WATERMARK_REMOVER=off`): `raw_video_path` = bản render còn logo (`<slug>_final_v<n>_raw.mp4`), `video_path` = bản ĐÃ xoá logo (tên chính `<slug>_final_v<n>.mp4`, là bản hiển thị và tải về). `watermark_removed` = `true` khi `video_path` là bản sạch. `watermark_meta` = JSON stdout của tool (`null` nếu không có). `raw_video_url` có khi có `raw_video_path` (kể cả bản `failed` ở bước clean — dùng cho link nhỏ "Tải bản gốc còn logo"); **không bao giờ hiển thị raw như bản hoàn chỉnh**. `.mlt` và contact sheet giữ như cũ (dựng từ video gốc còn logo, nên dự án Shotcut vẫn còn logo).
+- **Xoá logo Veo** (bước bắt buộc sau render, trừ khi `WATERMARK_REMOVER=off`): `raw_video_path` = bản render còn logo (`<slug>_final_v<n>_raw.mp4`), `video_path` = bản ĐÃ xoá logo (tên chính `<slug>_final_v<n>.mp4`, là bản hiển thị và tải về). `watermark_removed` = `true` khi `video_path` là bản sạch. `watermark_meta` = JSON stdout của tool (`null` nếu không có). `raw_video_url` có khi có `raw_video_path` (kể cả bản `failed` ở bước clean — dùng cho link nhỏ "Tải bản gốc còn logo"); **không bao giờ hiển thị raw như bản hoàn chỉnh**. Contact sheet dựng từ video gốc còn logo.
 - `stage`: trong lúc `status="rendering"` cho biết đang `render` hay `clean`; `progress` 0–100 **riêng cho từng bước** (bước clean bắt đầu lại từ 0, ghi tối đa mỗi 1 giây); `null` khi xong. Hai bước dùng chung một hàng đợi (mỗi lúc một việc).
 - Thất bại ở bước clean: `status="failed"`, `failed_stage="clean"`, `error="Xoá logo Veo thất bại: …"` (rút gọn stderr của tool), `video_path=null`/`video_url=null`, **giữ `raw_video_path`**. Tắt tool (`off`) hoặc không có tool: bỏ bước clean — `video_path` = bản render, `raw_video_path=null`, `watermark_removed=false` (UI ghi "chưa xoá logo"). Bản `ready` cũ (render trước khi có bước này) có `watermark_removed=false`, `raw_video_path=null`.
-- `video_url`/`contact_sheet_url` chỉ có khi `status="ready"`; `video_path`/`contact_sheet_path` cũng chỉ được ghi khi render xong. `project_file_path` (.mlt) được ghi ngay khi Shotcut tạo xong file dự án (kể cả khi sau đó render lỗi); **ffmpeg không có `.mlt`** (`null`).
-- `progress`: `null` khi `planning` hoặc đang xếp hàng render; 0–100 khi `rendering` (ghi tối đa mỗi 1 giây); `100` khi `ready`. `render_ref` = mã job render của Shotcut MCP (`null` với ffmpeg). `error` có khi `failed` (vd "Server khởi động lại trong lúc render; bấm Render lại", "Xoá logo Veo thất bại: …"). `job_id` = job `edit_plan` (`null` với bản `rerender` và bản nhập từ dữ liệu cũ).
+- `video_url`/`contact_sheet_url` chỉ có khi `status="ready"`; `video_path`/`contact_sheet_path` cũng chỉ được ghi khi render xong. `project_file_path` và `render_ref` là trường LỊCH SỬ của bản dựng Shotcut cũ (`.mlt`, mã job Shotcut MCP): vẫn trả về nguyên vẹn cho dữ liệu cũ, bản mới luôn `null`. Server không còn tạo/mở `.mlt`.
+- `progress`: `null` khi `planning` hoặc đang xếp hàng render; 0–100 khi `rendering` (ghi tối đa mỗi 1 giây); `100` khi `ready`. `render_ref`: lịch sử (xem trên). `error` có khi `failed` (vd "Server khởi động lại trong lúc render; bấm Render lại", "Xoá logo Veo thất bại: …"). `job_id` = job `edit_plan` (`null` với bản `rerender` và bản nhập từ dữ liệu cũ).
 - Bản thử nhập từ dữ liệu cũ (Cacao): `created_by="user"`, `renderer="shotcut"`, `note="Bản thử Shotcut MCP, điểm cắt đặt tay (chưa qua Claude phân tích)"`, `summary=null`.
 
 ---
@@ -387,15 +388,14 @@ Cảnh đủ điều kiện: `stage=storyboard` → cảnh `awaiting_approval`; 
 **`POST /api/queue/pause`** body `{ "reason"?: string }` → WorkerStatus. Người dùng chủ động tạm dừng (`pause_code="MANUAL"`).
 **`GET /api/meta`** → `{ final_renderer: {…}, watermark_remover: {…}, config: {…}, scene_statuses: [{value,label}], job_types, job_statuses, verdicts: [{value,label}], comment_actions, fail_codes }`. `final_renderer` = trình dựng bản hoàn chỉnh đang dùng và lý do (kết quả được nhớ 60 giây):
 ```json
-{ "mode": "auto", "active": "shotcut", "reason": "Tự động: Shotcut MCP sẵn sàng, dựng bằng Shotcut",
-  "shotcut": { "configured": true, "ready": true, "detail": null },
+{ "active": "ffmpeg", "reason": "Dựng bằng ffmpeg",
   "ffmpeg": { "available": true, "path": "ffmpeg" } }
 ```
 `watermark_remover` = tool xoá logo Veo (kết quả được nhớ 60 giây):
 ```json
 { "mode": "auto", "active": true, "reason": "Tự động: tool xoá logo Veo sẵn sàng", "cli": "/…/gemini-watermark-remover/bin/gwr.mjs" }
 ```
-`mode` ∈ `auto|off`; `active=false` khi `off`, chưa cấu hình/thiếu `GWR_CLI`, hoặc `--help` lỗi (`reason` nêu rõ; bản dựng khi đó ra thẳng bản còn logo). `active` (trình dựng) ∈ `shotcut|ffmpeg|null` (null = không có trình dựng khả dụng; `reason` nói rõ vì sao). `shotcut.detail` giải thích khi chưa cấu hình / `--check` hỏng (vd "Chưa cấu hình SHOTCUT_MCP_PYTHON và SHOTCUT_MCP_SERVER_SCRIPT").
+`mode` ∈ `auto|off`; `active=false` khi `off`, chưa cấu hình/thiếu `GWR_CLI`, hoặc `--help` lỗi (`reason` nêu rõ; bản dựng khi đó ra thẳng bản còn logo). `final_renderer.active` ∈ `ffmpeg|null` (null = không tìm thấy ffmpeg; `reason` nói rõ).
 **`GET /api/health`** → `{ ok: true, time }`.
 
 ### 5.6 Dòng thời gian, sổ cái, xuất file
@@ -419,11 +419,10 @@ Khi **mọi cảnh có video được chọn**, Claude (job `edit_plan`) xem vid
 
 **`POST /api/final-cuts/:id/rerender`** body `{ "edl": Edl, "note"?: string }` → `201 { "final_cut": FinalCut }`. Người dùng chỉnh điểm cắt: tạo version **MỚI** (`created_by="user"`, cùng `selection`/`selection_signature` như bản gốc nên có thể `outdated=true`), `status="rendering"`, render ngay, **không qua worker, không tốn credit**; bản cũ giữ nguyên. Lỗi: `400 INVALID_EDL` (không tạo version nào) · `409 FINAL_CUT_ACTIVE` (đang có bản `rendering` của dự án — render lần lượt từng bản).
 
-**`POST /api/final-cuts/:id/cancel`** (không body) → `{ "final_cut": FinalCut }` (`status="cancelled"`). `planning`: hủy luôn job `edit_plan` (worker đang giữ nhận `409 JOB_CANCELLED`); `rendering`: dừng ffmpeg / gọi `cancel_render` của Shotcut, bản dở bị xóa; **đang ở bước xoá logo**: dừng cả cây tiến trình của tool (node + Chromium), xóa file tạm, **giữ bản raw** và ghi `failed_stage="clean"` để còn bấm `clean`. `ready/failed/cancelled` → `409 INVALID_STATE`. Hủy job edit_plan ở trang hàng đợi (`POST /api/jobs/:id/cancel`) cũng hủy bản dựng.
+**`POST /api/final-cuts/:id/cancel`** (không body) → `{ "final_cut": FinalCut }` (`status="cancelled"`). `planning`: hủy luôn job `edit_plan` (worker đang giữ nhận `409 JOB_CANCELLED`); `rendering`: dừng ffmpeg, bản dở bị xóa; **đang ở bước xoá logo**: dừng cả cây tiến trình của tool (node + Chromium), xóa file tạm, **giữ bản raw** và ghi `failed_stage="clean"` để còn bấm `clean`. `ready/failed/cancelled` → `409 INVALID_STATE`. Hủy job edit_plan ở trang hàng đợi (`POST /api/jobs/:id/cancel`) cũng hủy bản dựng.
 
 **`POST /api/final-cuts/:id/clean`** (không body) → `{ "final_cut": FinalCut }` (`status="rendering"`, `stage="clean"`, `progress=0`, `video_path=null`). Chạy lại **riêng bước xoá logo Veo** (không render lại, không tốn credit): ("Thử xoá logo lại" / "Xoá logo Veo"). Cho phép khi `failed_stage="clean"` (bản `failed`, hoặc `cancelled` giữa bước xoá logo) hoặc khi `ready` mà `watermark_removed=false`. Bản cũ chưa có `raw_video_path` (render trước khi có bước này): server **đổi tên** `<slug>_final_v<n>.mp4` → `<slug>_final_v<n>_raw.mp4` trước (nguyên tử, cập nhật DB), rồi xoá logo ra tên chính. Lỗi: `409 INVALID_STATE` (trạng thái khác, hoặc đã xoá logo rồi) · `409 WATERMARK_REMOVER_UNAVAILABLE` (tool tắt/không chạy được; `message` có lý do) · `409 RAW_EXISTS` (đã có file `_raw.mp4`, không ghi đè) · `409 FILE_MISSING` (mất bản gốc) · `404`.
 
-**`POST /api/final-cuts/:id/open-in-shotcut`** (không body) → `{ "ok": true, "project_file_path": "…" }`. macOS: `open -a Shotcut <file .mlt>`. Lỗi: `409 NO_PROJECT_FILE` (bản dựng bằng ffmpeg không có .mlt, hoặc file đã mất) · `409 SHOTCUT_UNAVAILABLE` (không mở được Shotcut).
 
 **EDL** (`edl` trong `rerender`, `result.edl` của job `edit_plan`):
 ```json
@@ -440,11 +439,10 @@ Server kiểm tra (sai → `400 INVALID_EDL`, message dạng `EDL không hợp l
 
 **Render (server, nền, mỗi lúc chỉ một bản — hàng đợi trong tiến trình)**
 1. Bản → `rendering` ngay khi có EDL (`progress=null` đến khi tới lượt), rồi `progress=0` và `renderer` được ghi.
-2. **Shotcut** (qua MCP stdio): `create_project` (kích thước/fps lấy từ video đầu, mỗi đoạn là một clip theo thứ tự, caption `"C1 v2 #1"`) → `render_contact_sheet` → `start_render` preset `h264-high` → poll `render_status` mỗi 2 giây (timeout 20 phút) → `progress`. Sinh `.mlt` (kèm `.render-<id>.mlt` và `.guard` do MCP tạo, để nguyên).
-3. **ffmpeg**: trim + concat (cắt thẳng, giữ âm thanh, afade 20ms ở chỗ nối; nguồn không có âm thanh được chèn im lặng), contact sheet bằng `tile`; không có `.mlt`.
-4. **Xoá logo Veo** (bước `clean`, nếu `watermark_remover.active`): bước 1–3 ghi video ra `…_final_v<n>_raw.mp4`; rồi chạy tool ra file tạm `.<tên>.tmp.mp4` cùng thư mục (tiến độ đọc từ stderr `[video] 74% …`), kiểm tra bằng ffprobe (có video, thời lượng lệch ≤ 0,25 s so với raw, có âm thanh nếu raw có) và **đổi tên nguyên tử** sang `…_final_v<n>.mp4`. Tool tắt/không có → bỏ bước này, ghi thẳng tên chính.
-5. Xong: `duration_s` bằng ffprobe → `ready`, event `final_cut.ready` (ghi "đã xoá logo Veo" hoặc "chưa xoá logo Veo"), dòng `| FINAL | v<n> | bản dựng (<renderer>, cắt thẳng; đã xoá logo Veo) | <summary hoặc note> | Sẵn sàng |` vào `output/<slug>/log.md` (không có phần "; đã xoá logo Veo" khi chưa xoá; `clean` riêng lẻ thêm dòng `| FINAL | v<n> | xoá logo Veo | … | Sẵn sàng |`). Lỗi ở bước render → `failed` + `error`, `failed_stage="render"`; lỗi ở bước clean → `failed_stage="clean"` (event `final_cut.failed`). Không có trình dựng khả dụng → `failed` ("Không có trình dựng khả dụng: …").
-6. **Không bao giờ ghi đè**: version kế tiếp luôn lớn hơn mọi version trong DB và mọi file `<slug>_final_v<n>*` có sẵn trên đĩa (kể cả `.mlt` và `_raw.mp4`), nên `…_final_v<n>.mp4` và `…_final_v<n>_raw.mp4` luôn là file mới. `rerender` đi qua đủ render → clean.
+2. **ffmpeg** (trình dựng duy nhất): trim + concat (cắt thẳng, giữ âm thanh, afade 20ms ở chỗ nối; nguồn không có âm thanh được chèn im lặng), contact sheet bằng `tile`.
+3. **Xoá logo Veo** (bước `clean`, nếu `watermark_remover.active`): bước 1–2 ghi video ra `…_final_v<n>_raw.mp4`; rồi chạy tool ra file tạm `.<tên>.tmp.mp4` cùng thư mục (tiến độ đọc từ stderr `[video] 74% …`), kiểm tra bằng ffprobe (có video, thời lượng lệch ≤ 0,25 s so với raw, có âm thanh nếu raw có) và **đổi tên nguyên tử** sang `…_final_v<n>.mp4`. Tool tắt/không có → bỏ bước này, ghi thẳng tên chính.
+4. Xong: `duration_s` bằng ffprobe → `ready`, event `final_cut.ready` (ghi "đã xoá logo Veo" hoặc "chưa xoá logo Veo"), dòng `| FINAL | v<n> | bản dựng (<renderer>, cắt thẳng; đã xoá logo Veo) | <summary hoặc note> | Sẵn sàng |` vào `output/<slug>/log.md` (không có phần "; đã xoá logo Veo" khi chưa xoá; `clean` riêng lẻ thêm dòng `| FINAL | v<n> | xoá logo Veo | … | Sẵn sàng |`). Lỗi ở bước render → `failed` + `error`, `failed_stage="render"`; lỗi ở bước clean → `failed_stage="clean"` (event `final_cut.failed`). Không có trình dựng khả dụng → `failed` ("Không có trình dựng khả dụng: …").
+5. **Không bao giờ ghi đè**: version kế tiếp luôn lớn hơn mọi version trong DB và mọi file `<slug>_final_v<n>*` có sẵn trên đĩa (kể cả `.mlt` cũ của Shotcut và `_raw.mp4`), nên `…_final_v<n>.mp4` và `…_final_v<n>_raw.mp4` luôn là file mới. `rerender` đi qua đủ render → clean.
 
 ---
 
@@ -559,7 +557,7 @@ Payload (tính lúc claim; đường dẫn tương đối từ `ROOT_DIR`):
                 "grid_path": "output/cacao-smoothie/video/C1_v2_grid.jpg", "verdict": "pass", "verdict_note": "…",
                 "comments": [ { "id": 7, "body": "Chữ méo giây 3", "timecode": 3.2, "…": "Comment" } ] } ],
   "constraints": { "aspect": "9:16", "transition": "cut", "min_segment_s": 0.3, "keep_scene_order": true },
-  "output": { "video_path": "output/<slug>/final/<slug>_final_v2.mp4", "project_file_path": "output/<slug>/final/shotcut/<slug>_final_v2.mlt", "contact_sheet_path": "output/<slug>/final/<slug>_final_v2_contact.png" },
+  "output": { "video_path": "output/<slug>/final/<slug>_final_v2.mp4", "contact_sheet_path": "output/<slug>/final/<slug>_final_v2_contact.png" },
   "requeued": false }
 ```
 `scenes` theo thứ tự cảnh. `duration_s/fps/width/height` đọc bằng ffprobe (không có thì lấy từ `asset.meta`, hoặc `null`). `grid_path`/`verdict`/`verdict_note` có thể `null`. `comments` chỉ gồm comment **chưa xử lý có `timecode`**. `output.*` chỉ để biết (worker không ghi file).
@@ -594,7 +592,7 @@ Payload (tính lúc claim; đường dẫn tương đối từ `ROOT_DIR`):
 | `worker.status` | `{ online, last_seen_at, worker_id, queue_paused, pause_reason, pause_code, paused_at }` | online/offline đổi (timer 10 giây), worker vừa online lại, tạm dừng/tiếp tục hàng đợi, và ngay khi kết nối |
 | `budget.updated` | `{ "project_id": 1 }` | job video tạo/hủy/xong/lỗi, ledger đổi, sửa dự án → refetch `GET /budget` (hoặc project) |
 | `event.created` | `{ "event": Event }` | mỗi dòng mới ở dòng thời gian |
-| `final_cut.updated` | `{ "final_cut": FinalCut }` | final_cut tạo/đổi trạng thái (`planning` → `rendering` [stage `render` → `clean`] → `ready`/`failed`/`cancelled`), `stage`, `progress` đổi (ghi tối đa 1 lần/giây), có `.mlt`/`render_ref`; kèm `project.updated` khi đổi trạng thái (để cập nhật `latest_final_cut`) |
+| `final_cut.updated` | `{ "final_cut": FinalCut }` | final_cut tạo/đổi trạng thái (`planning` → `rendering` [stage `render` → `clean`] → `ready`/`failed`/`cancelled`), `stage`, `progress` đổi (ghi tối đa 1 lần/giây), kèm `project.updated` khi đổi trạng thái (để cập nhật `latest_final_cut`) |
 | `project.updated` | `{ "project": ProjectSummary }` | gửi brief, phân tích xong/lỗi/hủy, sửa dự án, thay đổi ảnh tham chiếu (upload/chép từ thư viện/nhãn/thứ tự/xóa) — *ngoài danh sách gốc* |
 
 Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (SceneSummary đầy đủ, không có `assets/comments/jobs` — với trang chi tiết, invalidate `GET /api/scenes/:id` khi nhận `scene.updated`/`asset.*`/`comment.*` của cảnh đó). `job.updated` cập nhật trang Hàng đợi.
@@ -635,8 +633,6 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | 409 | `FINAL_CUT_ACTIVE` | đang có bản dựng `planning`/`rendering` (tạo mới) hoặc `rendering` (render lại) |
 | 409 | `WATERMARK_REMOVER_UNAVAILABLE` | `POST /final-cuts/:id/clean` khi tool xoá logo Veo tắt/không chạy được |
 | 409 | `RAW_EXISTS` · `FILE_MISSING` | `clean`: file `_raw.mp4` đã tồn tại (không ghi đè) · mất video/bản gốc cần xử lý |
-| 409 | `NO_PROJECT_FILE` | `open-in-shotcut` khi bản dựng không có file .mlt |
-| 409 | `SHOTCUT_UNAVAILABLE` | `open-in-shotcut` mà không mở được Shotcut |
 | 409 | `NO_SCENES` | complete analyze_brief khi chưa có cảnh |
 | 413 | `FILE_TOO_LARGE` · `BODY_TOO_LARGE` · `TOO_MANY_FILES` | upload quá giới hạn (10MB/file) |
 | 415 | `UNSUPPORTED_FILE_TYPE` | ảnh không phải png/jpg/webp (theo magic bytes) |
@@ -679,7 +675,6 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | Trạng thái xoá logo ("Đang xoá logo Veo 42%") | `latest_final_cut.stage` / `final_cut.stage` + `progress` (riêng từng bước) | `status="rendering"` | — |
 | "Thử xoá logo lại" (lỗi ở bước clean) / "Xoá logo Veo" (bản `ready` còn logo) | `POST /api/final-cuts/:id/clean` | `failed_stage="clean"`, hoặc `ready` với `watermark_removed=false` | `WATERMARK_REMOVER_UNAVAILABLE` (xem `/api/meta.watermark_remover.reason`) |
 | Link nhỏ "Tải bản gốc còn logo" | `raw_video_url` | khi `raw_video_url != null` | — |
-| "Mở trong Shotcut" | `POST /api/final-cuts/:id/open-in-shotcut` | chỉ khi `project_file_path != null` | `NO_PROJECT_FILE` |
 | Trình chỉnh EDL → "Render lại (không tốn credit)" | `POST /api/final-cuts/:id/rerender {edl, note?}`; `INVALID_EDL` hiện đúng cảnh/đoạn từ `error.details` / `message` | bản `ready`/`failed` | `FINAL_CUT_ACTIVE` |
 | Hủy khi đang chọn điểm cắt / render | `POST /api/final-cuts/:id/cancel` | `planning`, `rendering` | — |
 | Nhật ký & credit; xuất | `GET …/ledger`, `GET …/ledger.csv`, `GET …/log.md` | | |
@@ -709,7 +704,7 @@ Thông báo "Cảnh C1 đã dùng 2/2 lượt" lấy từ `scene.video_block.mes
 - `output/<slug>/storyboard/<code>_storyboard.png` (lượt 1), `<code>_storyboard_v<n>.png` (n ≥ 2)
 - `output/<slug>/video/<code>_v<n>.mp4` và `<code>_v<n>_grid.jpg`
 - `output/<slug>/log.md`
-- `output/<slug>/final/<slug>_final_v<n>.mp4`, `…_final_v<n>_contact.png`, `output/<slug>/final/shotcut/<slug>_final_v<n>.mlt` (chỉ khi dựng bằng Shotcut; Shotcut MCP còn tạo `.render-<id>.mlt` và `.guard` cạnh đó)
+- `output/<slug>/final/<slug>_final_v<n>.mp4`, `…_final_v<n>_contact.png`, (bản dựng Shotcut cũ còn `output/<slug>/final/shotcut/*.mlt`: lịch sử, không còn tạo mới)
 - `refs/<projectId>/<tên-đã-làm-sạch>.<png|jpg|webp>`
 - `data/app.db` (+ `-wal`, `-shm`), `data/backup/app-<timestamp>.db`
 

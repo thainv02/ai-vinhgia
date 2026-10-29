@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
-import { DEFAULT_ALLOWED_ORIGINS } from '../config.js';
+import { allowedOriginsFor } from '../config.js';
 import { AppError } from '../lib/errors.js';
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -8,7 +8,7 @@ const ALLOWED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /** Chặn Host lạ (DNS rebinding) và Origin lạ trên request ghi (trang web khác gọi API tốn credit). */
 export function registerSecurity(app: FastifyInstance, ctx: AppContext): void {
-  const origins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...ctx.config.extraAllowedOrigins].map((o) => o.toLowerCase()));
+  const origins = new Set(allowedOriginsFor(ctx.config.port, ctx.config.extraAllowedOrigins).map((o) => o.toLowerCase()));
   app.addHook('onRequest', async (req) => {
     const host = (req.headers.host ?? '').replace(/:\d+$/, '').toLowerCase();
     if (!ALLOWED_HOSTNAMES.has(host)) {

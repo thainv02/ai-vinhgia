@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web && npm run build -w server",
+    "build:win": "node scripts/build-win.mjs",
     "start": "npm run start -w server",
     "test": "npm run test -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
@@ -20,6 +21,7 @@
     "import:legacy": "npm run import:legacy -w server --"
   },
   "devDependencies": {
-    "concurrently": "^9.2.5"
+    "concurrently": "^9.2.5",
+    "esbuild": "^0.28.2"
   }
 }

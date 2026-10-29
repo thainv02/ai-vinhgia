@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS_DIR, openDb, runMigrations, type DB } from '../src/db/index.js';
+import { buildApp } from '../src/app.js';
+import { MIGRATIONS_DIR, backupBeforeMigrate, backupDb, isDbEmpty, loadMigrationsFromDir, openDb, pendingMigrations, runMigrations, type DB } from '../src/db/index.js';
 
 let tmp: string;
 let db: DB;
@@ -162,5 +163,75 @@ UPDATE assets SET scene_id = 999 WHERE id = 1;
     } finally {
       db2.close();
     }
+  });
+});
+
+describe('migration dạng danh sách {version, sql} và sao lưu trước khi migrate', () => {
+  const embedded = () => loadMigrationsFromDir(MIGRATIONS_DIR);
+
+  it('runMigrations nhận danh sách đã nhúng, kết quả giống đọc từ thư mục', () => {
+    db = openDb(path.join(tmp, 'embedded.db'));
+    expect(embedded().map((m) => m.version)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark']);
+    expect(runMigrations(db, embedded())).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark']);
+    expect(runMigrations(db, embedded())).toEqual([]);
+  });
+
+  it('DB rỗng hoặc không có migration chờ → không sao lưu', async () => {
+    const file = path.join(tmp, 'data', 'app.db');
+    db = openDb(file);
+    expect(pendingMigrations(db, embedded())).toHaveLength(4);
+    expect(isDbEmpty(db)).toBe(true);
+    expect(await backupBeforeMigrate(db, file, embedded())).toBeNull();
+    runMigrations(db, embedded());
+    expect(isDbEmpty(db)).toBe(false);
+    expect(await backupBeforeMigrate(db, file, embedded())).toBeNull(); // không còn migration chờ
+    expect(fs.existsSync(path.join(tmp, 'data', 'backup'))).toBe(false);
+  });
+
+  it('có migration chờ và DB không rỗng → buildApp chờ sao lưu xong rồi mới migrate; bản sao lưu còn schema cũ', async () => {
+    const file = path.join(tmp, 'data', 'app.db');
+    db = seedOldDb(file);
+    db.close();
+    const app = await buildApp({ rootDir: tmp, dbPath: file, logger: false });
+    try {
+      const backups = fs.readdirSync(path.join(tmp, 'data', 'backup')).filter((f) => f.startsWith('app-pre-004_watermark-'));
+      expect(backups).toHaveLength(1);
+      const old = openDb(path.join(tmp, 'data', 'backup', backups[0]!));
+      try {
+        expect(old.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([{ version: '001_init' }, { version: '002_ref_library' }]);
+      } finally {
+        old.close();
+      }
+      expect(app.ctx.db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()).toEqual({ n: 4 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('sao lưu thất bại → không migrate, buildApp ném lỗi', async () => {
+    const file = path.join(tmp, 'data', 'app.db');
+    db = seedOldDb(file);
+    db.close();
+    fs.writeFileSync(path.join(tmp, 'data', 'backup'), 'file chặn thư mục backup'); // mkdir backup/ sẽ lỗi
+    await expect(buildApp({ rootDir: tmp, dbPath: file, logger: false })).rejects.toThrow(/Sao lưu DB trước khi migrate thất bại/);
+    const check = openDb(file);
+    try {
+      expect(check.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get()).toEqual({ n: 2 });
+    } finally {
+      check.close();
+    }
+  });
+
+  it('chỉ giữ 3 bản sao lưu trước migration gần nhất và không bị bản sao lưu định kỳ xoay vòng xoá', async () => {
+    const file = path.join(tmp, 'data', 'app.db');
+    db = seedOldDb(file);
+    const migs = embedded();
+    for (let i = 0; i < 5; i++) await backupBeforeMigrate(db, file, migs, new Date(Date.UTC(2026, 0, 1, 0, 0, i)));
+    const dir = path.join(tmp, 'data', 'backup');
+    expect(fs.readdirSync(dir).filter((f) => f.includes('-pre-'))).toHaveLength(3);
+    await backupDb(db, file, 1);
+    await backupDb(db, file, 1, new Date(Date.UTC(2026, 0, 2)));
+    expect(fs.readdirSync(dir).filter((f) => f.includes('-pre-'))).toHaveLength(3);
+    expect(fs.readdirSync(dir).filter((f) => !f.includes('-pre-'))).toHaveLength(1);
   });
 });

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc --noEmit -p tsconfig.json",
-    "start": "NODE_ENV=production tsx src/index.ts",
+    "start": "tsx src/start.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "sim:worker": "tsx src/scripts/sim-worker.ts",
@@ -17,6 +17,7 @@
     "@fastify/static": "^10.1.6",
     "better-sqlite3": "^12.11.1",
     "fastify": "^5.12.7",
+    "pino": "^10.4.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

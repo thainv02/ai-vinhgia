@@ -7,13 +7,13 @@ import { AppError, conflict, notFound } from '../lib/errors.js';
 import type { AssetRow, CommentRow, FinalCutRow, FinalCutStatus, JobRow, ProjectRow, SceneRow } from '../db/types.js';
 import { insertJob } from './job-create.js';
 import { appendLogRow } from './logmd.js';
-import { probeMedia } from './media.js';
+import { probeMedia, type MediaInfo } from './media.js';
 import { emitProject } from './project-view.js';
 import { commentJson, fileUrl, getJobJson, getProject, logEvent, parseJson } from './repo.js';
 
 /**
  * Bản dựng hoàn chỉnh (final cut): sau khi mọi cảnh đã chọn video, Claude (job `edit_plan`) chọn điểm cắt (EDL),
- * server render nền (Shotcut MCP hoặc ffmpeg) ra `output/<slug>/final/<slug>_final_v<n>.mp4`.
+ * server render nền (ffmpeg) ra `output/<slug>/final/<slug>_final_v<n>.mp4`.
  */
 
 export const MIN_SEGMENT_S = 0.3;
@@ -56,7 +56,8 @@ export function finalPaths(slug: string, version: number) {
     /** Bản render còn logo (khi bật xoá logo Veo, video_path là bản đã xoá logo). */
     raw_video_path: `${base}/${slug}_final_v${version}_raw.mp4`,
     contact_sheet_path: `${base}/${slug}_final_v${version}_contact.png`,
-    project_file_path: `${base}/shotcut/${slug}_final_v${version}.mlt`,
+    /** Chỉ dùng để tránh đè file cũ của bản dựng Shotcut (lịch sử); không còn tạo file này. */
+    legacy_project_file_path: `${base}/shotcut/${slug}_final_v${version}.mlt`,
   };
 }
 
@@ -79,7 +80,7 @@ export function nextVersion(ctx: AppContext, project: ProjectRow): number {
   // phòng hờ: tên file lạ không khớp mẫu nhưng trùng đúng đường dẫn
   for (;;) {
     const p = finalPaths(project.slug, v);
-    if (![p.video_path, p.raw_video_path, p.contact_sheet_path, p.project_file_path].some((rel) => fs.existsSync(path.join(ctx.config.rootDir, rel)))) return v;
+    if (![p.video_path, p.raw_video_path, p.contact_sheet_path, p.legacy_project_file_path].some((rel) => fs.existsSync(path.join(ctx.config.rootDir, rel)))) return v;
     v++;
   }
 }
@@ -132,9 +133,54 @@ export function getFinalCutRow(ctx: AppContext, id: number): FinalCutRow {
 const assetById = (ctx: AppContext, id: number): AssetRow | undefined =>
   ctx.db.prepare('SELECT * FROM assets WHERE id = ?').get(id) as AssetRow | undefined;
 
-/** Thời lượng video nguồn: ffprobe (có cache) rồi tới asset.meta.duration_s; null nếu không biết. */
+/**
+ * Cache thông tin video nguồn (ffprobe) theo đường dẫn + kích thước + mtime. `probeMedia` là async nên các hàm đồng bộ
+ * (JSON, validate EDL, payload job, chạy trong transaction) chỉ ĐỌC cache; nơi async (route, renderer) gọi `warmSourceMedia` trước.
+ */
+const mediaCache = new Map<string, MediaInfo | null>();
+const mediaKey = (abs: string): string | null => {
+  try {
+    const st = fs.statSync(abs);
+    return `${abs}|${st.size}|${st.mtimeMs}`;
+  } catch {
+    return null;
+  }
+};
+
+/** Probe (async, không chặn event loop) các video nguồn chưa có trong cache. Lỗi probe không ném (rơi về meta của asset). */
+export async function warmSourceMedia(ctx: AppContext, assetIds: number[]): Promise<void> {
+  // Chạy song song; media.ts tự giới hạn số ffprobe cùng lúc
+  await Promise.all(
+    [...new Set(assetIds)].map(async (id) => {
+      const a = assetById(ctx, id);
+      if (!a) return;
+      const abs = path.join(ctx.config.rootDir, a.file_path);
+      const key = mediaKey(abs);
+      if (!key || mediaCache.has(key)) return;
+      const info = await probeMedia(ctx.config, abs);
+      // Không nhớ null (có thể chỉ do hết giờ khi máy bận); lần sau probe lại
+      if (info) mediaCache.set(key, info);
+    }),
+  );
+}
+
+export const warmCutMedia = (ctx: AppContext, selectionJson: string): Promise<void> =>
+  warmSourceMedia(ctx, parseJson<SelectionItem[]>(selectionJson, []).map((s) => s.asset_id));
+
+/** Làm nóng cache cho mọi bản đang `planning` (trước khi worker nhận job edit_plan / nộp EDL). */
+export async function warmPlanningCuts(ctx: AppContext): Promise<void> {
+  const rows = ctx.db.prepare("SELECT selection FROM final_cuts WHERE status = 'planning'").all() as { selection: string }[];
+  await Promise.all(rows.map((r) => warmCutMedia(ctx, r.selection)));
+}
+
+function cachedMedia(ctx: AppContext, asset: AssetRow): MediaInfo | null {
+  const key = mediaKey(path.join(ctx.config.rootDir, asset.file_path));
+  return key ? (mediaCache.get(key) ?? null) : null;
+}
+
+/** Thời lượng video nguồn: ffprobe (cache đã làm nóng) rồi tới asset.meta.duration_s; null nếu không biết. */
 export function sourceDuration(ctx: AppContext, asset: AssetRow): number | null {
-  const info = probeMedia(ctx.config, path.join(ctx.config.rootDir, asset.file_path));
+  const info = cachedMedia(ctx, asset);
   if (info?.duration_s) return info.duration_s;
   const meta = parseJson<Record<string, unknown>>(asset.meta, {});
   return typeof meta.duration_s === 'number' && meta.duration_s > 0 ? meta.duration_s : null;
@@ -458,7 +504,7 @@ export function editPlanPayload(ctx: AppContext, job: JobRow): Record<string, un
     const scene = ctx.db.prepare('SELECT * FROM scenes WHERE id = ?').get(s.scene_id) as SceneRow;
     const asset = assetById(ctx, s.asset_id);
     const abs = asset ? path.join(ctx.config.rootDir, asset.file_path) : null;
-    const info = abs ? probeMedia(ctx.config, abs) : null;
+    const info = asset ? cachedMedia(ctx, asset) : null;
     const meta = asset ? parseJson<Record<string, unknown>>(asset.meta, {}) : {};
     const grid = asset
       ? (ctx.db.prepare("SELECT file_path FROM assets WHERE scene_id = ? AND kind = 'grid' AND attempt = ? ORDER BY id DESC LIMIT 1").get(s.scene_id, asset.attempt) as
@@ -493,7 +539,7 @@ export function editPlanPayload(ctx: AppContext, job: JobRow): Record<string, un
     project: { id: project.id, slug: project.slug, name: project.name, style_lock: project.style_lock },
     scenes,
     constraints: { ...FINAL_CONSTRAINTS },
-    output: (({ video_path, project_file_path, contact_sheet_path }) => ({ video_path, project_file_path, contact_sheet_path }))(finalPaths(project.slug, cut.version)),
+    output: (({ video_path, contact_sheet_path }) => ({ video_path, contact_sheet_path }))(finalPaths(project.slug, cut.version)),
     requeued: job.requeue_count > 0,
   };
 }
@@ -533,7 +579,7 @@ export function cancelCutForJob(ctx: AppContext, jobId: number): void {
   logEvent(ctx, { project_id: cut.project_id, type: 'final_cut.cancelled', message: `Bản hoàn chỉnh v${cut.version} đã bị hủy` });
 }
 
-// ------------------------------------------------------------------ người dùng: render lại / hủy / mở Shotcut
+// ------------------------------------------------------------------ người dùng: render lại / hủy
 
 export const rerenderBody = z.object({ edl: z.unknown().optional(), note: z.string().trim().max(2000).optional() });
 
@@ -598,7 +644,6 @@ export function markReady(
     video_path: string;
     raw_video_path?: string | null;
     contact_sheet_path: string | null;
-    project_file_path: string | null;
     duration_s: number | null;
     watermark_removed: boolean;
     watermark_meta?: unknown;
@@ -619,7 +664,6 @@ export function markReady(
       video_path: r.video_path,
       raw_video_path: r.raw_video_path === undefined ? cut.raw_video_path : r.raw_video_path,
       contact_sheet_path: r.contact_sheet_path ?? cut.contact_sheet_path,
-      project_file_path: r.project_file_path ?? cut.project_file_path,
       duration_s: r.duration_s,
       watermark_removed: r.watermark_removed ? 1 : 0,
       watermark_meta: r.watermark_meta === undefined || r.watermark_meta === null ? null : JSON.stringify(r.watermark_meta),

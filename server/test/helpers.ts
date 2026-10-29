@@ -5,6 +5,23 @@ import { buildApp, type App, type BuildAppOptions } from '../src/app.js';
 import { FakeClock } from '../src/lib/clock.js';
 
 export const WORKER_TOKEN = 'test-worker-token';
+
+/**
+ * Tạo được symlink không? Windows cần Developer Mode hoặc quyền admin; thiếu thì các test symlink bị bỏ qua
+ * (kiểm tra chặn symlink vẫn chạy trên macOS/Linux và Windows có quyền).
+ */
+export const CAN_SYMLINK = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'autovideo-symlink-probe-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'a'), '');
+    fs.symlinkSync(path.join(dir, 'a'), path.join(dir, 'b'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})();
 export const PNG_BYTES = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',

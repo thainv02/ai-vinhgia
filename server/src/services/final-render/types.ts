@@ -5,8 +5,8 @@ export interface RenderSegment {
   path: string;
   in_s: number;
   out_s: number;
-  /** Caption trong Shotcut, vd "C1 v2 #1". */
-  caption: string;
+  /** Nhãn đoạn (chỉ để log/debug), vd "C1 v2 #1". Không vẽ lên video. */
+  caption?: string;
 }
 
 export interface RenderRequest {
@@ -15,26 +15,21 @@ export interface RenderRequest {
   slug: string;
   name: string;
   segments: RenderSegment[];
-  out: { videoAbs: string; contactAbs: string; mltAbs: string };
+  out: { videoAbs: string; contactAbs: string };
   config: Config;
   signal: AbortSignal;
   /** 0–100 */
   onProgress(pct: number): void;
-  /** Gọi khi đã tạo file dự án .mlt (Shotcut). */
-  onProjectFile(abs: string): void;
-  /** Gọi khi có mã job render của Shotcut MCP. */
-  onRenderRef(ref: string): void;
 }
 
 export interface RenderOutcome {
-  renderer: 'shotcut' | 'ffmpeg';
+  renderer: 'ffmpeg';
   videoAbs: string;
   contactAbs: string | null;
-  projectFileAbs: string | null;
 }
 
 export interface Renderer {
-  readonly name: 'shotcut' | 'ffmpeg';
+  readonly name: 'ffmpeg';
   render(req: RenderRequest): Promise<RenderOutcome>;
 }
 

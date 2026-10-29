@@ -24,12 +24,10 @@ run('FfmpegRenderer (ffmpeg thật)', () => {
     slug: 'demo',
     name: 'Demo',
     segments,
-    out: { videoAbs: path.join(root, 'final', 'demo_final_v1.mp4'), contactAbs: path.join(root, 'final', 'demo_final_v1_contact.png'), mltAbs: path.join(root, 'final', 'shotcut', 'demo_final_v1.mlt') },
+    out: { videoAbs: path.join(root, 'final', 'demo_final_v1.mp4'), contactAbs: path.join(root, 'final', 'demo_final_v1_contact.png') },
     config: defaultConfig(root, path.join(root, 'x.db')),
     signal: new AbortController().signal,
     onProgress: () => undefined,
-    onProjectFile: () => undefined,
-    onRenderRef: () => undefined,
     ...extra,
   });
 
@@ -50,7 +48,6 @@ run('FfmpegRenderer (ffmpeg thật)', () => {
       ),
     );
     expect(out.renderer).toBe('ffmpeg');
-    expect(out.projectFileAbs).toBeNull();
     expect(fs.existsSync(path.join(root, 'final', 'shotcut'))).toBe(false);
     const probe = ffprobeJson(out.videoAbs);
     const v = probe.streams.find((s: any) => s.codec_type === 'video');
@@ -121,7 +118,7 @@ run('FfmpegRenderer (ffmpeg thật)', () => {
 run('final cut end-to-end với ffmpeg thật (FINAL_RENDERER=ffmpeg)', () => {
   let env: Env;
   beforeEach(async () => {
-    env = await makeEnv({ config: { finalRenderer: 'ffmpeg' } });
+    env = await makeEnv();
   });
   afterEach(async () => {
     await env.close();
@@ -148,6 +145,6 @@ run('final cut end-to-end với ffmpeg thật (FINAL_RENDERER=ffmpeg)', () => {
     const range = await env.app.inject({ method: 'GET', url: done.video_url, headers: { host: 'localhost', range: 'bytes=0-99' } });
     expect(range.statusCode).toBe(206);
     expect(range.headers['content-type']).toBe('video/mp4');
-    expect((await sc.user.get('/api/meta')).body.final_renderer).toMatchObject({ mode: 'ffmpeg', active: 'ffmpeg' });
+    expect((await sc.user.get('/api/meta')).body.final_renderer).toMatchObject({ active: 'ffmpeg' });
   });
 });

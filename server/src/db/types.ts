@@ -208,8 +208,10 @@ export interface FinalCutRow {
   selection: string; // JSON [{scene_id, code, asset_id, attempt}]
   selection_signature: string;
   edl: string | null; // JSON
+  /** 'shotcut' chỉ còn ở dữ liệu cũ (lịch sử); bản mới luôn là 'ffmpeg'. */
   renderer: 'shotcut' | 'ffmpeg' | null;
   video_path: string | null;
+  /** Lịch sử: đường dẫn .mlt của bản dựng Shotcut cũ. Bản mới luôn null. */
   project_file_path: string | null;
   contact_sheet_path: string | null;
   duration_s: number | null;

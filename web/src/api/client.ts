@@ -173,7 +173,6 @@ export const api = {
   cancelFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/cancel`)),
   /** Chạy lại riêng bước xoá logo Veo (không render lại, không tốn credit). */
   cleanFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/clean`)),
-  openInShotcut: (id: number) => post<unknown>(`/api/final-cuts/${id}/open-in-shotcut`),
 
   // ---- sổ cái, nhật ký ----
   ledger: (projectId: number) => get<Ledger>(`/api/projects/${projectId}/ledger`),

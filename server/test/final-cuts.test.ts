@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
 import { maybeAutoFinalCut } from '../src/services/final-cuts.js';
 import { sweepStaleJobs } from '../src/services/jobs.js';
 import { FakeRenderer } from './final-helpers.js';
@@ -162,7 +163,6 @@ describe('job edit_plan (worker)', () => {
     expect(p.constraints).toEqual({ aspect: '9:16', transition: 'cut', min_segment_s: 0.3, keep_scene_order: true });
     expect(p.output).toEqual({
       video_path: `output/${SLUG}/final/${SLUG}_final_v1.mp4`,
-      project_file_path: `output/${SLUG}/final/shotcut/${SLUG}_final_v1.mlt`,
       contact_sheet_path: `output/${SLUG}/final/${SLUG}_final_v1_contact.png`,
     });
     expect(p.requeued).toBe(false);
@@ -603,45 +603,76 @@ describe('đánh số version, không ghi đè', () => {
   });
 });
 
-describe('open-in-shotcut, meta', () => {
-  it('chỉ mở khi có file .mlt (bản dựng bằng Shotcut); ffmpeg → 409 NO_PROJECT_FILE; opener lỗi → 409 SHOTCUT_UNAVAILABLE', async () => {
-    const opened: string[] = [];
-    await env.close();
-    await mk({ finalRender: { progressThrottleMs: 0, opener: async (abs) => void opened.push(abs) } }, new FakeRenderer('shotcut'));
+/** Chèn một bản dựng Shotcut cũ (dữ liệu lịch sử, version 99) đã `ready` kèm file mp4 và .mlt thật trên đĩa, dùng cùng lựa chọn video với bản hiện có. */
+async function insertLegacyShotcutCut(sc: Scenario): Promise<number> {
+  const [base] = await cutsOf(sc);
+  const video = `output/${SLUG}/final/${SLUG}_final_v99.mp4`;
+  const mlt = `output/${SLUG}/final/shotcut/${SLUG}_final_v99.mlt`;
+  writeFile(env.root, video, 'mp4 cũ');
+  writeFile(env.root, mlt, '<mlt/>');
+  const r = env.ctx.db
+    .prepare(
+      `INSERT INTO final_cuts (project_id, version, status, selection, selection_signature, edl, renderer, video_path, project_file_path, render_ref, duration_s, progress, created_by, created_at)
+       VALUES (?, 99, 'ready', ?, ?, ?, 'shotcut', ?, ?, 'job-shotcut-42', 7, 100, 'claude', ?)`,
+    )
+    .run(sc.project.id, JSON.stringify(base.selection.map(({ scene_id, code, asset_id, attempt }: any) => ({ scene_id, code, asset_id, attempt }))), base.selection_signature, JSON.stringify(edlFor(sc, base)), video, mlt, env.ctx.now());
+  return Number(r.lastInsertRowid);
+}
+
+describe('bản dựng Shotcut cũ (dữ liệu lịch sử)', () => {
+  it('vẫn liệt kê, xem và tải được; giữ nguyên renderer, project_file_path, render_ref', async () => {
     const sc = await setupAllDone(env, { scenes: 1 });
-    const { cut } = await planAndRender(sc);
-    expect(cut).toMatchObject({ renderer: 'shotcut', project_file_path: `output/${SLUG}/final/shotcut/${SLUG}_final_v1.mlt`, render_ref: expect.stringContaining('fake-render') });
-    const r = await sc.user.post(`/api/final-cuts/${cut.id}/open-in-shotcut`, {});
-    expect(r.status).toBe(200);
-    expect(r.body).toEqual({ ok: true, project_file_path: cut.project_file_path });
-    expect(opened).toEqual([fs.realpathSync(path.join(env.root, cut.project_file_path))]);
-    // file .mlt bị xóa
-    fs.rmSync(path.join(env.root, cut.project_file_path));
-    expect((await sc.user.post(`/api/final-cuts/${cut.id}/open-in-shotcut`, {})).body.error.code).toBe('NO_PROJECT_FILE');
-    expect((await sc.user.post('/api/final-cuts/9999/open-in-shotcut', {})).status).toBe(404);
-
-    await env.close();
-    await mk({ finalRender: { progressThrottleMs: 0, opener: async () => { throw new Error('không có Shotcut'); } } }, new FakeRenderer('shotcut'));
-    const sc2 = await setupAllDone(env, { scenes: 1 });
-    const { cut: c2 } = await planAndRender(sc2);
-    const bad = await sc2.user.post(`/api/final-cuts/${c2.id}/open-in-shotcut`, {});
-    expect(bad.status).toBe(409);
-    expect(bad.body.error.code).toBe('SHOTCUT_UNAVAILABLE');
-
-    await env.close();
-    await mk();
-    const sc3 = await setupAllDone(env, { scenes: 1 });
-    const { cut: c3 } = await planAndRender(sc3);
-    const none = await sc3.user.post(`/api/final-cuts/${c3.id}/open-in-shotcut`, {});
-    expect(none.status).toBe(409);
-    expect(none.body.error.code).toBe('NO_PROJECT_FILE');
+    const id = await insertLegacyShotcutCut(sc);
+    const want = {
+      id,
+      version: 99,
+      status: 'ready',
+      renderer: 'shotcut',
+      project_file_path: `output/${SLUG}/final/shotcut/${SLUG}_final_v99.mlt`,
+      render_ref: 'job-shotcut-42',
+      video_path: `output/${SLUG}/final/${SLUG}_final_v99.mp4`,
+      video_url: expect.stringContaining(`${SLUG}_final_v99.mp4`),
+    };
+    const one = (await sc.user.get(`/api/final-cuts/${id}`)).body;
+    expect(one).toMatchObject(want);
+    expect((await cutsOf(sc)).find((c) => c.id === id)).toMatchObject(want);
+    const dl = await sc.user.get(one.video_url);
+    expect(dl.status).toBe(200);
   });
 
-  it('GET /api/meta báo trình dựng đang dùng và lý do', async () => {
+  it('render lại bản Shotcut cũ → bản mới dựng bằng ffmpeg (không còn .mlt/render_ref); bản cũ nguyên vẹn', async () => {
+    const sc = await setupAllDone(env, { scenes: 1 });
+    const id = await insertLegacyShotcutCut(sc);
+    const old = (await sc.user.get(`/api/final-cuts/${id}`)).body;
+    const r = await sc.user.post(`/api/final-cuts/${id}/rerender`, { edl: old.edl });
+    expect(r.status, r.raw).toBe(201);
+    await idle();
+    expect(fake.calls).toHaveLength(1);
+    const neu = (await sc.user.get(`/api/final-cuts/${r.body.final_cut.id}`)).body;
+    expect(neu).toMatchObject({ status: 'ready', renderer: 'ffmpeg', project_file_path: null, render_ref: null, version: 100 });
+    expect((await sc.user.get(`/api/final-cuts/${id}`)).body).toMatchObject({ renderer: 'shotcut', render_ref: 'job-shotcut-42' });
+    expect(fs.existsSync(path.join(env.root, `output/${SLUG}/final/shotcut/${SLUG}_final_v100.mlt`))).toBe(false);
+  });
+
+  it('route mở Shotcut đã bị gỡ', async () => {
+    const sc = await setupAllDone(env, { scenes: 1 });
+    const id = await insertLegacyShotcutCut(sc);
+    expect((await sc.user.post(`/api/final-cuts/${id}/open-in-shotcut`, {})).status).toBe(404);
+  });
+});
+
+describe('meta, cấu hình', () => {
+  it('GET /api/meta chỉ báo ffmpeg (không còn mode/shotcut)', async () => {
     const meta = (await userClient(env.app).get('/api/meta')).body;
     expect(meta.job_types).toContain('edit_plan');
-    expect(meta.final_renderer).toMatchObject({ mode: 'auto', active: 'ffmpeg', reason: 'Trình dựng được chỉ định: ffmpeg' });
-    expect(Object.keys(meta.final_renderer).sort()).toEqual(['active', 'ffmpeg', 'mode', 'reason', 'shotcut']);
+    expect(meta.final_renderer).toMatchObject({ active: 'ffmpeg', reason: 'Trình dựng được chỉ định: ffmpeg', ffmpeg: { available: expect.any(Boolean) } });
+    expect(Object.keys(meta.final_renderer).sort()).toEqual(['active', 'ffmpeg', 'reason']);
+  });
+
+  it('file .env/config.env cũ còn khoá Shotcut/FINAL_RENDERER không làm hỏng loadConfig', () => {
+    const cfg = loadConfig({ FINAL_RENDERER: 'shotcut', SHOTCUT_MCP_PYTHON: '/x/python', SHOTCUT_MCP_SERVER_SCRIPT: '/x/s.py', PORT: '4321' } as NodeJS.ProcessEnv);
+    expect(cfg.port).toBe(4321);
+    expect(Object.keys(cfg).filter((k) => /shotcut|finalRenderer/i.test(k))).toEqual([]);
   });
 
   it('GET /api/final-cuts/:id 404; danh sách của dự án không tồn tại 404; hủy id lạ 404', async () => {

@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile, spawn } from 'node:child_process';
 import type { AppContext } from '../../context.js';
 import {
   type Edl,
@@ -15,53 +14,35 @@ import {
 import { ffmpegOf, probeMedia } from '../media.js';
 import { getProject, parseJson } from '../repo.js';
 import { FfmpegRenderer } from './ffmpeg-renderer.js';
-import { ShotcutRenderer } from './shotcut-renderer.js';
 import { RenderCancelled, type RenderSegment, type Renderer } from './types.js';
 import { computeWatermarkStatus, runWatermarkCli, verifyCleaned, WatermarkError, type WatermarkStatus } from './watermark.js';
 
 export type { Renderer, RenderRequest, RenderOutcome, RenderSegment } from './types.js';
 export { RenderCancelled } from './types.js';
 export { FfmpegRenderer, buildFfmpegArgs } from './ffmpeg-renderer.js';
-export { ShotcutRenderer } from './shotcut-renderer.js';
-export { McpClient, McpToolError } from './mcp-client.js';
 export { computeWatermarkStatus, descendants, killTree, runWatermarkCli, verifyCleaned, type WatermarkStatus } from './watermark.js';
 
 export interface RendererStatus {
-  mode: 'auto' | 'shotcut' | 'ffmpeg';
-  /** Trình dựng sẽ dùng cho lần render kế tiếp; null nếu không có cái nào khả dụng. */
-  active: 'shotcut' | 'ffmpeg' | null;
+  /** Trình dựng sẽ dùng cho lần render kế tiếp; null nếu không có (không tìm thấy ffmpeg). */
+  active: 'ffmpeg' | null;
   /** Lý do (tiếng Việt) để giao diện hiển thị. */
   reason: string;
-  shotcut: { configured: boolean; ready: boolean | null; detail: string | null };
   ffmpeg: { available: boolean; path: string | null };
 }
 
 export interface FinalRenderOptions {
   /** Ép dùng một renderer cụ thể (test). */
   renderer?: Renderer;
-  /** Mở file .mlt trong Shotcut (mặc định macOS `open -a Shotcut`). */
-  opener?: (abs: string) => Promise<void>;
   /** Giãn cách tối thiểu giữa hai lần ghi progress (mặc định 1000ms). */
   progressThrottleMs?: number;
-  /** Tùy chọn cho ShotcutRenderer (test). */
-  shotcut?: { pollMs?: number; timeoutMs?: number };
-  /** Thời gian nhớ kết quả `--check` của MCP (mặc định 60 giây). */
+  /** Thời gian nhớ trạng thái trình dựng / xoá logo (mặc định 60 giây). */
   checkTtlMs?: number;
   /** Thời gian chờ thêm ngoài GWR_TIMEOUT_MS trước khi tự dừng tool xoá logo (mặc định 30 giây; test đặt nhỏ). */
   watermarkGraceMs?: number;
 }
 
-const defaultOpener = (abs: string): Promise<void> =>
-  new Promise((resolve, reject) => {
-    if (process.platform !== 'darwin') return reject(new Error('Chỉ hỗ trợ mở Shotcut trên macOS'));
-    const child = spawn('open', ['-a', 'Shotcut', abs], { stdio: 'ignore' });
-    child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Không mở được Shotcut (open thoát mã ${code})`))));
-  });
-
 /**
- * Hàng đợi render bản hoàn chỉnh trong tiến trình: mỗi lúc chỉ render MỘT bản. Chọn renderer theo FINAL_RENDERER
- * (auto = Shotcut nếu cấu hình đủ và `--check` của MCP chạy được, ngược lại ffmpeg).
+ * Hàng đợi render bản hoàn chỉnh trong tiến trình: mỗi lúc chỉ render MỘT bản, bằng ffmpeg.
  */
 export class FinalRenderService {
   private queue: { id: number; mode: 'full' | 'clean' }[] = [];
@@ -89,44 +70,15 @@ export class FinalRenderService {
   }
 
   private async computeStatus(): Promise<RendererStatus> {
-    const cfg = this.ctx.config;
-    const ffPath = ffmpegOf(cfg);
+    const ffPath = await ffmpegOf(this.ctx.config);
     const ffmpeg = { available: !!ffPath, path: ffPath };
     if (this.opts.renderer) {
       const n = this.opts.renderer.name;
-      return {
-        mode: cfg.finalRenderer,
-        active: n,
-        reason: `Trình dựng được chỉ định: ${n}`,
-        shotcut: { configured: n === 'shotcut', ready: n === 'shotcut' ? true : null, detail: null },
-        ffmpeg,
-      };
+      return { active: n, reason: `Trình dựng được chỉ định: ${n}`, ffmpeg };
     }
-    const py = cfg.shotcutMcpPython;
-    const script = cfg.shotcutMcpServerScript;
-    const configured = !!py && !!script;
-    let ready: boolean | null = null;
-    let detail: string | null = null;
-    if (!configured) detail = 'Chưa cấu hình SHOTCUT_MCP_PYTHON và SHOTCUT_MCP_SERVER_SCRIPT';
-    else if (!path.isAbsolute(py!) || !path.isAbsolute(script!)) detail = 'SHOTCUT_MCP_PYTHON và SHOTCUT_MCP_SERVER_SCRIPT phải là đường dẫn tuyệt đối';
-    else if (!fs.existsSync(py!) || !fs.existsSync(script!)) detail = 'Không thấy file Python hoặc script Shotcut MCP';
-    else if (cfg.finalRenderer !== 'ffmpeg') {
-      const check = await runCheck(py!, script!);
-      ready = check.ready;
-      detail = check.detail;
-    }
-    const base = { mode: cfg.finalRenderer, shotcut: { configured, ready, detail }, ffmpeg };
-    if (cfg.finalRenderer === 'ffmpeg') {
-      return { ...base, active: ffmpeg.available ? 'ffmpeg' : null, reason: ffmpeg.available ? 'FINAL_RENDERER=ffmpeg: dựng bằng ffmpeg' : 'FINAL_RENDERER=ffmpeg nhưng không tìm thấy ffmpeg' };
-    }
-    if (cfg.finalRenderer === 'shotcut') {
-      return ready
-        ? { ...base, active: 'shotcut', reason: 'FINAL_RENDERER=shotcut: dựng bằng Shotcut MCP' }
-        : { ...base, active: null, reason: `FINAL_RENDERER=shotcut nhưng Shotcut MCP chưa sẵn sàng: ${detail ?? 'không rõ lý do'}` };
-    }
-    if (ready) return { ...base, active: 'shotcut', reason: 'Tự động: Shotcut MCP sẵn sàng, dựng bằng Shotcut' };
-    if (ffmpeg.available) return { ...base, active: 'ffmpeg', reason: `Tự động: dùng ffmpeg vì ${detail ?? 'Shotcut MCP chưa sẵn sàng'}` };
-    return { ...base, active: null, reason: `Không có trình dựng khả dụng (Shotcut: ${detail ?? 'chưa sẵn sàng'}; ffmpeg: không tìm thấy)` };
+    return ffmpeg.available
+      ? { active: 'ffmpeg', reason: 'Dựng bằng ffmpeg', ffmpeg }
+      : { active: null, reason: 'Không tìm thấy ffmpeg (đặt FFMPEG_PATH hoặc thêm ffmpeg vào PATH)', ffmpeg };
   }
 
   /** Trạng thái bước xoá logo Veo cho `GET /api/meta` → `watermark_remover` (có cache). */
@@ -141,12 +93,6 @@ export class FinalRenderService {
   private async pick(): Promise<{ renderer: Renderer | null; status: RendererStatus }> {
     const status = await this.status();
     if (this.opts.renderer) return { renderer: this.opts.renderer, status };
-    if (status.active === 'shotcut') {
-      return {
-        renderer: new ShotcutRenderer({ python: this.ctx.config.shotcutMcpPython!, script: this.ctx.config.shotcutMcpServerScript!, ...this.opts.shotcut }),
-        status,
-      };
-    }
     if (status.active === 'ffmpeg') return { renderer: new FfmpegRenderer(), status };
     return { renderer: null, status };
   }
@@ -183,10 +129,6 @@ export class FinalRenderService {
     this.current?.abort.abort();
     await this.pumping?.catch(() => undefined);
     for (const w of this.idleWaiters.splice(0)) w();
-  }
-
-  async openInShotcut(abs: string): Promise<void> {
-    await (this.opts.opener ?? defaultOpener)(abs);
   }
 
   private async pump(): Promise<void> {
@@ -284,7 +226,6 @@ export class FinalRenderService {
     const out = {
       videoAbs: path.join(root, cleaning ? rel.raw_video_path : rel.video_path),
       contactAbs: path.join(root, rel.contact_sheet_path),
-      mltAbs: path.join(root, rel.project_file_path),
     };
     // Không bao giờ ghi đè: đường dẫn đã bị chiếm (hiếm) → báo lỗi rõ ràng thay vì đè bản cũ
     for (const taken of [rel.video_path, rel.raw_video_path]) {
@@ -310,20 +251,13 @@ export class FinalRenderService {
         config: ctx.config,
         signal: abort.signal,
         onProgress,
-        onProjectFile: (abs) => {
-          if (!this.closed) updateCut(ctx, id, { project_file_path: relOf(abs) });
-        },
-        onRenderRef: (ref) => {
-          if (!this.closed) updateCut(ctx, id, { render_ref: ref });
-        },
       });
       if (this.closed) return;
-      const dur = Math.round((probeMedia(ctx.config, outcome.videoAbs)?.duration_s ?? segments.reduce((a, s) => a + (s.out_s - s.in_s), 0)) * 1000) / 1000;
+      const dur = Math.round(((await probeMedia(ctx.config, outcome.videoAbs, { signal: abort.signal }))?.duration_s ?? segments.reduce((a, s) => a + (s.out_s - s.in_s), 0)) * 1000) / 1000;
       if (cleaning) {
         const still = this.updateIfRendering(id, {
           raw_video_path: relOf(outcome.videoAbs),
           contact_sheet_path: relOf(outcome.contactAbs),
-          project_file_path: relOf(outcome.projectFileAbs) ?? cut.project_file_path,
           renderer: outcome.renderer,
           duration_s: dur,
           stage: 'clean',
@@ -340,7 +274,6 @@ export class FinalRenderService {
           video_path: relOf(outcome.videoAbs)!,
           raw_video_path: null,
           contact_sheet_path: relOf(outcome.contactAbs),
-          project_file_path: relOf(outcome.projectFileAbs),
           duration_s: dur,
           watermark_removed: false,
         });
@@ -383,7 +316,7 @@ export class FinalRenderService {
         fs.rmSync(tmpAbs, { force: true });
         return;
       }
-      const dur = verifyCleaned(ctx.config, rawAbs, tmpAbs);
+      const dur = await verifyCleaned(ctx.config, rawAbs, tmpAbs);
       const cur = ctx.db.prepare('SELECT status FROM final_cuts WHERE id = ?').get(cut.id) as { status: string } | undefined;
       if (cur?.status !== 'rendering') {
         fs.rmSync(tmpAbs, { force: true });
@@ -395,7 +328,6 @@ export class FinalRenderService {
         video_path: relOf(mainAbs),
         raw_video_path: relOf(rawAbs),
         contact_sheet_path: null,
-        project_file_path: null,
         duration_s: dur !== null ? Math.round(dur * 1000) / 1000 : cut.duration_s,
         watermark_removed: true,
         watermark_meta: meta,
@@ -409,20 +341,4 @@ export class FinalRenderService {
       markFailed(ctx, cut.id, `Xoá logo Veo thất bại: ${msg}`, 'clean');
     }
   }
-}
-
-function runCheck(python: string, script: string): Promise<{ ready: boolean; detail: string | null }> {
-  return new Promise((resolve) => {
-    execFile(python, [script, '--check'], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024, env: { ...process.env } }, (err, stdout) => {
-      if (err && !stdout) return resolve({ ready: false, detail: `Không chạy được "--check" của Shotcut MCP: ${err.message.slice(0, 160)}` });
-      try {
-        const j = JSON.parse(stdout) as { runtime_ready?: boolean; runtime?: { shotcut?: { found?: boolean }; melt?: { found?: boolean } } };
-        if (j.runtime_ready === true) return resolve({ ready: true, detail: null });
-        const missing = ['shotcut', 'melt'].filter((k) => !(j.runtime as Record<string, { found?: boolean }> | undefined)?.[k]?.found);
-        resolve({ ready: false, detail: missing.length ? `Shotcut MCP báo thiếu: ${missing.join(', ')}` : 'Shotcut MCP báo runtime chưa sẵn sàng' });
-      } catch {
-        resolve({ ready: false, detail: '"--check" của Shotcut MCP không trả JSON hợp lệ' });
-      }
-    });
-  });
 }

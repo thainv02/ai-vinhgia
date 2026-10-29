@@ -23,8 +23,9 @@ import {
 import { JPG_BYTES, PNG_BYTES, claim, client, makeEnv, userClient, writeFile, type Env } from './helpers.js';
 
 const FIX = fileURLToPath(new URL('./fixtures/legacy/', import.meta.url));
-const PROMPTS_MD = fs.readFileSync(path.join(FIX, 'cacao-smoothie-prompts.md'), 'utf8');
-const LOG_MD = fs.readFileSync(path.join(FIX, 'log.md'), 'utf8');
+// Fixture lưu LF trong git; checkout Windows (autocrlf) có thể thành CRLF nên chuẩn hóa để so khớp nguyên văn
+const PROMPTS_MD = fs.readFileSync(path.join(FIX, 'cacao-smoothie-prompts.md'), 'utf8').replace(/\r\n/g, '\n');
+const LOG_MD = fs.readFileSync(path.join(FIX, 'log.md'), 'utf8').replace(/\r\n/g, '\n');
 const DIR = 'output/cacao-smoothie';
 const STICK_PNG = Buffer.concat([PNG_BYTES, Buffer.from('stick')]);
 
@@ -441,7 +442,7 @@ describe('importLegacy (ROOT tạm)', () => {
       if (mlt) writeFile(env.root, `${DIR}/final/shotcut/cacao-smoothie_final_v1.mlt`, '<mlt/>');
     };
     const probeDur: LegacyImportOptions = {
-      probe: (abs, kind) => (kind === 'video' ? { width: 720, height: 1280, duration_s: abs.includes('/final/') ? 38.2 : 10 } : { width: 941, height: 1672 }),
+      probe: (abs, kind) => (kind === 'video' ? { width: 720, height: 1280, duration_s: abs.split(path.sep).join('/').includes('/final/') ? 38.2 : 10 } : { width: 941, height: 1672 }),
     };
 
     it('không có file bản thử → không đăng ký gì', () => {
@@ -605,10 +606,9 @@ describe('CLI npm run import:legacy', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  const tsx = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
-  const cli = path.join(REPO_ROOT, 'server', 'src', 'scripts', 'import-legacy.ts');
+    const cli = path.join(REPO_ROOT, 'server', 'src', 'scripts', 'import-legacy.ts');
   const exec = (args: string[], env: Record<string, string> = {}) =>
-    spawnSync(tsx, [cli, ...args], {
+    spawnSync(process.execPath, ['--import', 'tsx', cli, ...args], {
       encoding: 'utf8',
       cwd: path.join(REPO_ROOT, 'server'),
       env: { ...process.env, ROOT_DIR: root, DB_PATH: 'data/env.db', WORKER_TOKEN: 'x', ...env },

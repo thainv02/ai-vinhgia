@@ -5,7 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, defaultConfig, loadConfig } from '../config.js';
+import { ENV_FILE, defaultConfig, loadConfig } from '../config.js';
 import { AppContext } from '../context.js';
 import { backupDb, openDb, runMigrations } from '../db/index.js';
 import { systemClock } from '../lib/clock.js';
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     return;
   }
   if (args.budgetIgnored) console.warn('Cảnh báo: --budget không còn dùng (đã bỏ hạn mức credit), bỏ qua.');
-  loadDotEnv(path.join(REPO_ROOT, '.env'));
+  loadDotEnv(ENV_FILE);
   const loaded = loadConfig();
   const rootDir = loaded.rootDir;
   const dbPath = args.db ? path.resolve(rootDir, args.db) : loaded.dbPath;

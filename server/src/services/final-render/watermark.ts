@@ -67,12 +67,27 @@ export const shortStderr = (s: string, max = 300): string => {
   return t.length > max ? '…' + t.slice(-max) : t;
 };
 
-/** Liệt kê mọi tiến trình con cháu của `root` (ps -A: pid, ppid). */
+/**
+ * Bảng (pid, ppid) của mọi tiến trình. macOS/Linux: `ps -A`. Windows: CIM qua PowerShell (chậm ~1 giây, chỉ dùng cho `descendants`;
+ * `killTree` trên Windows dùng taskkill nên không gọi hàm này).
+ */
+function processTable(): string {
+  if (process.platform === 'win32') {
+    return execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }'],
+      { encoding: 'utf8', timeout: 15_000, windowsHide: true },
+    );
+  }
+  return execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8', timeout: 5000 });
+}
+
+/** Liệt kê mọi tiến trình con cháu của `root`. */
 export function descendants(root: number): number[] {
   try {
-    const out = execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8', timeout: 5000 });
+    const out = processTable();
     const children = new Map<number, number[]>();
-    for (const line of out.split('\n')) {
+    for (const line of out.split(/\r?\n/)) {
       const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
       if (!m) continue;
       const pid = Number(m[1]);
@@ -102,8 +117,17 @@ const alive = (pid: number): boolean => {
   }
 };
 
-/** Dừng cả cây tiến trình (node + Chromium + các tiến trình con): SIGTERM, 3 giây sau SIGKILL phần còn sống. */
+/**
+ * Dừng cả cây tiến trình (node + Chromium + các tiến trình con). macOS/Linux: SIGTERM, 3 giây sau SIGKILL phần còn sống.
+ * Windows: `taskkill /PID <pid> /T /F` (dừng cứng cả cây).
+ */
 export function killTree(rootPid: number): void {
+  if (process.platform === 'win32') {
+    const tk = spawn('taskkill', ['/PID', String(rootPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    tk.on('error', () => undefined);
+    tk.unref();
+    return;
+  }
   const pids = [rootPid, ...descendants(rootPid)];
   for (const pid of pids) {
     try {
@@ -202,11 +226,11 @@ export function runWatermarkCli(req: CleanRequest): Promise<unknown> {
  * Kiểm tra file sau khi xoá logo bằng ffprobe: có video, thời lượng lệch ≤ 0,25 giây so với bản raw, có âm thanh nếu raw có.
  * Ném WatermarkError nếu sai.
  */
-export function verifyCleaned(config: Pick<Config, 'ffprobePath'>, rawAbs: string, cleanAbs: string): number | null {
+export async function verifyCleaned(config: Pick<Config, 'ffprobePath'>, rawAbs: string, cleanAbs: string): Promise<number | null> {
   if (!fs.existsSync(cleanAbs) || fs.statSync(cleanAbs).size === 0) throw new WatermarkError('tool không tạo ra file kết quả');
-  const out = probeMedia(config, cleanAbs);
+  const out = await probeMedia(config, cleanAbs);
   if (!out || !out.width) throw new WatermarkError('file kết quả không đọc được hoặc không có luồng video');
-  const raw = probeMedia(config, rawAbs);
+  const raw = await probeMedia(config, rawAbs);
   if (raw?.duration_s != null && out.duration_s != null && Math.abs(out.duration_s - raw.duration_s) > 0.25) {
     throw new WatermarkError(`file kết quả dài ${out.duration_s.toFixed(2)}s, lệch quá 0,25s so với bản gốc (${raw.duration_s.toFixed(2)}s)`);
   }
