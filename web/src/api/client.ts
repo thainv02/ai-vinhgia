@@ -9,39 +9,29 @@ import type {
   CommentAction,
   Edl,
   FinalCut,
+  ColorRef,
+  ColorRefList,
+  Grade,
+  GradePreview,
   Job,
+  LanInfo,
   Ledger,
   LibraryRef,
   Meta,
+  ReconcileOutcome,
   ProjectDetail,
   ProjectSummary,
   Ref,
   Scene,
   SceneDetail,
   Stage,
+  TrashItem,
   Verdict,
   WorkerStatus,
 } from './types';
 
-/** Lỗi API: giữ nguyên `{error:{code,message,details}}` của server. */
-export class ApiError extends Error {
-  code: string;
-  status: number;
-  details: unknown;
-  constructor(code: string, message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.code = code;
-    this.status = status;
-    this.details = details;
-  }
-}
-
-export function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return 'Đã xảy ra lỗi không xác định';
-}
+export { ApiError, errorMessage } from './errors';
+import { ApiError } from './errors';
 
 async function parseError(res: Response): Promise<ApiError> {
   let body: Partial<ApiErrorBody> | null = null;
@@ -57,7 +47,7 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError('HTTP_' + res.status, `Máy chủ trả về lỗi ${res.status}`, res.status);
 }
 
-async function request<T>(method: string, path: string, body?: unknown, init?: { form?: FormData }): Promise<T> {
+export async function request<T>(method: string, path: string, body?: unknown, init?: { form?: FormData }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
@@ -76,6 +66,7 @@ async function request<T>(method: string, path: string, body?: unknown, init?: {
 const get = <T>(path: string) => request<T>('GET', path);
 const post = <T>(path: string, body: unknown = {}) => request<T>('POST', path, body);
 const patch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body);
+const del = <T>(path: string, body?: unknown) => request<T>('DELETE', path, body);
 
 export interface CreateProjectInput {
   name: string;
@@ -114,6 +105,13 @@ export const api = {
   submitBrief: (id: number, brief?: string) =>
     post<{ project: ProjectSummary; job: Job }>(`/api/projects/${id}/brief`, brief !== undefined ? { brief } : {}),
   getBudget: (id: number) => get<Budget>(`/api/projects/${id}/budget`),
+  /** Chuyển dự án vào thùng rác (khôi phục được trong 30 ngày). `confirmName` phải trùng tên dự án. */
+  deleteProject: (id: number, confirmName: string) => del<{ ok: boolean; restorable_days: number }>(`/api/projects/${id}`, { confirm_name: confirmName }),
+
+  // ---- thùng rác ----
+  listTrash: () => get<TrashItem[]>('/api/trash'),
+  restoreProject: (id: number) => post<ProjectDetail>(`/api/trash/${id}/restore`),
+  purgeProject: (id: number, confirmName: string) => del<{ ok: boolean }>(`/api/trash/${id}`, { confirm_name: confirmName }),
 
   // ---- ảnh tham chiếu ----
   /** Trường `label` đứng ngay trước `file` mà nó gắn nhãn (API.md 5.2). */
@@ -159,10 +157,15 @@ export const api = {
   // ---- hàng đợi ----
   listJobs: (q: JobsQuery = {}) => get<Job[]>(`/api/jobs${qs({ projectId: q.projectId, status: q.status, type: q.type, limit: q.limit })}`),
   cancelJob: (id: number) => post<{ job: Job; scene: Scene | null }>(`/api/jobs/${id}/cancel`),
+  /** Đối soát job managed đã gửi lệnh tạo bên ngoài mà chưa rõ kết quả. */
+  reconcileJob: (id: number, outcome: ReconcileOutcome, note?: string) =>
+    post<{ job: Job; scene: Scene | null; replay: boolean }>(`/api/jobs/${id}/reconcile`, { outcome, ...(note ? { note } : {}) }),
   workerStatus: () => get<WorkerStatus>('/api/worker/status'),
   resumeQueue: () => post<WorkerStatus>('/api/queue/resume'),
   pauseQueue: (reason?: string) => post<WorkerStatus>('/api/queue/pause', reason ? { reason } : {}),
   meta: () => get<Meta>('/api/meta'),
+  /** Trạng thái chia sẻ qua LAN (URL, mã truy cập). Chỉ app chính có route này. */
+  lanInfo: () => get<LanInfo>('/api/lan'),
 
   // ---- bản hoàn chỉnh ----
   listFinalCuts: (projectId: number) => get<FinalCut[]>(`/api/projects/${projectId}/final-cuts`),
@@ -170,6 +173,23 @@ export const api = {
   createFinalCut: async (projectId: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/projects/${projectId}/final-cuts`)),
   rerenderFinalCut: async (id: number, edl: Edl, note?: string) =>
     unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/rerender`, { edl, ...(note ? { note } : {}) })),
+  /** Góp ý cho AI: phiên bản mới (parent = bản đang xem) + job chọn lại điểm cắt/màu. */
+  feedbackFinalCut: async (id: number, feedback: string) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/feedback`, { feedback })),
+  /** Chỉnh màu tay (không AI): phiên bản mới chỉ chạy bước chỉnh màu. */
+  gradeFinalCut: async (id: number, grade: Grade, note?: string) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/grade`, { grade, ...(note ? { note } : {}) })),
+  previewGrade: (id: number, grade: Grade) => post<GradePreview>(`/api/final-cuts/${id}/grade-preview`, { grade }),
+  // ---- ảnh mẫu / LUT cho "Màu theo ảnh mẫu" ----
+  listColorRefs: (projectId: number) => get<ColorRefList>(`/api/projects/${projectId}/color-refs`),
+  uploadColorRef: async (projectId: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return (await request<{ color_ref: ColorRef }>('POST', `/api/projects/${projectId}/color-refs`, undefined, { form })).color_ref;
+  },
+  colorRefFromSource: async (projectId: number, src: { ref_id: number } | { asset_id: number }) => (await post<{ color_ref: ColorRef }>(`/api/projects/${projectId}/color-refs/from-asset`, src)).color_ref,
+  deleteColorRef: async (projectId: number, id: number) => {
+    await del<{ ok: boolean }>(`/api/projects/${projectId}/color-refs/${id}`);
+  },
+  regradeFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/regrade`)),
   cancelFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/cancel`)),
   /** Chạy lại riêng bước xoá logo Veo (không render lại, không tốn credit). */
   cleanFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/clean`)),

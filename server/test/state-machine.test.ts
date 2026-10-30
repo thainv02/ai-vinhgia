@@ -97,7 +97,7 @@ describe('đi hết máy trạng thái qua HTTP', () => {
     const job = await claim(sc);
     expect(job.type).toBe('analyze_brief');
     expect(job.payload.project.brief).toBe('Làm quảng cáo sinh tố');
-    expect(job.payload.rules_file).toBe('claude-system-prompt.md');
+    expect(job.payload.rules_file).toBe('video-production-rules.md');
     // chưa có cảnh → complete bị từ chối
     const early = await w.post(`/api/worker/jobs/${job.id}/complete`, { result: {} });
     expect(early.status).toBe(409);
@@ -349,7 +349,7 @@ describe('prompt, verdict, chọn video', () => {
     expect(p.body.scene.prompt_version).toBe(2);
     const s = await scene(sc, id);
     expect(s.prompt_versions.map((v: any) => [v.version, v.created_by, v.reason])).toEqual([
-      [1, 'claude', 'Bản đầu tiên do Claude viết khi phân tích kịch bản'],
+      [1, 'claude', 'Bản đầu tiên do AI viết khi phân tích kịch bản'],
       [2, 'user', 'Thêm chi tiết'],
     ]);
     // không có thay đổi → không sinh version mới

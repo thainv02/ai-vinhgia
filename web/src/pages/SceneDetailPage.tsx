@@ -210,6 +210,13 @@ export default function SceneDetailPage() {
                 </Alert>
               </div>
             )}
+            {job?.reconcile_required && (
+              <div className="mb-3">
+                <Alert tone="warn">
+                  <strong>Cần đối soát.</strong> Job {JOB_TYPE_LABEL[job.type].toLowerCase()} #{job.id} đã gửi lệnh tạo sang {job.type === 'video' ? 'Google Flow' : 'ChatGPT'} nhưng chưa rõ kết quả. Kiểm tra trên {job.type === 'video' ? 'Flow' : 'ChatGPT'} rồi bấm «Đối soát»; hệ thống sẽ không tự tạo lại.
+                </Alert>
+              </div>
+            )}
             <SceneActions
               scene={scene}
               creditPerVideo={scene.project.credit_per_video}

@@ -8,7 +8,7 @@ import { Button } from './Button';
 import { Icon } from './Icon';
 import { InlineError } from './States';
 
-/** Nhận xét của Claude cho video đang xem (lỗi thấy được + kết luận). Người dùng đổi kết luận / sửa ghi chú. */
+/** Nhận xét của AI cho video đang xem (lỗi thấy được + kết luận). Người dùng đổi kết luận / sửa ghi chú. */
 export function VerdictPanel({ asset }: { asset: Asset | null }) {
   const set = useSetVerdict();
   const [editing, setEditing] = useState(false);
@@ -22,8 +22,8 @@ export function VerdictPanel({ asset }: { asset: Asset | null }) {
   if (!asset) {
     return (
       <section className="rounded-lg border border-dashed border-line-strong bg-surface p-3 text-[13px] text-muted">
-        <h2 className="mb-1 text-[15px] font-semibold text-fg">Nhận xét của Claude</h2>
-        Chưa có video nên chưa có kết luận. Sau khi worker tạo xong, Claude sẽ ghi lỗi thấy được và kết luận Đạt / Sửa khi dựng / Tạo lại ở đây.
+        <h2 className="mb-1 text-[15px] font-semibold text-fg">Nhận xét của AI</h2>
+        Chưa có video nên chưa có kết luận. Sau khi worker tạo xong, AI sẽ ghi lỗi thấy được và kết luận Đạt / Sửa khi dựng / Tạo lại ở đây.
       </section>
     );
   }
@@ -38,7 +38,7 @@ export function VerdictPanel({ asset }: { asset: Asset | null }) {
   return (
     <section className="rounded-lg border border-line bg-surface p-3 sm:p-4" aria-labelledby="vd-h">
       <h2 id="vd-h" className="mb-2 text-[15px] font-semibold">
-        Nhận xét của Claude <span className="font-normal text-muted">· video v{asset.attempt}</span>
+        Nhận xét của AI <span className="font-normal text-muted">· video v{asset.attempt}</span>
       </h2>
 
       <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Kết luận">

@@ -31,7 +31,7 @@ describe('Host / Origin', () => {
       expect(r.body.error.code).toBe('FORBIDDEN_ORIGIN');
     }
     expect((await u.patch('/api/projects/1', { name: 'x' }, { origin: 'http://evil.com' })).status).toBe(403);
-    expect((await u.del('/api/refs/1', { origin: 'http://evil.com' })).status).toBe(403);
+    expect((await u.del('/api/refs/1', undefined, { origin: 'http://evil.com' })).status).toBe(403);
     expect((await u.get('/api/projects')).body).toEqual([]);
     for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'http://127.0.0.1:8787']) {
       expect((await u.post('/api/projects', { name: 'OK ' + origin }, { origin })).status, origin).toBe(201);

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { errorMessage } from '../api/client';
+import { errorMessage, type ApiError } from '../api/client';
 import type { JobType, Scene } from '../api/types';
 import { useApproveScene, useCancelJob, useResetScene, useSelectVideo } from '../hooks/mutations';
 import { JOB_TYPE_LABEL } from '../lib/status';
 import { Button, type ButtonVariant } from './Button';
 import { ConfirmDialog } from './Modal';
 import { Icon } from './Icon';
+import { ReconcileDialog, canReconcile, cancelBlockedReason } from './ReconcileDialog';
 
 interface ActionSpec {
   key: string;
@@ -31,7 +32,7 @@ interface Props {
 
 /** Nút theo trạng thái của một cảnh. Mọi nút tốn credit ghi rõ số credit và qua hộp xác nhận. */
 export function SceneActions({ scene, creditPerVideo, variant, lastJobType, viewingVideoId }: Props) {
-  const [confirm, setConfirm] = useState<'video' | 'cancel' | null>(null);
+  const [confirm, setConfirm] = useState<'video' | 'cancel' | 'reconcile' | null>(null);
   const approveStoryboard = useApproveScene();
   const approveVideo = useApproveScene({ silent: true });
   const cancel = useCancelJob({ silent: true });
@@ -112,8 +113,12 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
     case 'video_queued':
     case 'video_running':
     case 'needs_revision':
-      if (scene.active_job) {
-        actions.push({ key: 'cancel', label: 'Hủy job', variant: 'danger', onClick: () => setConfirm('cancel') });
+      if (scene.active_job?.reconcile_required) {
+        // Job đã gửi lệnh tạo sang Flow/ChatGPT nhưng chưa rõ kết quả: hủy bị chặn, phải đối soát để credit/lượt ghi đúng.
+        actions.push({ key: 'reconcile', label: 'Đối soát', variant: 'primary', onClick: () => setConfirm('reconcile') });
+      } else if (scene.active_job) {
+        actions.push({ key: 'cancel', label: 'Hủy job', variant: 'danger', reason: cancelBlockedReason(scene.active_job), onClick: () => setConfirm('cancel') });
+        if (canReconcile(scene.active_job)) actions.push({ key: 'reconcile', label: 'Đối soát', variant: 'secondary', onClick: () => setConfirm('reconcile') });
       }
       break;
     default:
@@ -176,7 +181,13 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
         danger
         pending={cancel.isPending}
         error={cancel.isError ? errorMessage(cancel.error) : null}
-        onConfirm={() => job && cancel.mutate(job.id, { onSuccess: () => setConfirm(null) })}
+        onConfirm={() =>
+          job &&
+          cancel.mutate(job.id, {
+            onSuccess: () => setConfirm(null),
+            onError: (e) => { if ((e as ApiError).code === 'RECONCILIATION_REQUIRED') setConfirm('reconcile'); },
+          })
+        }
       >
         {job?.status === 'queued' ? (
           <p>
@@ -190,6 +201,8 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
           </p>
         )}
       </ConfirmDialog>
+
+      <ReconcileDialog job={job ?? null} open={confirm === 'reconcile'} onClose={() => setConfirm(null)} />
     </>
   );
 }

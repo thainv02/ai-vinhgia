@@ -2,12 +2,15 @@ import type { AppContext } from '../context.js';
 import type { ProjectRow } from '../db/types.js';
 import { getProject } from './repo.js';
 
-/** Lượt đã dùng = asset video + job video đang queued/claimed/running + job video failed có tốn credit. */
+/**
+ * Lượt đã dùng = asset video + job video đang queued/claimed/running + job video failed có tốn credit.
+ * Video người dùng LAN tự tải lên (`meta.source='lan_upload'`) không tốn credit/lượt của chủ máy nên không tính.
+ */
 export function attemptsUsed(ctx: AppContext, sceneId: number): number {
   const row = ctx.db
     .prepare(
       `SELECT
-         (SELECT COUNT(*) FROM assets WHERE scene_id = @id AND kind = 'video')
+         (SELECT COUNT(*) FROM assets WHERE scene_id = @id AND kind = 'video' AND COALESCE(CASE WHEN json_valid(meta) THEN json_extract(meta, '$.source') END, '') <> 'lan_upload')
        + (SELECT COUNT(*) FROM jobs WHERE scene_id = @id AND type = 'video' AND status IN ('queued','claimed','running'))
        + (SELECT COUNT(*) FROM jobs WHERE scene_id = @id AND type = 'video' AND status = 'failed' AND credits_cost > 0) AS n`,
     )

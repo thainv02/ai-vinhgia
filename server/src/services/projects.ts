@@ -2,11 +2,12 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { badRequest, conflict } from '../lib/errors.js';
 import { slugify } from '../lib/paths.js';
-import type { JobRow, ProjectRow } from '../db/types.js';
+import type { JobRow, ProjectRow, ProjectSource } from '../db/types.js';
 import { budgetSummary } from './budget.js';
 import { insertJob } from './jobs.js';
 import { emitProject, projectSummary } from './project-view.js';
 import { getJobJson, getProject, logEvent, projectRefs, refJson } from './repo.js';
+import { projectDeleteBlocks } from './trash.js';
 
 export const createProjectBody = z.object({
   name: z.string().trim().min(1, 'tên dự án không được rỗng').max(200),
@@ -36,17 +37,42 @@ export function uniqueSlug(ctx: AppContext, name: string): string {
   return slug;
 }
 
-export function createProject(ctx: AppContext, body: CreateProjectBody): ProjectRow {
+export interface CreateProjectOrigin {
+  /** 'lan': dự án do người dùng LAN tạo qua trang planner (chỉ lập kế hoạch). Mặc định 'app'. */
+  source?: ProjectSource;
+  created_by_name?: string | null;
+  /** sha256 của cookie client LAN của trình duyệt tạo kế hoạch (chỉ dự án 'lan' tạo từ khi có tính năng xoá); NULL = không ai ngoài chủ máy xoá được. */
+  lan_client_hash?: string | null;
+}
+
+export function createProject(ctx: AppContext, body: CreateProjectBody, origin: CreateProjectOrigin = {}): ProjectRow {
   return ctx.tx(() => {
     const now = ctx.now();
+    const source = origin.source ?? 'app';
     const info = ctx.db
       .prepare(
-        `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, credit_per_video, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+        `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, credit_per_video, status, source, created_by_name, lan_client_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
       )
-      .run(uniqueSlug(ctx, body.name), body.name, body.brief, body.style_lock, body.max_attempts_per_scene, body.credit_per_video, now, now);
+      .run(
+        uniqueSlug(ctx, body.name),
+        body.name,
+        body.brief,
+        body.style_lock,
+        body.max_attempts_per_scene,
+        body.credit_per_video,
+        source,
+        origin.created_by_name ?? null,
+        source === 'lan' ? (origin.lan_client_hash ?? null) : null,
+        now,
+        now,
+      );
     const project = getProject(ctx, Number(info.lastInsertRowid));
-    logEvent(ctx, { project_id: project.id, type: 'project.created', message: `Tạo dự án "${project.name}"` });
+    logEvent(ctx, {
+      project_id: project.id,
+      type: 'project.created',
+      message: source === 'lan' ? `Tạo kế hoạch "${project.name}" từ trang LAN (người tạo: ${project.created_by_name ?? 'không rõ'})` : `Tạo dự án "${project.name}"`,
+    });
     return project;
   });
 }
@@ -65,19 +91,19 @@ export function patchProject(ctx: AppContext, id: number, patch: PatchProjectBod
   });
 }
 
-/** Gửi kịch bản cho Claude: tạo job analyze_brief (không cần duyệt). */
+/** Gửi kịch bản cho AI: tạo job analyze_brief (không cần duyệt). */
 export function submitBrief(ctx: AppContext, projectId: number, brief?: string) {
   return ctx.tx(() => {
     const project = getProject(ctx, projectId);
     const text = (brief ?? project.brief).trim();
-    if (!text) throw badRequest('VALIDATION_ERROR', 'Cần nhập yêu cầu kịch bản (brief) trước khi gửi cho Claude');
+    if (!text) throw badRequest('VALIDATION_ERROR', 'Cần nhập yêu cầu kịch bản (brief) trước khi gửi cho AI');
     const active = ctx.db
       .prepare("SELECT id FROM jobs WHERE project_id = ? AND type = 'analyze_brief' AND status IN ('queued','claimed','running') LIMIT 1")
       .get(projectId);
     if (active) throw conflict('JOB_ACTIVE', 'Dự án đang có job phân tích kịch bản chưa xong');
     ctx.db.prepare("UPDATE projects SET brief = ?, status = 'analyzing', updated_at = ? WHERE id = ?").run(text, ctx.now(), projectId);
     const jobId = insertJob(ctx, { project_id: projectId, scene_id: null, type: 'analyze_brief', requires_approval: false, approved: false });
-    logEvent(ctx, { project_id: projectId, type: 'project.brief', message: 'Gửi kịch bản cho Claude phân tích' });
+    logEvent(ctx, { project_id: projectId, type: 'project.brief', message: 'Gửi kịch bản cho AI phân tích' });
     emitProject(ctx, projectId);
     return { jobId };
   });
@@ -92,5 +118,10 @@ export function projectDetail(ctx: AppContext, p: ProjectRow) {
     refs: projectRefs(ctx, p.id).map(refJson),
     budget: budgetSummary(ctx, p.id),
     requeued_jobs: requeued.map((r) => getJobJson(ctx, r.id)),
+    /** Lý do chưa chuyển được vào thùng rác (job đang chạy, đang dựng/render, thao tác Flow chưa đối soát, đang tải video); null = xoá được. */
+    delete_block: (() => {
+      const blocks = projectDeleteBlocks(ctx, p.id);
+      return blocks.length ? { code: blocks[0]!.code, message: blocks.map((b) => b.message).join(' '), reasons: blocks } : null;
+    })(),
   };
 }

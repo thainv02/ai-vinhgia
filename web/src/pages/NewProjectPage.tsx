@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../api/client';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
-import { RefUploader, type LibraryItem, type RefItem, type UploadItem } from '../components/RefUploader';
+import { RefUploader, toBatches, type RefItem } from '../components/RefUploader';
+import { mainLibrarySource } from '../lib/librarySource';
 import { InlineError } from '../components/States';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 
@@ -18,19 +19,6 @@ function Field({ label, hint, htmlFor, children }: { label: string; hint?: React
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
-}
-
-type Batch = { kind: 'upload'; items: UploadItem[] } | { kind: 'library'; items: LibraryItem[] };
-
-/** Gom các ảnh liên tiếp cùng loại thành từng lượt, giữ nguyên thứ tự danh sách. */
-function toBatches(items: RefItem[]): Batch[] {
-  const out: Batch[] = [];
-  for (const it of items) {
-    const last = out[out.length - 1];
-    if (last && last.kind === it.kind) (last.items as RefItem[]).push(it);
-    else out.push(it.kind === 'upload' ? { kind: 'upload', items: [it] } : { kind: 'library', items: [it] });
-  }
-  return out;
 }
 
 export default function NewProjectPage() {
@@ -87,7 +75,7 @@ export default function NewProjectPage() {
         }
         setRefBatchesDone(i + 1);
       }
-      setBusy('Đang gửi cho Claude...');
+      setBusy('Đang gửi cho AI...');
       await api.submitBrief(id, brief.trim());
       void qc.invalidateQueries();
       navigate(`/projects/${id}`);
@@ -119,13 +107,13 @@ export default function NewProjectPage() {
           <input id="p-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder="Vd: Cacao Actiso Plus" disabled={!!busy} autoFocus />
         </Field>
 
-        <Field label="Yêu cầu kịch bản" htmlFor="p-brief" hint="Mô tả sản phẩm, thông điệp, số cảnh mong muốn, giọng điệu. Claude sẽ chia cảnh và viết prompt từng cảnh theo quy tắc trong claude-system-prompt.md.">
+        <Field label="Yêu cầu kịch bản" htmlFor="p-brief" hint="Mô tả sản phẩm, thông điệp, số cảnh mong muốn, giọng điệu. AI sẽ chia cảnh và viết prompt từng cảnh theo quy tắc trong video-production-rules.md.">
           <textarea id="p-brief" rows={8} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="Vd: Quảng cáo ngắn 4 cảnh cho sinh tố cacao actiso, dọc 9:16, mỗi cảnh 10 giây..." disabled={!!busy} />
         </Field>
 
         <div>
           <div className="mb-1 text-[13px] font-semibold">Ảnh tham chiếu sản phẩm</div>
-          <RefUploader items={refs} onChange={setRefs} disabled={!!busy || refBatchesDone > 0} />
+          <RefUploader items={refs} onChange={setRefs} disabled={!!busy || refBatchesDone > 0} librarySource={mainLibrarySource} />
           {refBatchesDone > 0 && <p className="mt-1 text-xs text-muted">Ảnh đã được thêm vào dự án (đã xong {refBatchesDone} lượt thêm). Bấm gửi để tiếp tục.</p>}
         </div>
 
@@ -155,7 +143,7 @@ export default function NewProjectPage() {
 
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
           <Button type="submit" variant="primary" loading={!!busy} disabledReason={reason} icon={<Icon name="send" />}>
-            Gửi cho Claude phân tích
+            Gửi cho AI phân tích
           </Button>
           {busy ? <span className="text-[13px] text-muted">{busy}</span> : reason ? <span className="text-[13px] text-muted">{reason}</span> : null}
         </div>

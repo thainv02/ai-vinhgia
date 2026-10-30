@@ -24,7 +24,7 @@ export function PromptPanel({ scene }: { scene: SceneDetail }) {
   const [fromV, setFromV] = useState<number | null>(null);
   const [toV, setToV] = useState<number | null>(null);
 
-  // Prompt đổi từ bên ngoài (Claude vừa sửa): nếu người dùng chưa gõ gì thì cập nhật, nếu đang gõ dở thì cảnh báo.
+  // Prompt đổi từ bên ngoài (AI vừa sửa): nếu người dùng chưa gõ gì thì cập nhật, nếu đang gõ dở thì cảnh báo.
   useEffect(() => {
     if (scene.prompt === baseRef.current) return;
     if (!editing || draft === baseRef.current) {
@@ -61,7 +61,7 @@ export function PromptPanel({ scene }: { scene: SceneDetail }) {
           Prompt hiện tại
         </h2>
         <Badge tone="neutral">v{scene.prompt_version}</Badge>
-        {latest && <span className="text-xs text-muted">{latest.created_by === 'claude' ? 'Claude viết' : 'Bạn sửa'} · {fmtDateTime(latest.created_at)}</span>}
+        {latest && <span className="text-xs text-muted">{latest.created_by !== 'user' ? 'AI viết' : 'Bạn sửa'} · {fmtDateTime(latest.created_at)}</span>}
         {!editing && (
           <Button size="sm" className="ml-auto" icon={<Icon name="edit" size={14} />} disabledReason={editReason} onClick={() => startEdit()}>
             Sửa prompt
@@ -131,7 +131,7 @@ export function PromptPanel({ scene }: { scene: SceneDetail }) {
               <li key={v.id} className="rounded-md border border-line px-2.5 py-1.5 text-[13px]">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <strong>v{v.version}</strong>
-                  <Badge tone={v.created_by === 'claude' ? 'violet' : 'info'}>{v.created_by === 'claude' ? 'Claude' : 'Bạn'}</Badge>
+                  <Badge tone={v.created_by !== 'user' ? 'violet' : 'info'}>{v.created_by !== 'user' ? 'AI' : 'Bạn'}</Badge>
                   <span className="text-xs text-muted">{fmtDateTime(v.created_at)}</span>
                   <button type="button" className="ml-auto text-xs text-muted underline hover:text-fg disabled:no-underline disabled:opacity-40" disabled={!editable} title={editReason ?? undefined} onClick={() => startEdit(v.prompt)}>
                     Đưa vào trình soạn

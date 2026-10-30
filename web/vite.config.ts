@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -7,6 +8,9 @@ import tailwindcss from '@tailwindcss/vite';
 const WEB_PORT = Number(process.env.WEB_PORT ?? 5173);
 const API_PORT = Number(process.env.API_PORT ?? 8787);
 const API = `http://127.0.0.1:${API_PORT}`;
+// Trang planner LAN (planner.html) gọi listener LAN riêng của server (cổng LAN_PORT, mặc định 8790), không phải API chính.
+const LAN_PORT = Number(process.env.LAN_PORT ?? 8790);
+const LAN = `http://127.0.0.1:${LAN_PORT}`;
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -31,7 +35,19 @@ export default defineConfig({
         },
       },
       '/files': { target: API, changeOrigin: false },
+      // Dev trang planner (http://localhost:<WEB_PORT>/planner.html): API và ảnh của planner nằm ở listener LAN.
+      '/lan': { target: LAN, changeOrigin: false },
     },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // Hai trang: app quản trị (index.html) và trang planner nhẹ cho LAN (planner.html, entry src/planner/main.tsx).
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        planner: fileURLToPath(new URL('./planner.html', import.meta.url)),
+      },
+    },
+  },
 });

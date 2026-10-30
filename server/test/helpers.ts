@@ -50,7 +50,7 @@ export async function makeEnv(opts: Partial<BuildAppOptions> = {}): Promise<Env>
     dbPath,
     clock,
     logger: false,
-    config: { workerToken: WORKER_TOKEN, ...opts.config },
+    config: { workerToken: WORKER_TOKEN, aiHome: path.join(root, 'private-ai'), ...opts.config },
   });
   return {
     app,
@@ -110,7 +110,8 @@ export function client(app: App, extraHeaders: Record<string, string> = {}) {
     get: (url: string, headers?: Record<string, string>) => call('GET', url, undefined, headers),
     post: (url: string, payload?: unknown, headers?: Record<string, string>) => call('POST', url, payload ?? {}, headers),
     patch: (url: string, payload?: unknown, headers?: Record<string, string>) => call('PATCH', url, payload ?? {}, headers),
-    del: (url: string, headers?: Record<string, string>) => call('DELETE', url, undefined, headers),
+    put: (url: string, payload?: unknown, headers?: Record<string, string>) => call('PUT', url, payload ?? {}, headers),
+    del: (url: string, payload?: unknown, headers?: Record<string, string>) => call('DELETE', url, payload, headers),
   };
 }
 

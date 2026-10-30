@@ -23,9 +23,9 @@ export type CommentInput = z.infer<typeof commentBody>;
  *  - revise_and_regenerate: cảnh → needs_revision + job revise_prompt (KHÔNG tạo job video)
  *  - regenerate_same: approveVideo (kiểm tra credit/lượt)
  *  - regenerate_storyboard: approveStoryboard
- * Comment của Claude (author='claude') luôn là ghi chú, không có tác dụng phụ.
+ * Comment của AI (author='claude') luôn là ghi chú, không có tác dụng phụ.
  */
-export function createComment(ctx: AppContext, sceneId: number, input: CommentInput, author: 'user' | 'claude') {
+export function createComment(ctx: AppContext, sceneId: number, input: CommentInput, author: 'user' | 'claude' | 'agent') {
   return ctx.tx(() => {
     const scene = getScene(ctx, sceneId);
     if (input.asset_id != null) {
@@ -70,7 +70,7 @@ export function createComment(ctx: AppContext, sceneId: number, input: CommentIn
       project_id: scene.project_id,
       scene_id: scene.id,
       type: 'comment.created',
-      message: `${scene.code}: ${author === 'user' ? 'Người dùng' : 'Claude'} comment${action !== 'note' ? ` [${action}]` : ''}: ${input.body.slice(0, 120)}`,
+      message: `${scene.code}: ${author === 'user' ? 'Người dùng' : 'AI'} comment${action !== 'note' ? ` [${action}]` : ''}: ${input.body.slice(0, 120)}`,
     });
     ctx.publish('comment.created', scene.project_id, () => ({ comment: commentJson(getComment(ctx, commentId)) }));
     emitScene(ctx, scene.id, scene.project_id);
