@@ -17,3 +17,5 @@ gemini-watermark-remover/
 # Bản build Windows và cache tải về (scripts/build-win.mjs)
 dist-win/
 .build-cache/
+.env.*
+!.env.example

@@ -8,6 +8,7 @@ import { checkImageFiles, defaultLabel, isFileDrag } from '../lib/refFiles';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { mainLibrarySource } from '../lib/librarySource';
 import { LibraryPickerDialog } from './LibraryPickerDialog';
 import { ConfirmDialog } from './Modal';
 
@@ -174,7 +175,7 @@ export function RefManager({ project }: { project: ProjectDetail }) {
 
       {refs.length === 0 ? (
         <p className="rounded-md bg-surface-2 px-3 py-4 text-center text-[13px] text-muted">
-          Dự án chưa có ảnh tham chiếu. Thêm ảnh sản phẩm để Claude biết hình dạng sản phẩm khi viết prompt và để worker tải lên khi tạo video.
+          Dự án chưa có ảnh tham chiếu. Thêm ảnh sản phẩm để AI biết hình dạng sản phẩm khi viết prompt và để worker tải lên khi tạo video.
         </p>
       ) : (
         <ol className="space-y-2" aria-label="Ảnh tham chiếu của dự án">
@@ -198,9 +199,10 @@ export function RefManager({ project }: { project: ProjectDetail }) {
           ))}
         </ol>
       )}
-      {refs.length > 0 && <p className="text-xs text-muted">Ảnh thêm sau khi Claude đã phân tích chỉ được cảnh dùng khi cảnh đó gán ảnh (lần phân tích lại).</p>}
+      {refs.length > 0 && <p className="text-xs text-muted">Ảnh thêm sau khi AI đã phân tích chỉ được cảnh dùng khi cảnh đó gán ảnh (lần phân tích lại).</p>}
 
       <LibraryPickerDialog
+        source={mainLibrarySource}
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         projectId={project.id}

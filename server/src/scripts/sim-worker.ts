@@ -271,6 +271,31 @@ async function handle(job: Job): Promise<void> {
     return;
   }
 
+  if (job.type === 'edit_plan' && p.revision) {
+    // Mô phỏng góp ý: giữ nguyên điểm cắt (edl: null); nếu góp ý có "ấm" thì +600K, "tương phản" thì +0,1; "bỏ nhạc" → not_done. KHÔNG gọi AI thật.
+    const rv = p.revision as { feedback: string; parent_grade: Record<string, any> };
+    const fb = String(rv.feedback ?? '').toLowerCase();
+    const grade: Record<string, any> = { ...rv.parent_grade };
+    // màu theo ảnh mẫu: giữ `match` của bản cha; "bỏ ảnh mẫu" → null, "giống ảnh mẫu hơn" → +0,15, "nhẹ thôi" → −0,2 (không tự chọn ảnh mới)
+    if (grade.match) {
+      if (fb.includes('bỏ ảnh mẫu')) grade.match = null;
+      else if (fb.includes('giống ảnh mẫu hơn')) grade.match = { ...grade.match, strength: Math.min(1, Math.round((grade.match.strength + 0.15) * 100) / 100) };
+      else if (fb.includes('nhẹ thôi')) grade.match = { ...grade.match, strength: Math.max(0, Math.round((grade.match.strength - 0.2) * 100) / 100) };
+    }
+    if (fb.includes('ấm')) grade.temperature_k = Math.min(9000, (grade.temperature_k ?? 6500) + 600);
+    if (fb.includes('tương phản')) grade.contrast = Math.min(1.5, Math.round(((grade.contrast ?? 1) + 0.1) * 100) / 100);
+    const c = await api('POST', `/api/worker/jobs/${job.id}/complete?worker=${WORKER_ID}`, {
+      result: {
+        edl: null,
+        grade,
+        summary: `Mô phỏng: nhiệt độ màu ${rv.parent_grade.temperature_k}K → ${grade.temperature_k}K; tương phản ${rv.parent_grade.contrast} → ${grade.contrast}.`,
+        not_done: fb.includes('nhạc') ? ['Thêm nhạc nền (chưa hỗ trợ)'] : [],
+      },
+    });
+    log(`edit_plan góp ý v${p.version} xong -> HTTP ${c.status} ${c.status !== 200 ? JSON.stringify(c.json) : ''}`);
+    return;
+  }
+
   if (job.type === 'edit_plan') {
     // Mô phỏng: bỏ 0,3 giây đầu và 0,2 giây cuối mỗi cảnh (nếu đủ dài). Server tự render sau khi complete.
     const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -320,7 +345,7 @@ async function main(): Promise<void> {
   for (;;) {
     let r: ApiResult;
     try {
-      r = await api('GET', `/api/worker/next?worker=${WORKER_ID}`);
+      r = await api('GET', `/api/worker/next?worker=${WORKER_ID}&types=analyze_brief,storyboard,video,revise_prompt,edit_plan`); // không nhận clip_plan (job cắt clip cần AI thật, xem WORKER.md 4.6)
     } catch (err) {
       log(`Không kết nối được API: ${(err as Error).message}`);
       if (ONCE) process.exit(1);

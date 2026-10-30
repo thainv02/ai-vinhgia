@@ -1,0 +1,274 @@
+/*
+  Giao diện app desktop (thiết kế "AutoVideo Desktop", màu theo CRM Vinh Gia).
+  Mặc định tối; <html data-theme="light|dark"> do App đặt (Cài đặt › Giao diện: Tối / Sáng / Theo Windows).
+  Gán lại các biến cũ của index.css (--bg, --surface, --line, --fg, --ink…) để component cũ đổi màu theo,
+  và thêm biến mới cho khung app (--side*, --primary*, --status-bar…) cùng các lớp dùng chung .av-*.
+*/
+@import '@fontsource/be-vietnam-pro/400.css';
+@import '@fontsource/be-vietnam-pro/500.css';
+@import '@fontsource/be-vietnam-pro/600.css';
+@import '@fontsource/be-vietnam-pro/700.css';
+@import '@fontsource/be-vietnam-pro/800.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f151c;
+  --surface: #161f29;
+  --surface-2: #1c2733;
+  --surface-3: #23303d;
+  --line: #2a3644;
+  --line-strong: #3a4858;
+  --fg: #e6ebf0;
+  --muted: #9aa7b4;
+  --ink: #207d79;
+  --ink-fg: #ffffff;
+  --ink-hover: #24908b;
+  --header: #0c1a31;
+  --header-fg: #eef3fa;
+  --focus: #6aa2ee;
+
+  --neutral-bg: #232e39;
+  --neutral-fg: #bcc7d2;
+  --info-bg: #15284a;
+  --info-fg: #93bbf5;
+  --warn-bg: #3a2c12;
+  --warn-fg: #f0c26c;
+  --ok-bg: #14342a;
+  --ok-fg: #74d5a8;
+  --danger-bg: #3d1d15;
+  --danger-fg: #f59d84;
+
+  /* khung app */
+  --side: #0c1a31;
+  --side-fg: #eef3fa;
+  --side-muted: #a9b9d2;
+  --side-hover: rgba(255, 255, 255, 0.06);
+  --side-active: rgba(79, 143, 230, 0.18);
+  --primary: #207d79;
+  --primary-hover: #24908b;
+  --primary-fg: #ffffff;
+  --link: #6aa2ee;
+  --sel: rgba(106, 162, 238, 0.14);
+  --hl: rgba(32, 125, 121, 0.32);
+  --stage: #05080c;
+  --status-bar: #0a1221;
+  --track: #2a3644;
+  --dot-ok: #3fae7e;
+  --dot-warn: #e0a040;
+  --dot-bad: #e5603d;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #e8ecef;
+  --surface: #ffffff;
+  --surface-2: #f4f6f8;
+  --surface-3: #eaeef2;
+  --line: #d5dce2;
+  --line-strong: #c3ccd4;
+  --fg: #1c2530;
+  --muted: #55616d;
+  --ink: #207d79;
+  --ink-fg: #ffffff;
+  --ink-hover: #1a6965;
+  --header: #153f86;
+  --header-fg: #ffffff;
+  --focus: #174fa4;
+
+  --neutral-bg: #e8ebef;
+  --neutral-fg: #3f4a55;
+  --info-bg: #e3effb;
+  --info-fg: #174f8a;
+  --warn-bg: #fdf0d2;
+  --warn-fg: #7a4305;
+  --ok-bg: #def3e6;
+  --ok-fg: #14633f;
+  --danger-bg: #fde9e3;
+  --danger-fg: #a82a0c;
+
+  --side: #153f86;
+  --side-fg: #ffffff;
+  --side-muted: #c9d6ee;
+  --side-hover: rgba(255, 255, 255, 0.08);
+  --side-active: rgba(255, 255, 255, 0.16);
+  --primary: #207d79;
+  --primary-hover: #1a6965;
+  --primary-fg: #ffffff;
+  --link: #174fa4;
+  --sel: #e3effb;
+  --hl: #cfeae8;
+  --stage: #1c2530;
+  --status-bar: #dde3e8;
+  --track: #dfe5ea;
+  --dot-ok: #2b7f60;
+  --dot-warn: #b46a12;
+  --dot-bad: #cf310a;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+}
+
+/* ---------- khung app: sidebar + nội dung + thanh trạng thái ---------- */
+.av-app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+}
+.av-body { display: flex; flex: 1 1 auto; min-height: 0; }
+.av-side {
+  flex: 0 0 232px;
+  background: var(--side);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 12px;
+  overflow-y: auto;
+}
+.av-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
+.av-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--side-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-nav:hover { background: var(--side-hover); color: var(--side-fg); }
+.av-nav[aria-current='page'], .av-nav.on { background: var(--side-active); color: var(--side-fg); font-weight: 600; }
+.av-nav .av-cnt { margin-left: auto; font-size: 11.5px; color: var(--side-muted); }
+.av-side-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--side-muted); padding: 0 10px 6px; }
+.av-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  min-height: 30px;
+  padding: 0 14px;
+  background: var(--status-bar);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- đầu trang, tab ---------- */
+.av-page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 32px 14px; }
+.av-page-head h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.av-crumb { font-size: 12.5px; color: var(--muted); }
+.av-crumb a { color: var(--link); text-decoration: none; }
+.av-tabs { display: flex; gap: 4px; padding: 0 32px; border-bottom: 1px solid var(--line); }
+.av-tab {
+  height: 42px; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+  font-size: 13.5px; font-weight: 600; color: var(--muted);
+  border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer; text-decoration: none;
+}
+.av-tab:hover { color: var(--fg); }
+.av-tab[aria-selected='true'], .av-tab.on { color: var(--fg); border-bottom-color: var(--primary); }
+
+/* ---------- nút, ô nhập, thẻ, huy hiệu ---------- */
+.av-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 36px; padding: 0 14px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  font: 600 13px 'Be Vietnam Pro', sans-serif; cursor: pointer; white-space: nowrap; text-decoration: none;
+}
+.av-btn:hover { background: var(--surface-2); }
+.av-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.av-btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.av-btn-primary:hover { background: var(--primary-hover); }
+.av-btn-danger { color: var(--danger-fg); }
+.av-btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.av-btn-ghost:hover { background: var(--surface-2); color: var(--fg); }
+.av-btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.av-input {
+  height: 38px; width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 0 11px;
+  background: var(--surface-2); color: var(--fg); font: 14px 'Be Vietnam Pro', sans-serif;
+}
+textarea.av-input { height: auto; padding: 10px 11px; line-height: 1.55; resize: vertical; }
+.av-input::placeholder { color: var(--muted); }
+.av-label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.av-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.av-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+.av-badge-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.av-badge-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.av-badge-danger { background: var(--danger-bg); color: var(--danger-fg); }
+.av-badge-info { background: var(--info-bg); color: var(--info-fg); }
+.av-badge-neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
+.av-dot { width: 8px; height: 8px; border-radius: 99px; display: inline-block; flex: 0 0 auto; }
+.av-muted { color: var(--muted); }
+.av-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.av-code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.65;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 14px 16px;
+  white-space: pre-wrap; color: var(--fg); margin: 0;
+}
+
+/* nhóm nút chọn một */
+.av-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--line); }
+.av-seg button { height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: 600 12.5px 'Be Vietnam Pro', sans-serif; cursor: pointer; }
+.av-seg button[aria-pressed='true'], .av-seg button.on { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
+
+/* bảng */
+.av-table { border-collapse: collapse; width: 100%; }
+.av-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.av-table td { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
+.av-table tbody tr:hover td { background: var(--surface-2); }
+
+/* thanh tiến độ */
+.av-bar { height: 6px; border-radius: 99px; background: var(--track); overflow: hidden; }
+.av-bar > i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+
+/* danh sách chọn (cảnh, clip, phiên bản) */
+.av-list-item { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 9px; color: var(--fg); text-decoration: none; border: 1px solid transparent; background: none; text-align: left; cursor: pointer; width: 100%; font: inherit; }
+.av-list-item:hover { background: var(--surface-2); }
+.av-list-item[aria-current='true'], .av-list-item.on { background: var(--sel); border-color: var(--line); }
+
+/* vùng kéo thả file */
+.av-drop { border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 26px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.av-drop.over { border-color: var(--primary); background: var(--sel); }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- bổ sung cho các trang: danh sách, tạo kế hoạch, công cụ, cài đặt ---------- */
+.av-nav { text-decoration: none; }
+.av-legacy { padding: 20px 32px 32px; }
+.av-page { padding: 20px 32px 32px; display: flex; flex-direction: column; gap: 16px; }
+.av-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 18px 32px 16px; border-bottom: 1px solid var(--line); }
+.av-header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.av-search { position: relative; display: flex; align-items: center; }
+.av-search svg { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
+.av-search .av-input { padding-left: 32px; width: 240px; }
+.av-card-pad { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+.av-card-pad h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.av-link-strong { color: var(--fg); font-weight: 600; text-decoration: none; }
+.av-link-strong:hover { text-decoration: underline; }
+.av-table-wrap { overflow-x: auto; }
+.av-sr { position: absolute; left: -9999px; }
+.av-settings { display: flex; flex: 1 1 auto; min-height: 0; }
+.av-settings-nav { flex: 0 0 212px; padding: 18px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.av-settings-nav a { display: block; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; font-weight: 500; color: var(--muted); text-decoration: none; }
+.av-settings-nav a:hover { background: var(--surface-2); color: var(--fg); }
+.av-settings-nav a[aria-current='true'] { background: var(--sel); color: var(--fg); font-weight: 600; }
+.av-settings-body { flex: 1 1 auto; min-width: 0; overflow: auto; padding: 22px 32px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 900px; }
+.av-kv { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.av-kv > span:first-child { color: var(--muted); flex: 0 0 180px; }
+@media (max-width: 760px) {
+  .av-side { flex-basis: 64px; }
+  .av-side .av-cnt, .av-side-label { display: none; }
+  .av-header, .av-page, .av-legacy { padding-left: 16px; padding-right: 16px; }
+}

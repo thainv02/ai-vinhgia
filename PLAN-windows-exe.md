@@ -1,6 +1,6 @@
 # Plan: đóng gói AutoVideo thành app .exe chạy trên Windows (máy cấu hình yếu)
 
-Ngày lập: 29/10/2026. Trạng thái: giai đoạn 0–2 đã làm xong và đã kiểm chứng; đã bỏ Shotcut; phần probe bất đồng bộ và sao lưu trước migration của giai đoạn 5 cũng đã làm. Kết quả thực tế ở **mục 9**. Chưa commit.
+Ngày lập: 29/10/2026. Trạng thái: giai đoạn 0–2 đã làm xong và đã kiểm chứng; đã bỏ Shotcut; phần probe bất đồng bộ và sao lưu trước migration của giai đoạn 5 cũng đã làm. Kết quả thực tế ở **mục 9**. Ngày 30/10/2026 đã gộp code mới nhất (`feat/desktop-ui`) vào nhánh này, xem mục 10.
 
 > Các con số ở mục 4, 6, 7 ban đầu là giả thuyết. Số đo thật của server đóng gói (chưa có vỏ Tauri) nằm ở mục 9. Mục tiêu dung lượng đã nới theo quyết định "dung lượng không phải vấn đề lớn".
 
@@ -380,3 +380,20 @@ Yêu cầu "điều chỉnh vị trí phụ đề đã có trong chức năng gh
   - `server/src`, `web/src` và migrations không có ASS/SRT/subtitle nào.
 - **Trên nhánh `origin/feat/multi-provider-account-pool` (846e3be):** có phụ đề, nhưng thuộc chức năng **cắt video dài thành clip ngắn**. Chức năng đó nhận dạng giọng nói qua dịch vụ STT, sinh ASS rồi cháy vào hình bằng libass, và đi kèm phần LAN và worker tự động nằm ngoài phạm vi.
 - Cần người dùng chọn hướng trước khi làm. ffmpeg đóng gói đã có `subtitles`/`ass`, nên không có cản trở kỹ thuật.
+
+## 10. Gộp code mới nhất từ `feat/desktop-ui` (30/10/2026)
+
+Nhánh này tách từ snapshot `fbde9e2`; `feat/desktop-ui` có thêm managed worker, LAN planner, bản dựng song song (`RENDER_CONCURRENCY`), chỉnh màu, thùng rác, cắt clip từ video dài có phụ đề, giao diện desktop. Đã gộp bằng merge commit (không rebase).
+
+Cách giải quyết chính:
+
+- **Shotcut**: giữ quyết định bỏ hẳn. Bản dựng song song và chỉnh màu của desktop-ui chạy trên ffmpeg; xoá `shotcut-renderer.ts`, test Shotcut, nút "Mở trong Shotcut" và `mcpMaxActiveRendersEnv`.
+- **ffprobe/ffmpeg bất đồng bộ**: code mới (chỉnh màu, ảnh mẫu màu, công cụ xoá logo LAN, cắt clip, STT, xem thử khung hình) chuyển sang `await ffmpegOf/probeMedia`. Dò ffmpeg có libass (`hasSubtitlesFilter`, `captionSupport`, `clipLimits`) cũng async; `startClipRender` dò trước rồi mới mở transaction.
+- **Khởi động**: giữ `--app-dir/--data-dir/--port`, log file, sao lưu trước migration trong `buildApp` (bỏ bản sao lưu trùng ở `index.ts` của desktop-ui); thêm LAN listener và `AUTOVIDEO_ENV_FILE` của desktop-ui. Server chính vẫn luôn bind `127.0.0.1`; LAN là listener riêng, mặc định tắt.
+- **Sửa thêm**: `resolveWebDist` xét `web/dist` trước (trong repo `web/index.html` là file nguồn của Vite, trước đây `npm start` phục vụ nhầm); phụ đề clip tìm font đậm trong `%WINDIR%\Fonts` (arialbd, verdanab, tahomabd, trebucbd).
+
+Kiểm chứng trên macOS: typecheck server/web/worker đạt; `npm test` 876 đạt, 0 lỗi, 14 bỏ qua; build web đạt; chạy `src/start.ts --data-dir <tạm> --port` phục vụ đúng web build, tạo `config.env`, DB, `logs/server.log`.
+
+**Chưa kiểm chứng sau khi gộp**: `npm test` và `npm run build:win` trên Windows; cắt clip có phụ đề bằng ffmpeg đóng gói (libass, font Windows); phạm vi bản .exe (có mang LAN, managed worker, cắt clip/STT hay không) vẫn là câu hỏi mở ở mục 8.
+
+Phụ đề ở mục 9: chức năng **cắt video dài thành clip** của desktop-ui đã có kéo/đổi cỡ khung phụ đề trên khung 9:16 (`clips.captions.layout`, migration 015), nay đã nằm trong nhánh này.

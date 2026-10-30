@@ -96,6 +96,29 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+interface ProbeJson {
+  format?: { duration?: string; format_name?: string };
+  streams?: Record<string, unknown>[];
+}
+
+/** Rút MediaInfo từ JSON của ffprobe (`-show_format -show_streams`); null nếu không có luồng video. */
+function infoFromProbeJson(j: ProbeJson): MediaInfo | null {
+  const v = j.streams?.find((s) => s.codec_type === 'video');
+  if (!v) return null;
+  const [n, d] = String(v.r_frame_rate ?? '').split('/').map(Number);
+  const fpsNum = n && Number.isFinite(n) ? n : null;
+  const fpsDen = d && Number.isFinite(d) ? d : 1;
+  return {
+    duration_s: num(j.format?.duration) ?? num(v.duration),
+    width: num(v.width),
+    height: num(v.height),
+    fps: fpsNum ? fpsNum / fpsDen : null,
+    fps_num: fpsNum,
+    fps_den: fpsNum ? fpsDen : null,
+    has_audio: !!j.streams?.some((s) => s.codec_type === 'audio'),
+  };
+}
+
 /** CHỈ DÙNG TRONG TEST: thay lệnh ffprobe (vd node.exe + script giả) và thời hạn; mặc định không đặt. */
 export const __testOverrides: { probe?: { bin: string; prefixArgs: string[] } | null; timeoutMs?: number } = {};
 
@@ -209,22 +232,7 @@ export async function probeMedia(config: Pick<Config, 'ffprobePath'>, abs: strin
     }
     if (stdout !== null) {
       try {
-        const j = JSON.parse(stdout) as { format?: { duration?: string }; streams?: Record<string, unknown>[] };
-        const v = j.streams?.find((s) => s.codec_type === 'video');
-        if (v) {
-          const [n, d] = String(v.r_frame_rate ?? '').split('/').map(Number);
-          const fpsNum = n && Number.isFinite(n) ? n : null;
-          const fpsDen = d && Number.isFinite(d) ? d : 1;
-          info = {
-            duration_s: num(j.format?.duration) ?? num(v.duration),
-            width: num(v.width),
-            height: num(v.height),
-            fps: fpsNum ? fpsNum / fpsDen : null,
-            fps_num: fpsNum,
-            fps_den: fpsNum ? fpsDen : null,
-            has_audio: !!j.streams?.some((s) => s.codec_type === 'audio'),
-          };
-        }
+        info = infoFromProbeJson(JSON.parse(stdout) as ProbeJson);
       } catch {
         info = null;
       }
@@ -236,4 +244,50 @@ export async function probeMedia(config: Pick<Config, 'ffprobePath'>, abs: strin
     probeCache.set(key, info);
   }
   return info;
+}
+
+/** Kết quả kiểm tra video người dùng tải lên: thông tin chính + vài trường ffprobe để lưu vào `assets.meta`. */
+export interface UploadedVideoProbe {
+  info: MediaInfo;
+  format_name: string | null;
+  video_codec: string | null;
+  audio_codec: string | null;
+  /** Số luồng video (ảnh bìa nhúng cũng tính là luồng video, nên chỉ để ghi nhận). */
+  video_streams: number;
+}
+
+/**
+ * ffprobe cho video người dùng LAN tải lên (không cache, dùng chung giới hạn 2 ffprobe và thời hạn 20 giây):
+ * file lạ không được làm treo cả server đang phục vụ app chính. null nếu ffprobe không chạy được, file hỏng hoặc không có luồng video.
+ */
+export async function probeUploadedVideo(config: Pick<Config, 'ffprobePath'>, abs: string): Promise<UploadedVideoProbe | null> {
+  const ov = __testOverrides.probe;
+  const bin = ov ? ov.bin : await ffprobeOf(config);
+  if (!bin) return null;
+  const release = await acquireProbeSlot();
+  let stdout: string | null;
+  try {
+    stdout = await runProbe(bin, [...(ov?.prefixArgs ?? []), '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', abs]);
+  } finally {
+    release();
+  }
+  if (stdout === null) return null;
+  try {
+    const j = JSON.parse(stdout) as ProbeJson;
+    const info = infoFromProbeJson(j);
+    if (!info) return null;
+    const codec = (type: string) => {
+      const s = j.streams?.find((x) => x.codec_type === type);
+      return typeof s?.codec_name === 'string' ? s.codec_name : null;
+    };
+    return {
+      info,
+      format_name: typeof j.format?.format_name === 'string' ? j.format.format_name : null,
+      video_codec: codec('video'),
+      audio_codec: codec('audio'),
+      video_streams: j.streams?.filter((x) => x.codec_type === 'video').length ?? 0,
+    };
+  } catch {
+    return null;
+  }
 }

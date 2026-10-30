@@ -2,16 +2,20 @@ import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { AppError } from '../lib/errors.js';
+import { isManagedJobType, managedJobTypes } from '../config.js';
+import { AppError, conflict } from '../lib/errors.js';
 import { intParam, parse } from '../lib/validate.js';
 import { COMMENT_ACTIONS } from '../db/types.js';
 import { createComment } from '../services/comments.js';
 import { warmPlanningCuts } from '../services/final-cuts.js';
 import { claimNext, completeBody, completeJob, failBody, failJob, heartbeat } from '../services/jobs.js';
-import { commentJson, getComment, getJobJson, getScene } from '../services/repo.js';
+import { commentJson, getComment, getJobJson, getJobRow, getScene } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
 import { upsertScenes, upsertScenesBody } from '../services/scenes.js';
 import { touchWorker, workerStatus } from '../services/worker.js';
+import { assertLease, assertManagedLease, saveCheckpoint, waitJob, actionJournal, actions, browserLease, completionHash, stampProvenance } from '../services/managed.js';
+import { infer } from '../services/ai/router.js';
+import { JOB_TYPES, type JobRow, type JobType } from '../db/types.js';
 
 function tokenOk(expected: string, header: string | undefined): boolean {
   if (!expected || !header) return false;
@@ -29,6 +33,30 @@ const workerIdOf = (req: FastifyRequest): string | null => {
   const v = q ?? (Array.isArray(h) ? h[0] : h) ?? (typeof body === 'string' ? body : undefined);
   return v ? String(v).slice(0, 100) : null;
 };
+const ownerOf = (req: FastifyRequest) => ({ worker: workerIdOf(req), lease: typeof req.headers['x-job-lease'] === 'string' ? req.headers['x-job-lease'] : null });
+/** Chế độ của một request ghi: có X-Job-Lease (hoặc ?mode=managed) là managed; còn lại là legacy (WORKER.md). */
+const requestMode = (req: FastifyRequest): 'legacy' | 'managed' =>
+  ownerOf(req).lease || (req.query as { mode?: string } | undefined)?.mode === 'managed' ? 'managed' : 'legacy';
+
+/**
+ * Endpoint ghi không gắn id job trên đường dẫn (scenes/comments): quyết định theo JOB, không theo cấu hình toàn cục.
+ * Có X-Job-Lease → phải là lease managed hợp lệ của job trong X-Job-Id. Không có → legacy, chỉ hợp lệ khi job/loại liên quan
+ * không thuộc managed.
+ */
+function managedWriteJob(ctx: AppContext, req: FastifyRequest): JobRow | null {
+  const owner = ownerOf(req);
+  if (!owner.lease) return null;
+  return assertManagedLease(ctx, intParam(req.headers['x-job-id'], 'X-Job-Id'), owner);
+}
+function assertLegacyMayWrite(ctx: AppContext, type: JobType, active: JobRow | undefined) {
+  if (isManagedJobType(ctx.config, type)) throw conflict('MANAGED_REQUIRED', `Loại job ${type} do managed worker xử lý; request ghi cần X-Job-Lease`);
+  if (active && (active.worker_mode === 'managed' || isManagedJobType(ctx.config, active.type))) {
+    throw conflict('MANAGED_REQUIRED', `Job #${active.id} (${active.type}) do managed worker xử lý; request ghi cần X-Job-Lease`);
+  }
+}
+
+// Reference images are embedded as base64 in both inference and resumable context.
+const CONTEXT_BODY_LIMIT = 32 * 1024 * 1024;
 
 /** API cho worker (Claude Code). Mọi route yêu cầu `Authorization: Bearer <WORKER_TOKEN>`. */
 export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -37,47 +65,78 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       if (!tokenOk(ctx.config.workerToken, req.headers.authorization)) {
         throw new AppError('UNAUTHORIZED', 'Thiếu hoặc sai WORKER_TOKEN (header Authorization: Bearer <token>)', 401);
       }
-      touchWorker(ctx, workerIdOf(req));
+      touchWorker(ctx, workerIdOf(req), requestMode(req));
     });
 
-    w.get('/api/worker/ping', async () => ({ ok: true, server_time: ctx.now(), ...workerStatus(ctx) }));
+    w.get('/api/worker/ping', async () => ({ ok: true, server_time: ctx.now(), ...workerStatus(ctx), managed_job_types: managedJobTypes(ctx.config) }));
 
     // Nhận (claim) job tiếp theo: 200 + job | 204 không có việc | 503 QUEUE_PAUSED
     w.get('/api/worker/next', async (req, reply) => {
       await warmPlanningCuts(ctx); // payload edit_plan cần thời lượng/fps (ffprobe async, đọc từ cache)
-      const job = claimNext(ctx, workerIdOf(req));
+      const query = req.query as { mode?: string; types?: string };
+      const managed = query.mode === 'managed';
+      // Không còn cổng WORKER_MODE toàn cục: mỗi loại job thuộc đúng một chế độ (config.managedJobTypes); lệch chế độ → 204.
+      const types = query.types ? parse(z.array(z.enum(JOB_TYPES)), query.types.split(',')) : undefined;
+      if (managed && !workerIdOf(req)) throw new AppError('WORKER_REQUIRED', 'Managed worker phải có worker ID');
+      const job = claimNext(ctx, workerIdOf(req), { managed, types });
       if (!job) return reply.code(204).send();
       return job;
     });
 
-    w.get('/api/worker/jobs/:id', async (req) => getJobJson(ctx, intParam((req.params as { id: string }).id)));
+    w.get('/api/worker/jobs/:id', async (req) => getJobJson(ctx, intParam((req.params as { id: string }).id), { full: true }));
 
     w.post('/api/worker/jobs/:id/heartbeat', async (req) => {
       const id = intParam((req.params as { id: string }).id);
-      return heartbeat(ctx, id, workerIdOf(req));
+      return ctx.tx(() => { assertLease(ctx, id, ownerOf(req)); return heartbeat(ctx, id, workerIdOf(req)); });
     });
 
     w.post('/api/worker/jobs/:id/complete', async (req) => {
       const id = intParam((req.params as { id: string }).id);
       const body = parse(completeBody, req.body ?? {});
       await warmPlanningCuts(ctx); // validate EDL cần thời lượng video nguồn
-      return { job: completeJob(ctx, id, body) };
+      return ctx.tx(() => {
+        const job = assertLease(ctx, id, ownerOf(req), true);
+        const key = typeof req.headers['idempotency-key'] === 'string' ? req.headers['idempotency-key'] : null;
+        const hash = completionHash(body);
+        if (job.status === 'done') {
+          if (key && job.completion_key === key && job.completion_hash === hash) return { job: getJobJson(ctx, id) };
+          throw new AppError('ALREADY_COMPLETED', 'Job đã hoàn thành', 409);
+        }
+        if (job.worker_mode === 'managed' && !key) throw new AppError('IDEMPOTENCY_REQUIRED', 'Managed complete cần Idempotency-Key');
+        completeJob(ctx, id, body, job.worker_mode === 'managed' ? 'agent' : 'claude');
+        if (job.worker_mode === 'managed') stampProvenance(ctx, id, job.scene_id ? [job.scene_id] : []);
+        ctx.db.prepare('UPDATE jobs SET completion_key=?,completion_hash=? WHERE id=?').run(key, hash, id);
+        ctx.db.prepare("UPDATE external_actions SET state='committed',updated_at=? WHERE job_id=? AND state='downloaded'").run(ctx.now(), id);
+        ctx.db.prepare('DELETE FROM browser_leases WHERE job_id=?').run(id);
+        return { job: getJobJson(ctx, id) };
+      });
     });
 
     w.post('/api/worker/jobs/:id/fail', async (req) => {
       const id = intParam((req.params as { id: string }).id);
       const body = parse(failBody, req.body ?? {});
-      return { job: failJob(ctx, id, body), worker: workerStatus(ctx) };
+      return ctx.tx(() => { assertLease(ctx, id, ownerOf(req)); return { job: failJob(ctx, id, body), worker: workerStatus(ctx) }; });
     });
 
     // Tạo/cập nhật hàng loạt cảnh sau analyze_brief
     w.post('/api/worker/scenes', async (req) => {
       const body = parse(upsertScenesBody, req.body);
-      const r = upsertScenes(ctx, body);
-      return { created: r.created, updated: r.updated, skipped: r.skipped, scenes: listSceneSummaries(ctx, body.project_id) };
+      return ctx.tx(() => {
+        const job = managedWriteJob(ctx, req);
+        if (job) {
+          if (job.type !== 'analyze_brief' || job.project_id !== body.project_id) throw new AppError('JOB_SCOPE', 'Không được ghi cảnh của job khác', 409);
+        } else {
+          const active = ctx.db.prepare("SELECT * FROM jobs WHERE project_id = ? AND type = 'analyze_brief' AND status IN ('claimed','running') ORDER BY id DESC LIMIT 1")
+            .get(body.project_id) as JobRow | undefined;
+          assertLegacyMayWrite(ctx, 'analyze_brief', active);
+        }
+        const r = upsertScenes(ctx, body, job ? 'agent' : 'claude');
+        if (job) stampProvenance(ctx, job.id, r.sceneIds);
+        return { created: r.created, updated: r.updated, skipped: r.skipped, ...(r.renamed.length ? { renamed: r.renamed } : {}), ...(r.pruned.length ? { pruned: r.pruned } : {}), scenes: listSceneSummaries(ctx, body.project_id) };
+      });
     });
 
-    // Claude trả lời / ghi chú vào cảnh
+    // Worker trả lời / ghi chú vào cảnh
     w.post('/api/worker/comments', async (req, reply) => {
       const body = parse(
         z.object({
@@ -89,14 +148,50 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
         }),
         req.body,
       );
-      getScene(ctx, body.scene_id);
-      const r = createComment(
-        ctx,
-        body.scene_id,
-        { body: body.body, asset_id: body.asset_id ?? null, timecode: body.timecode ?? null, action: 'note' },
-        'claude',
-      );
-      return reply.code(201).send({ comment: commentJson(getComment(ctx, r.commentId)) });
+      const result = ctx.tx(() => {
+        const scene = getScene(ctx, body.scene_id);
+        const job = managedWriteJob(ctx, req);
+        if (job) {
+          if (job.project_id !== scene.project_id || (job.scene_id && job.scene_id !== scene.id)) throw new AppError('JOB_SCOPE', 'Comment không thuộc phạm vi job', 409);
+        } else {
+          const headerId = req.headers['x-job-id'] === undefined ? null : intParam(req.headers['x-job-id'], 'X-Job-Id');
+          const named = headerId === null ? undefined : getJobRow(ctx, headerId);
+          if (named && (named.project_id !== scene.project_id || (named.scene_id && named.scene_id !== scene.id))) throw new AppError('JOB_SCOPE', 'Comment không thuộc phạm vi job', 409);
+          const active = named ?? ctx.db.prepare("SELECT * FROM jobs WHERE scene_id = ? AND status IN ('claimed','running') ORDER BY id DESC LIMIT 1").get(scene.id) as JobRow | undefined;
+          if (active) assertLegacyMayWrite(ctx, active.type, active);
+        }
+        const r = createComment(
+          ctx,
+          body.scene_id,
+          { body: body.body, asset_id: body.asset_id ?? null, timecode: body.timecode ?? null, action: 'note' },
+          job ? 'agent' : 'claude',
+        );
+        if (job) stampProvenance(ctx, job.id, [], r.commentId);
+        return { comment: commentJson(getComment(ctx, r.commentId)) };
+      });
+      return reply.code(201).send(result);
+    });
+
+    w.post('/api/worker/jobs/:id/checkpoint', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => saveCheckpoint(ctx, intParam((req.params as { id: string }).id), ownerOf(req),
+      parse(z.record(z.string(), z.unknown()), req.body)));
+    w.post('/api/worker/jobs/:id/wait', async (req) => {
+      const b = parse(z.object({ reason: z.enum(['ai_quota', 'needs_reconciliation', 'browser_offline']), retry_at: z.string().datetime().nullable() }), req.body);
+      if (b.reason === 'ai_quota' && (!b.retry_at || Date.parse(b.retry_at) <= ctx.clock.now())) throw new AppError('INVALID_WAIT', 'Quota wait cần thời điểm thử lại trong tương lai');
+      return waitJob(ctx, intParam((req.params as { id: string }).id), ownerOf(req), b.reason, b.retry_at);
+    });
+    w.get('/api/worker/jobs/:id/actions', async (req) => actions(ctx, intParam((req.params as { id: string }).id)));
+    w.post('/api/worker/jobs/:id/actions', async (req) => actionJournal(ctx, intParam((req.params as { id: string }).id), ownerOf(req), parse(z.object({
+      id: z.string().min(1).max(150), profile: z.string().min(1).max(100), kind: z.enum(['storyboard', 'video']),
+      state: z.enum(['intent', 'submitted', 'uncertain', 'downloaded', 'committed']), evidence: z.record(z.string(), z.unknown()),
+    }), req.body)));
+    w.post('/api/worker/jobs/:id/browser-lease', async (req) => browserLease(ctx, intParam((req.params as { id: string }).id), ownerOf(req), parse(z.object({ profile: z.string().min(1).max(100) }), req.body).profile));
+    w.post('/api/worker/jobs/:id/infer', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => {
+      const id = intParam((req.params as { id: string }).id);
+      const job = assertManagedLease(ctx, id, ownerOf(req));
+      const body = parse(z.object({ messages: z.array(z.record(z.string(), z.unknown())).min(1).max(100), tools: z.array(z.record(z.string(), z.unknown())).max(20).default([]), capabilities: z.array(z.enum(['text', 'vision', 'tools'])).min(1).default(['text']) }), req.body);
+      const response = await infer(ctx, id, job.project_id, body.messages, body.tools, body.capabilities);
+      assertLease(ctx, id, ownerOf(req));
+      return response;
     });
   });
 }

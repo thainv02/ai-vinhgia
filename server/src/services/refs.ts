@@ -2,9 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AppContext } from '../context.js';
-import { AppError, badRequest, conflict } from '../lib/errors.js';
+import { AppError, badRequest, conflict, notFound } from '../lib/errors.js';
 import { cleanRelPath, resolveInside } from '../lib/paths.js';
-import type { RefRow, SceneRow } from '../db/types.js';
+import type { ProjectSource, RefRow, SceneRow } from '../db/types.js';
 import { emitProject } from './project-view.js';
 import { getProject, getRef, parseJson, projectRefs } from './repo.js';
 import { emitScene } from './scene-view.js';
@@ -19,7 +19,9 @@ export const hashBuffer = (buf: Buffer): string => crypto.createHash('sha256').u
  * Chạy lúc khởi động app (sau migration) và trước khi liệt kê thư viện. Trả về số dòng đã điền.
  */
 export function backfillRefHashes(ctx: AppContext): number {
-  const rows = ctx.db.prepare('SELECT id, file_path FROM project_refs WHERE content_hash IS NULL').all() as { id: number; file_path: string }[];
+  const rows = ctx.db
+    .prepare('SELECT r.id, r.file_path FROM project_refs r JOIN projects p ON p.id = r.project_id WHERE r.content_hash IS NULL AND p.deleted_at IS NULL')
+    .all() as { id: number; file_path: string }[];
   let filled = 0;
   for (const r of rows) {
     try {
@@ -174,15 +176,16 @@ export interface RefLibraryItem {
  * `ref_id`/`file_path`/`label` lấy từ bản ghi mới nhất còn file; ảnh mà mọi bản ghi đều mất file bị bỏ.
  * `in_project`: dự án `projectId` đã có ảnh cùng hash (false khi không truyền projectId).
  */
-export function refLibrary(ctx: AppContext, projectId?: number): RefLibraryItem[] {
+export function refLibrary(ctx: AppContext, projectId?: number, opts: { source?: ProjectSource } = {}): RefLibraryItem[] {
   if (projectId !== undefined) getProject(ctx, projectId);
   backfillRefHashes(ctx);
+  // opts.source: chỉ ảnh của các dự án nguồn đó (trang LAN chỉ thấy thư viện của dự án 'lan', không thấy ảnh của app chính).
   const rows = ctx.db
     .prepare(
       `SELECT r.*, p.name AS project_name FROM project_refs r JOIN projects p ON p.id = r.project_id
-       WHERE r.content_hash IS NOT NULL ORDER BY r.created_at DESC, r.id DESC`,
+       WHERE r.content_hash IS NOT NULL AND p.deleted_at IS NULL ${opts.source ? 'AND p.source = ?' : ''} ORDER BY r.created_at DESC, r.id DESC`,
     )
-    .all() as (RefRow & { project_name: string })[];
+    .all(...(opts.source ? [opts.source] : [])) as (RefRow & { project_name: string })[];
   const mine = new Set<string>();
   if (projectId !== undefined) {
     for (const r of ctx.db.prepare('SELECT content_hash FROM project_refs WHERE project_id = ? AND content_hash IS NOT NULL').all(projectId) as {
@@ -237,10 +240,22 @@ const refFileExists = (ctx: AppContext, ref: RefRow): boolean => refSourceFile(c
  * giữ nhãn nguồn (hoặc `labels[ref_id]`), nối vào cuối theo thứ tự `refIds`. Dự án đã có ảnh cùng `content_hash` thì
  * không chép mà trả lại ref sẵn có. Tất-cả-hoặc-không về dữ liệu DB: ref nguồn không tồn tại → 404, file nguồn mất → 409 FILE_MISSING.
  */
-export function addRefsFromLibrary(ctx: AppContext, projectId: number, refIds: number[], labels: Record<string, string> = {}): RefRow[] {
+export function addRefsFromLibrary(
+  ctx: AppContext,
+  projectId: number,
+  refIds: number[],
+  labels: Record<string, string> = {},
+  opts: { sourceProjectSource?: ProjectSource; maxRefs?: number } = {},
+): RefRow[] {
   return ctx.tx(() => {
     getProject(ctx, projectId);
     const sources = refIds.map((id) => getRef(ctx, id)); // 404 nếu có id không tồn tại
+    if (opts.sourceProjectSource) {
+      // Trang LAN chỉ được lấy ảnh từ dự án 'lan'; ảnh của dự án khác trả 404 như thể không tồn tại (không lộ id).
+      for (const src of sources) {
+        if (getProject(ctx, src.project_id).source !== opts.sourceProjectSource) throw notFound('ảnh tham chiếu');
+      }
+    }
     const have = new Map<string, RefRow>(); // content_hash -> ref sẵn có trong dự án
     for (const r of projectRefs(ctx, projectId)) if (r.content_hash && !have.has(r.content_hash)) have.set(r.content_hash, r);
 
@@ -261,6 +276,14 @@ export function addRefsFromLibrary(ctx: AppContext, projectId: number, refIds: n
       if (!type) throw conflict('FILE_MISSING', `File nguồn của ảnh "${src.label}" (#${src.id}) không phải ảnh png/jpg/webp hợp lệ`);
       return { src, buf, hash, type };
     });
+
+    if (opts.maxRefs !== undefined) {
+      const fresh = new Set<string>();
+      for (const p of plan) if (p.hash && !have.has(p.hash)) fresh.add(p.hash);
+      if (projectRefs(ctx, projectId).length + fresh.size > opts.maxRefs) {
+        throw new AppError('TOO_MANY_REFS', `Mỗi kế hoạch chỉ có tối đa ${opts.maxRefs} ảnh tham chiếu`, 409);
+      }
+    }
 
     // Lượt 2: chép (hoặc dùng lại ref đã có cùng hash)
     return plan.map(({ src, buf, hash, type }) => {
