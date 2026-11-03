@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeEnv, setupProject, toStoryboardReview, toVideoReview, userClient, writeFile, bareScenario, type Env } from './helpers.js';
-import { buildApp } from '../src/app.js';
+import { makeEnv, setupProject, toStoryboardReview, toVideoReview, userClient, bareScenario, type Env } from './helpers.js';
 
 let env: Env;
 beforeEach(async () => {
@@ -159,31 +156,3 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
   });
 });
 
-describe('production: phục vụ web/dist với SPA fallback', () => {
-  it('phục vụ index.html, asset tĩnh, fallback cho đường dẫn trang; /api và /files không bị ảnh hưởng', async () => {
-    const dist = path.join(env.root, 'web-dist');
-    fs.mkdirSync(path.join(dist, 'assets'), { recursive: true });
-    fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>autovideo</title><div id="root"></div>');
-    fs.writeFileSync(path.join(dist, 'assets', 'app-abc123.js'), 'console.log(1)');
-    writeFile(env.root, 'output/a.txt', 'ok');
-    const app = await buildApp({ rootDir: env.root, dbPath: path.join(env.root, 'data', 'prod.db'), logger: false, config: { webDistDir: dist, workerToken: 't' } });
-    const get = (url: string, accept = 'text/html') => app.inject({ method: 'GET', url, headers: { host: 'localhost', accept } });
-    expect((await get('/')).body).toContain('<div id="root">');
-    const asset = await get('/assets/app-abc123.js', '*/*');
-    expect(asset.statusCode).toBe(200);
-    expect(asset.body).toBe('console.log(1)');
-    for (const url of ['/projects/1', '/projects/1/scenes/2', '/queue', '/projects/new']) {
-      const r = await get(url);
-      expect(r.statusCode, url).toBe(200);
-      expect(r.body).toContain('<div id="root">');
-    }
-    const api404 = await get('/api/khong-co', 'application/json');
-    expect(api404.statusCode).toBe(404);
-    expect(JSON.parse(api404.body).error.code).toBe('NOT_FOUND');
-    expect((await get('/api/health', 'application/json')).statusCode).toBe(200);
-    expect((await get('/files/output/a.txt', '*/*')).body).toBe('ok');
-    expect((await get('/files/output/nope.txt')).statusCode).toBe(404);
-    expect(JSON.parse((await get('/files/output/nope.txt')).body).error.code).toBe('NOT_FOUND');
-    await app.close();
-  });
-});

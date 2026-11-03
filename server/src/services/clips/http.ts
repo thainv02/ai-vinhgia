@@ -22,7 +22,7 @@ import { previewBody, renderPreviewFrame } from './preview-frame.js';
 import { cancelClipCut, renderBody, startClipRender } from './render.js';
 import { getClipProject, getClipRow, getCutRow, getSourceRow, projectClips, projectSource, readTranscript } from './repo.js';
 import { assertDiskRoom, assertSourceProbe, createClipProject, createClipProjectBody, makePoster, patchClipProject, patchClipProjectBody, queuePreview, registerSource, sourceLimits, sourceTmpDir } from './source.js';
-import { startTranscription, sttConfigured, STT_NOT_CONFIGURED } from './stt.js';
+import { startTranscription, sttUnavailable } from './stt.js';
 import { transcriptPage, transcriptSrt, transcriptTxt } from './transcript.js';
 import { clipJson, clipProjectDetail, cutJson, planJobJson, sourceJson, type ViewOpts } from './view.js';
 
@@ -74,6 +74,13 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     const s = getSourceRow(ctx, id);
     const proj = projectOf(s.project_id);
     return { source: s, project: proj };
+  };
+  const activeClipPlan = (projectId: number): boolean =>
+    !!ctx.db.prepare("SELECT 1 FROM jobs WHERE project_id = ? AND type = 'clip_plan' AND status IN ('queued','claimed','running') LIMIT 1").get(projectId);
+  /** Video nguồn của dự án đang chạy lại AI chuẩn hoá chính tả: không tạo clip (chỉ số từ sắp đổi). */
+  const assertNotFixing = (projectId: number): void => {
+    const src = projectSource(ctx, projectId);
+    if (src && ctx.stt?.isAiFixing(src.id)) throw conflict('AI_FIXING', 'AI đang chuẩn hoá lại lời thoại; đợi xong rồi tạo clip');
   };
   const clipOf = (id: number) => {
     const c = getClipRow(ctx, id);
@@ -144,7 +151,8 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
   app.post(`${p}/sources/:id/transcribe`, async (req, reply) => {
     const { source, project } = sourceOf(asId(req));
     return limited(env, 'source', req, reply, () => {
-      if (!sttConfigured(ctx)) throw new AppError('STT_NOT_CONFIGURED', STT_NOT_CONFIGURED, 409);
+      const why = sttUnavailable(ctx);
+      if (why) throw new AppError(why.code, why.message, 409);
       if (source.deleted_at) throw conflict('SOURCE_DELETED', 'Video gốc đã bị xoá nên không nhận dạng lại được');
       if (source.status === 'transcribing') throw conflict('INVALID_STATE', 'Video đang được nhận dạng lời nói');
       if (source.status === 'transcribed') {
@@ -157,8 +165,25 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     });
   });
 
+  // Chỉ chạy lại AI chuẩn hoá chính tả (không nhận dạng lại). Chặn khi đã có clip / AI đang chọn đoạn: chỉ số từ sẽ đổi.
+  app.post(`${p}/sources/:id/ai-fix`, async (req) => {
+    const { source, project } = sourceOf(asId(req));
+    if (!ctx.config.sttAiFix) throw conflict('AI_FIX_DISABLED', 'Chuẩn hoá chính tả bằng AI đang tắt (STT_AI_FIX=0)');
+    if (!ctx.config.aiApiKey) throw conflict('KEY_MISSING', 'Chưa có API key của máy chủ AI: nhập trong Cài đặt trước');
+    if (source.status !== 'transcribed') throw conflict('NOT_TRANSCRIBED', 'Video chưa được nhận dạng lời nói xong');
+    if (projectClips(ctx, project.id).length) throw conflict('CLIPS_EXIST', 'Dự án đã có clip nên không chuẩn hoá lại được (chỉ số từ sẽ đổi); hãy tạo dự án mới');
+    if (activeClipPlan(project.id)) throw conflict('INVALID_STATE', 'AI đang chọn đoạn clip; đợi xong rồi chuẩn hoá lại');
+    ctx.stt?.enqueueAiFix(source.id);
+    return { source: sourceJson(ctx, getSourceRow(ctx, source.id), env.view(req)) };
+  });
+
   app.post(`${p}/sources/:id/cancel`, async (req) => {
     const { source, project } = sourceOf(asId(req));
+    if (ctx.stt?.isAiFixing(source.id)) {
+      ctx.stt.cancel(source.id);
+      ctx.publish('source.updated', project.id, () => ({ source: sourceJson(ctx, getSourceRow(ctx, source.id), { lan: false }) }));
+      return { source: sourceJson(ctx, getSourceRow(ctx, source.id), env.view(req)) };
+    }
     if (source.status !== 'transcribing' && source.status !== 'uploaded') throw conflict('INVALID_STATE', `Video đang ở trạng thái ${source.status}, không có gì để hủy`);
     ctx.tx(() => {
       ctx.db.prepare("UPDATE source_videos SET status = 'cancelled', progress = NULL, error = NULL, error_code = NULL WHERE id = ?").run(source.id);
@@ -201,6 +226,7 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     const body = parse(clipPlanBody, req.body ?? {});
     const jobId = await limited(env, 'plan', req, reply, () => {
       if (env.lan) assertLanQueueRoom(ctx);
+      assertNotFixing(project.id);
       return createClipPlan(ctx, project.id, body);
     });
     return reply.code(201).send({ job: planJobJson(ctx, getJobRow(ctx, jobId), env.view(req)) });
@@ -231,7 +257,10 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
   app.post(`${p}/projects/:id/clips`, async (req, reply) => {
     const project = projectOf(asId(req));
     const body = parse(createClipBody, req.body ?? {});
-    const row = await limited(env, 'edit', req, reply, () => createManualClip(ctx, project.id, body));
+    const row = await limited(env, 'edit', req, reply, () => {
+      assertNotFixing(project.id);
+      return createManualClip(ctx, project.id, body);
+    });
     return reply.code(201).send({ clip: clipJson(ctx, row, env.view(req)) });
   });
 

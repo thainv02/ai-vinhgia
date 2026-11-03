@@ -50,10 +50,10 @@ export function lanProject(ctx: AppContext, id: number): ProjectRow {
   return p;
 }
 
-/** Dự án LAN bất kể loại (kế hoạch prompt hoặc cắt clip): dùng cho thao tác chung như xoá. */
+/** Dự án LAN thuộc planner (kế hoạch prompt hoặc cắt clip): dùng cho thao tác chung như xoá. Dự án Video HTML (kind='html') KHÔNG thuộc nhóm này → 404 (xoá qua /lan/api/html-projects). */
 export function lanProjectAny(ctx: AppContext, id: number): ProjectRow {
   const p = getProject(ctx, id);
-  if (p.source !== 'lan') throw notFound('kế hoạch');
+  if (p.source !== 'lan' || (p.kind !== 'scenes' && p.kind !== 'clips')) throw notFound('kế hoạch');
   return p;
 }
 
@@ -72,6 +72,11 @@ export function ownsLanPlan(p: Pick<ProjectRow, 'lan_client_hash'>, clientHash: 
   const a = Buffer.from(p.lan_client_hash, 'utf8');
   const b = Buffer.from(clientHash, 'utf8');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/** Người dùng của app (một người trên chính máy mình) luôn xoá được dự án của mình. */
+export function canDeleteFromPlanner(_ctx: AppContext, _p: Pick<ProjectRow, 'lan_client_hash'>, _clientHash: string | null): boolean {
+  return true;
 }
 
 // ------------------------------------------------------------------ trạng thái phân tích
@@ -128,16 +133,19 @@ function planStatus(analysis: AnalysisInfo, sceneCount: number): PlanStatus {
 
 // ------------------------------------------------------------------ tóm tắt / danh sách
 
-function counts(ctx: AppContext, projectId: number): { scene_count: number; ref_count: number } {
+function counts(ctx: AppContext, projectId: number): { scene_count: number; ref_count: number; video_scene_count: number } {
   return ctx.db
-    .prepare('SELECT (SELECT COUNT(*) FROM scenes WHERE project_id = @id) AS scene_count, (SELECT COUNT(*) FROM project_refs WHERE project_id = @id) AS ref_count')
-    .get({ id: projectId }) as { scene_count: number; ref_count: number };
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM scenes WHERE project_id = @id) AS scene_count, (SELECT COUNT(*) FROM project_refs WHERE project_id = @id) AS ref_count,
+         (SELECT COUNT(*) FROM scenes WHERE project_id = @id AND selected_video_id IS NOT NULL) AS video_scene_count`,
+    )
+    .get({ id: projectId }) as { scene_count: number; ref_count: number; video_scene_count: number };
 }
 
 export function planSummary(ctx: AppContext, p: ProjectRow, clientHash: string | null = null) {
   const analysis = analysisInfo(ctx, p.id);
   const c = counts(ctx, p.id);
-  const canDelete = ownsLanPlan(p, clientHash);
+  const canDelete = canDeleteFromPlanner(ctx, p, clientHash);
   return {
     id: p.id,
     name: p.name,
@@ -145,10 +153,12 @@ export function planSummary(ctx: AppContext, p: ProjectRow, clientHash: string |
     status: planStatus(analysis, c.scene_count),
     scene_count: c.scene_count,
     ref_count: c.ref_count,
+    /** Số cảnh đã chọn video (dòng tiến độ ở danh sách kế hoạch). */
+    video_scene_count: c.video_scene_count,
     created_at: p.created_at,
     updated_at: p.updated_at,
     analysis,
-    /** Trình duyệt này đã tạo kế hoạch → được xoá (DELETE /lan/api/plans/:id). Kế hoạch tạo trước tính năng xoá: luôn false (chỉ chủ máy xoá ở app chính). */
+    /** Được xoá (DELETE /lan/api/plans/:id): bản desktop luôn true; LAN chỉ trình duyệt đã tạo (kế hoạch tạo trước tính năng xoá: false). */
     can_delete: canDelete,
     /** Chỉ khi `can_delete`: lý do chưa xoá được lúc này (đang phân tích/dựng/tải lên...), null = xoá được. */
     delete_block: canDelete ? (projectDeleteBlocks(ctx, p.id)[0]?.message ?? null) : null,

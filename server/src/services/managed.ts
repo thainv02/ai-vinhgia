@@ -93,8 +93,9 @@ export function browserLease(ctx: AppContext, id: number, owner: Lease, profile:
 export function completionHash(value: unknown): string { return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
 export function stampProvenance(ctx: AppContext, jobId: number, sceneIds: number[] = [], commentId?: number) {
-  const info = ctx.db.prepare(`SELECT a.provider,r.model,r.account_id FROM ai_attempts r JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=? AND r.outcome='ok' ORDER BY r.id DESC LIMIT 1`)
-    .get(jobId) as { provider: string; model: string; account_id: number } | undefined;
+  // account_id NULL = API AI gọi trực tiếp (AI_API_URL), không thuộc account pool
+  const info = ctx.db.prepare(`SELECT COALESCE(a.provider,'internal') AS provider,r.model,r.account_id FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=? AND r.outcome='ok' ORDER BY r.id DESC LIMIT 1`)
+    .get(jobId) as { provider: string; model: string; account_id: number | null } | undefined;
   if (!info) return;
   for (const id of sceneIds) ctx.db.prepare("UPDATE scene_prompt_versions SET provider=?,model=?,account_id=? WHERE scene_id=? AND version=(SELECT MAX(version) FROM scene_prompt_versions WHERE scene_id=?) AND created_by='agent'")
     .run(info.provider, info.model, info.account_id, id, id);

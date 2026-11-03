@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { ActionTag, DisabledReason, type ActionKind } from './ActionTag';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
@@ -17,7 +18,7 @@ const SIZE: Record<ButtonSize, string> = {
 };
 
 export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md', extra = ''): string {
-  return `${BASE} ${VARIANT[variant]} ${SIZE[size]} ${extra}`.trim();
+  return `av-control ${BASE} ${VARIANT[variant]} ${SIZE[size]} ${extra}`.trim();
 }
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,24 +30,29 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Lý do vô hiệu hóa: tự đặt disabled và tooltip. */
   disabledReason?: string | null;
   icon?: ReactNode;
+  actionKind?: ActionKind;
 }
 
-export function Button({ variant = 'secondary', size = 'md', loading, credit, disabledReason, icon, className = '', children, disabled, title, ...rest }: Props) {
+export function Button({ variant = 'secondary', size = 'md', loading, credit, disabledReason, icon, actionKind, className = '', children, disabled, title, ...rest }: Props) {
   const isDisabled = disabled || loading || !!disabledReason;
-  return (
+  const reasonId = useId();
+  const button = (
     <button
       type="button"
       {...rest}
       disabled={isDisabled}
       title={disabledReason ?? title}
       aria-busy={loading || undefined}
+      aria-describedby={disabledReason ? [rest['aria-describedby'], reasonId].filter(Boolean).join(' ') : rest['aria-describedby']}
       className={buttonClass(variant, size, className)}
     >
       {loading ? <Spinner /> : icon}
       {children}
+      {actionKind && <ActionTag kind={actionKind} />}
       {credit !== undefined && <span className="spend-chip">{credit} credit</span>}
     </button>
   );
+  return disabledReason ? <span className="av-action-control">{button}<DisabledReason id={reasonId}>{disabledReason}</DisabledReason></span> : button;
 }
 
 export function Spinner({ size = 14 }: { size?: number }) {

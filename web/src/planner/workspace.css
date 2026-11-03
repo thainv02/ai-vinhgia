@@ -41,7 +41,7 @@
 .ws-stp { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; background: none; border: 0; padding: 2px; cursor: pointer; color: var(--fg); font-family: inherit; border-radius: 6px; }
 .ws-stp.later { color: var(--muted); }
 .ws-stp b { width: 24px; height: 24px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; background: var(--surface-3); color: var(--muted); }
-.ws-stp.done b { background: var(--dot-ok); color: #fff; }
+.ws-stp.done b { background: var(--dot-ok); color: var(--primary-fg); }
 .ws-stp.now b { background: var(--primary); color: var(--primary-fg); }
 .ws-stp-line { flex: 0 0 40px; height: 2px; background: var(--line); }
 
@@ -108,11 +108,11 @@
 .ws-final-top { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .ws-final-info { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .ws-player { flex: 0 0 auto; width: min(100%, 320px); }
-.ws-ph { height: min(60vh, 520px); aspect-ratio: 9 / 16; max-width: 100%; margin: 0 auto; border-radius: 12px; background: var(--stage); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 0 18px; color: #e6ebf0; }
+.ws-ph { height: min(60vh, 520px); aspect-ratio: 9 / 16; max-width: 100%; margin: 0 auto; border-radius: 12px; background: var(--stage); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 0 18px; color: #f2f2f2; }
 .ws-ph p { margin: 0; }
-.ws-ph .muted { color: #9aa7b4; font-size: 12.5px; }
+.ws-ph .muted { color: #a3a3a3; font-size: 12.5px; }
 .ws-ph .big { font-size: 30px; font-weight: 800; }
-.ws-ph .av-bar { width: 100%; max-width: 200px; background: #2a3644; }
+.ws-ph .av-bar { width: 100%; max-width: 200px; background: rgba(255, 255, 255, 0.16); }
 .ws-fcard { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .ws-fcard h2, .ws-fcard h3 { margin: 0; }
 .ws-fcard h2 { font-size: 15px; font-weight: 700; flex: 1 1 auto; }

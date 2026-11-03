@@ -274,26 +274,8 @@ const STALE_TMP_MS = 60 * 60 * 1000;
  * nguyên) — bỏ qua video đang được nhận dạng/dựng; (2) dọn file tải dở > 1 giờ trong `clips/source/`.
  */
 export function expireClipSources(ctx: AppContext): { expired: number; staleTmp: number } {
-  const cutoff = new Date(ctx.clock.now() - ctx.config.lanClipSourceRetentionDays * 86_400_000).toISOString();
-  const rows = ctx.db
-    .prepare(
-      `SELECT s.*, p.slug FROM source_videos s JOIN projects p ON p.id = s.project_id
-       WHERE p.source = 'lan' AND p.deleted_at IS NULL AND p.kind = 'clips' AND s.deleted_at IS NULL AND s.path IS NOT NULL AND s.created_at < ?`,
-    )
-    .all(cutoff) as (SourceVideoRow & { slug: string })[];
-  let expired = 0;
-  for (const s of rows) {
-    if (s.status === 'transcribing' || ctx.stt?.queueInfo(s.id)) continue;
-    const rendering = ctx.db.prepare("SELECT 1 FROM clip_cuts c JOIN clips k ON k.id = c.clip_id WHERE k.source_id = ? AND c.status = 'rendering' LIMIT 1").get(s.id);
-    if (rendering) continue;
-    fs.rmSync(abs(ctx, s.path!), { force: true });
-    ctx.tx(() => {
-      ctx.db.prepare('UPDATE source_videos SET deleted_at = ? WHERE id = ?').run(ctx.now(), s.id);
-      logEvent(ctx, { project_id: s.project_id, type: 'clip.source_expired', message: `Đã xoá video nguồn sau ${ctx.config.lanClipSourceRetentionDays} ngày (giữ transcript, bản xem thử và clip)` });
-      emitSource(ctx, getSourceRow(ctx, s.id));
-    });
-    expired++;
-  }
+  // video nguồn là của chính người dùng trên máy mình: không tự xoá theo hạn; chỉ dọn file tạm tải dở
+  const expired = 0;
   let staleTmp = 0;
   const sweep = (dir: string) => {
     try {

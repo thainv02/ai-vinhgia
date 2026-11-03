@@ -1,5 +1,5 @@
 /*
-  Giao diện app desktop (thiết kế "AutoVideo Desktop", màu theo CRM Vinh Gia).
+  Giao diện app desktop AI Vinh Gia (tối: đen trắng; sáng: xanh dương trắng).
   Mặc định tối; <html data-theme="light|dark"> do App đặt (Cài đặt › Giao diện: Tối / Sáng / Theo Windows).
   Gán lại các biến cũ của index.css (--bg, --surface, --line, --fg, --ink…) để component cũ đổi màu theo,
   và thêm biến mới cho khung app (--side*, --primary*, --status-bar…) cùng các lớp dùng chung .av-*.
@@ -14,98 +14,131 @@
 
 :root,
 :root[data-theme='dark'] {
+  /* Tối: chỉ đen, trắng và các mức xám; đỏ chỉ dành cho lỗi. */
   color-scheme: dark;
-  --bg: #0f151c;
-  --surface: #161f29;
-  --surface-2: #1c2733;
-  --surface-3: #23303d;
-  --line: #2a3644;
-  --line-strong: #3a4858;
-  --fg: #e6ebf0;
-  --muted: #9aa7b4;
-  --ink: #207d79;
-  --ink-fg: #ffffff;
-  --ink-hover: #24908b;
-  --header: #0c1a31;
-  --header-fg: #eef3fa;
-  --focus: #6aa2ee;
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-2: #1b1b1b;
+  --surface-3: #242424;
+  --line: #2a2a2a;
+  --line-strong: #3d3d3d;
+  --fg: #f2f2f2;
+  --muted: #a3a3a3;
+  --ink: #f2f2f2;
+  --ink-fg: #0a0a0a;
+  --ink-hover: #ffffff;
+  --header: #000000;
+  --header-fg: #f2f2f2;
+  --focus: #ffffff;
 
-  --neutral-bg: #232e39;
-  --neutral-fg: #bcc7d2;
-  --info-bg: #15284a;
-  --info-fg: #93bbf5;
-  --warn-bg: #3a2c12;
-  --warn-fg: #f0c26c;
-  --ok-bg: #14342a;
-  --ok-fg: #74d5a8;
-  --danger-bg: #3d1d15;
-  --danger-fg: #f59d84;
+  --neutral-bg: #242424;
+  --neutral-fg: #c7c7c7;
+  --info-bg: #262626;
+  --info-fg: #f2f2f2;
+  --warn-bg: #2e2e2e;
+  --warn-fg: #e0e0e0;
+  --ok-bg: #1f1f1f;
+  --ok-fg: #ffffff;
+  --danger-bg: #3a1614;
+  --danger-fg: #ff8a80;
+  --violet-bg: #262626;
+  --violet-fg: #e0e0e0;
+  --spend: #f2f2f2;
+  --spend-bg: #1f1f1f;
+  --spend-line: #4a4a4a;
+  --add-bg: #262626;
+  --add-fg: #ffffff;
+  --del-bg: #3a1614;
+  --del-fg: #ff8a80;
 
   /* khung app */
-  --side: #0c1a31;
-  --side-fg: #eef3fa;
-  --side-muted: #a9b9d2;
+  --side: #000000;
+  --side-fg: #f2f2f2;
+  --side-muted: #a3a3a3;
   --side-hover: rgba(255, 255, 255, 0.06);
-  --side-active: rgba(79, 143, 230, 0.18);
-  --primary: #207d79;
-  --primary-hover: #24908b;
-  --primary-fg: #ffffff;
-  --link: #6aa2ee;
-  --sel: rgba(106, 162, 238, 0.14);
-  --hl: rgba(32, 125, 121, 0.32);
-  --stage: #05080c;
-  --status-bar: #0a1221;
-  --track: #2a3644;
-  --dot-ok: #3fae7e;
-  --dot-warn: #e0a040;
-  --dot-bad: #e5603d;
+  --side-active: rgba(255, 255, 255, 0.12);
+  --primary: #f2f2f2;
+  --primary-hover: #ffffff;
+  --primary-fg: #0a0a0a;
+  --link: #ffffff;
+  --sel: rgba(255, 255, 255, 0.08);
+  --hl: rgba(255, 255, 255, 0.18);
+  --stage: #000000;
+  --status-bar: #000000;
+  --track: #2a2a2a;
+  --dot-ok: #f2f2f2;
+  --dot-warn: #8a8a8a;
+  --dot-bad: #ff5a4f;
+  /* đoạn cảnh trên timeline (chữ trắng) */
+  --scene-1: #5c5c5c;
+  --scene-2: #454545;
+  --scene-3: #707070;
+  --scene-4: #3a3a3a;
+  --scene-5: #666666;
+  --scene-6: #4f4f4f;
 }
 
 :root[data-theme='light'] {
+  /* Sáng: chỉ xanh dương và trắng; đỏ chỉ dành cho lỗi. */
   color-scheme: light;
-  --bg: #e8ecef;
+  --bg: #edf3fc;
   --surface: #ffffff;
-  --surface-2: #f4f6f8;
-  --surface-3: #eaeef2;
-  --line: #d5dce2;
-  --line-strong: #c3ccd4;
-  --fg: #1c2530;
-  --muted: #55616d;
-  --ink: #207d79;
+  --surface-2: #f5f8fe;
+  --surface-3: #e5eefb;
+  --line: #d4e1f5;
+  --line-strong: #b5cbec;
+  --fg: #0d2549;
+  --muted: #4c6488;
+  --ink: #1a5fd0;
   --ink-fg: #ffffff;
-  --ink-hover: #1a6965;
-  --header: #153f86;
+  --ink-hover: #154fb0;
+  --header: #174ea6;
   --header-fg: #ffffff;
-  --focus: #174fa4;
+  --focus: #1a5fd0;
 
-  --neutral-bg: #e8ebef;
-  --neutral-fg: #3f4a55;
-  --info-bg: #e3effb;
-  --info-fg: #174f8a;
-  --warn-bg: #fdf0d2;
-  --warn-fg: #7a4305;
-  --ok-bg: #def3e6;
-  --ok-fg: #14633f;
-  --danger-bg: #fde9e3;
-  --danger-fg: #a82a0c;
+  --neutral-bg: #eaf1fc;
+  --neutral-fg: #3a5479;
+  --info-bg: #e1ecfd;
+  --info-fg: #154fb0;
+  --warn-bg: #dbe7fb;
+  --warn-fg: #123f8c;
+  --ok-bg: #e1ecfd;
+  --ok-fg: #1a5fd0;
+  --danger-bg: #fde8e6;
+  --danger-fg: #b3261e;
+  --violet-bg: #e1ecfd;
+  --violet-fg: #154fb0;
+  --spend: #154fb0;
+  --spend-bg: #eaf1fc;
+  --spend-line: #9fbbe8;
+  --add-bg: #dbe7fb;
+  --add-fg: #123f8c;
+  --del-bg: #fde8e6;
+  --del-fg: #b3261e;
 
-  --side: #153f86;
+  --side: #174ea6;
   --side-fg: #ffffff;
-  --side-muted: #c9d6ee;
-  --side-hover: rgba(255, 255, 255, 0.08);
-  --side-active: rgba(255, 255, 255, 0.16);
-  --primary: #207d79;
-  --primary-hover: #1a6965;
+  --side-muted: #c8d9f5;
+  --side-hover: rgba(255, 255, 255, 0.1);
+  --side-active: rgba(255, 255, 255, 0.2);
+  --primary: #1a5fd0;
+  --primary-hover: #154fb0;
   --primary-fg: #ffffff;
-  --link: #174fa4;
-  --sel: #e3effb;
-  --hl: #cfeae8;
-  --stage: #1c2530;
-  --status-bar: #dde3e8;
-  --track: #dfe5ea;
-  --dot-ok: #2b7f60;
-  --dot-warn: #b46a12;
-  --dot-bad: #cf310a;
+  --link: #1a5fd0;
+  --sel: #e1ecfd;
+  --hl: #c9dcfa;
+  --stage: #0d2549;
+  --status-bar: #e5eefb;
+  --track: #d4e1f5;
+  --dot-ok: #1a5fd0;
+  --dot-warn: #7fa6e6;
+  --dot-bad: #d93025;
+  --scene-1: #1a5fd0;
+  --scene-2: #3b7be0;
+  --scene-3: #154fb0;
+  --scene-4: #4f8be6;
+  --scene-5: #123f8c;
+  --scene-6: #2c6dd8;
 }
 
 body {
@@ -259,6 +292,21 @@ textarea.av-input { height: auto; padding: 10px 11px; line-height: 1.55; resize:
 .av-link-strong:hover { text-decoration: underline; }
 .av-table-wrap { overflow-x: auto; }
 .av-sr { position: absolute; left: -9999px; }
+
+/* menu ⋮ của một dòng danh sách (fixed: bảng nằm trong khung cuộn) */
+.av-rowmenu {
+  position: fixed; z-index: 50; min-width: 190px; max-width: 280px; padding: 4px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+.av-rowmenu button {
+  display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 7px;
+  background: none; color: var(--fg); font: 500 13px 'Be Vietnam Pro', sans-serif; cursor: pointer;
+}
+.av-rowmenu button:hover:not(:disabled), .av-rowmenu button:focus-visible { background: var(--surface-2); }
+.av-rowmenu button.danger { color: var(--danger-fg); }
+.av-rowmenu button:disabled { cursor: not-allowed; opacity: 0.6; }
+.av-rowmenu small { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; font-weight: 400; line-height: 1.45; white-space: normal; }
 .av-settings { display: flex; flex: 1 1 auto; min-height: 0; }
 .av-settings-nav { flex: 0 0 212px; padding: 18px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
 .av-settings-nav a { display: block; padding: 8px 10px; border-radius: 7px; font-size: 13.5px; font-weight: 500; color: var(--muted); text-decoration: none; }

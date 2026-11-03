@@ -11,17 +11,18 @@ import { seedClipProject, sttConfig, startFakeStt, waitFor } from './helpers-cli
 import { clip as videoClip } from './helpers-video.js';
 
 describe('cấu hình STT_* / CLIP_*', () => {
-  it('mặc định: không có STT_URL → provider none; có STT_URL → omnix; giới hạn mặc định theo đặc tả', () => {
+  it('mặc định: không có STT_URL → nhận dạng trên máy (local); có STT_URL → omnix; giới hạn mặc định theo đặc tả', () => {
     const none = loadConfig({} as never);
     expect(none).toMatchObject({
-      sttProvider: 'none',
+      sttProvider: 'local',
       sttUrl: '',
       sttTenantId: 's-omnix-studio',
       sttTimeoutMs: 3_600_000,
       sttMaxRetries: 3,
       clipSourceMaxBytes: 4 * 1024 ** 3,
       clipSourceMaxS: 10_800,
-      lanClipSourceMaxBytes: 2 * 1024 ** 3,
+      // một người dùng: giới hạn video nguồn của giao diện bằng giới hạn chung
+      lanClipSourceMaxBytes: 4 * 1024 ** 3,
       lanClipSourceMaxS: 10_800,
       clipMinFreeGb: 10,
       lanClipSourceRetentionDays: 7,
@@ -52,13 +53,13 @@ describe('cấu hình STT_* / CLIP_*', () => {
       CLIP_FONTS_DIR: '/tmp/fonts',
       CLIP_FFMPEG_PATH: '/opt/ffmpeg-full',
     } as never);
-    expect(c).toMatchObject({ sttTenantId: 't-1', sttTimeoutMs: 5000, sttMaxRetries: 0, clipSourceMaxBytes: 1000, clipSourceMaxS: 60, lanClipSourceMaxBytes: 500, lanClipSourceMaxS: 30, clipMinFreeGb: 0, lanClipSourceRetentionDays: 3, clipCaptionFont: 'Verdana', clipFontsDir: '/tmp/fonts', clipFfmpegPath: '/opt/ffmpeg-full' });
+    expect(c).toMatchObject({ sttTenantId: 't-1', sttTimeoutMs: 5000, sttMaxRetries: 0, clipSourceMaxBytes: 1000, clipSourceMaxS: 60, lanClipSourceMaxBytes: 500, lanClipSourceMaxS: 30, clipMinFreeGb: 0, lanClipSourceRetentionDays: 3, clipCaptionFont: 'Verdana', clipFontsDir: path.resolve('/tmp/fonts'), clipFfmpegPath: '/opt/ffmpeg-full' });
     const bad = parseClipConfig({ STT_TIMEOUT_MS: 'abc', CLIP_MIN_FREE_GB: '-5', LAN_CLIP_SOURCE_RETENTION_DAYS: '0', CLIP_SOURCE_MAX_S: '-1' } as never);
     expect(bad).toMatchObject({ sttTimeoutMs: 3_600_000, clipMinFreeGb: 10, lanClipSourceRetentionDays: 7, clipSourceMaxS: 10_800 });
   });
   it('.env.example ghi đủ các biến mới', () => {
     const ex = fs.readFileSync(path.resolve(MIGRATIONS_DIR, '..', '..', '.env.example'), 'utf8');
-    for (const k of ['STT_PROVIDER', 'STT_URL', 'STT_TENANT_ID', 'STT_TIMEOUT_MS', 'STT_MAX_RETRIES', 'CLIP_SOURCE_MAX_BYTES', 'CLIP_SOURCE_MAX_S', 'LAN_CLIP_SOURCE_MAX_BYTES', 'LAN_CLIP_SOURCE_MAX_S', 'CLIP_MIN_FREE_GB', 'LAN_CLIP_SOURCE_RETENTION_DAYS', 'CLIP_CAPTION_FONT', 'CLIP_FONTS_DIR', 'CLIP_FFMPEG_PATH']) expect(ex, k).toContain(k);
+    for (const k of ['STT_PROVIDER', 'STT_URL', 'STT_TENANT_ID', 'STT_TIMEOUT_MS', 'STT_MAX_RETRIES', 'CLIP_SOURCE_MAX_BYTES', 'CLIP_SOURCE_MAX_S', 'CLIP_MIN_FREE_GB', 'CLIP_CAPTION_FONT', 'CLIP_FONTS_DIR', 'CLIP_FFMPEG_PATH']) expect(ex, k).toContain(k);
     expect(ex).toContain('http://10.0.3.214:18085/v1/audio/transcriptions');
   });
 });
@@ -114,13 +115,13 @@ describe('migration 014_clips', () => {
     expect(refTables).toEqual(['ai_attempts', 'assets', 'browser_leases', 'credit_ledger', 'external_actions', 'final_cuts', 'job_reconciliations']);
     expect(seqBefore).toBe(3);
 
-    expect(runMigrations(db)).toEqual(['014_clips', '015_clip_captions']);
+    expect(runMigrations(db)).toEqual(['014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
     expect(runMigrations(db)).toEqual([]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
     expect(db.prepare('SELECT * FROM jobs ORDER BY id').all()).toEqual(jobsBefore);
     expect((db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'jobs'").get() as { seq: number }).seq).toBe(3);
-    expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%REFERENCES jobs(%' ORDER BY name").all() as { name: string }[]).map((t) => t.name)).toEqual([...refTables, 'clips'].sort());
+    expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%REFERENCES jobs(%' ORDER BY name").all() as { name: string }[]).map((t) => t.name)).toEqual([...refTables, 'clips', 'html_segments', 'html_versions'].sort());
     const countsAfter = Object.fromEntries(tables.map((t) => [t, (db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get() as { n: number }).n]));
     expect({ ...countsAfter, schema_migrations: 0 }).toEqual({ ...countsBefore, schema_migrations: 0 });
     expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'jobs' ORDER BY name").all() as { name: string }[]).map((i) => i.name)).toEqual(['idx_jobs_project', 'idx_jobs_scene', 'idx_jobs_status', 'idx_jobs_type_status']);

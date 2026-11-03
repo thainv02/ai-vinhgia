@@ -5,7 +5,7 @@ export function Toaster() {
   const items = useToasts();
   if (items.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-3 z-50 flex flex-col items-center gap-2 px-3" aria-live="polite">
+    <div className="av-toasts pointer-events-none fixed inset-x-0 bottom-3 z-50 flex flex-col items-center gap-2 px-3" aria-live="polite">
       {items.map((t) => (
         <div
           key={t.id}
@@ -16,7 +16,7 @@ export function Toaster() {
         >
           <Icon name={t.kind === 'error' ? 'alert' : 'check'} size={16} className="mt-0.5" />
           <span className="min-w-0 flex-1">{t.message}</span>
-          <button type="button" onClick={() => dismiss(t.id)} aria-label="Đóng thông báo" className="opacity-80 hover:opacity-100">
+          <button type="button" onClick={() => dismiss(t.id)} aria-label="Đóng thông báo" className="min-h-9 min-w-9 opacity-80 hover:opacity-100">
             <Icon name="x" size={14} />
           </button>
         </div>

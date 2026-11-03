@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Cắt clip</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav" href="Main.dc.html" title="Kế hoạch video" aria-label="Kế hoạch video"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav on" href="Clips.dc.html" title="Cắt clip" aria-label="Cắt clip" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ" aria-label="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo" aria-label="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt" aria-label="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <h1 class="h1">Cắt clip</h1>
+    <div class="sp"></div>
+    <button class="btn p lg" type="button" onClick="{{ open }}" aria-haspopup="dialog"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Tạo dự án</button>
+  </header>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start">
+    <div class="card" style="flex: 999 1 560px; min-width: 0">
+      <div class="tw"><table>
+        <thead><tr><th>Dự án</th><th>Video nguồn</th><th>Clip</th><th>Cập nhật</th><th style="text-align: right">Thao tác</th></tr></thead>
+        <tbody>
+          <tr><td><a href="ClipWorkspace.dc.html" style="font-weight: 700; color: #1c2530; text-decoration: none">Livestream 28/10 – Cacao Actiso</a><div class="xs mut">Thuật ngữ: Vinh Gia, Cacao Actiso</div></td><td><span class="bd ok">Đã nhận dạng</span><div class="xs mut">45:12</div></td><td>8 clip · 2 đã dựng</td><td class="mut">5 phút trước</td><td style="text-align: right"><div class="hs" style="justify-content: flex-end; gap: 6px"><a class="btn sm" href="ClipWorkspace.dc.html">Mở</a><button class="btn sm ic g" aria-label="Xoá dự án"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></div></td></tr>
+          <tr><td><a href="ClipSource.dc.html" style="font-weight: 700; color: #1c2530; text-decoration: none">Review Trà Actiso</a></td><td><span class="bd in">Đang nhận dạng ~38%</span><div class="xs mut">32:40 · ước tính theo thời lượng</div></td><td class="mut">—</td><td class="mut">12 phút trước</td><td style="text-align: right"><div class="hs" style="justify-content: flex-end; gap: 6px"><a class="btn sm" href="ClipSource.dc.html">Mở</a><button class="btn sm ic g" aria-label="Xoá dự án" disabled=""><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></div><div class="why" style="justify-content: flex-end">Đang nhận dạng — chưa xoá được</div></td></tr>
+          <tr><td><span style="font-weight: 700">Talkshow sức khoẻ T11</span></td><td><span class="bd ne">Chưa có video</span></td><td class="mut">—</td><td class="mut">Hôm qua</td><td style="text-align: right"><div class="hs" style="justify-content: flex-end; gap: 6px"><button class="btn sm">Tải nguồn</button><button class="btn sm ic g" aria-label="Xoá dự án"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></div></td></tr>
+          <tr><td><span style="font-weight: 700">Livestream 21/10</span></td><td><span class="bd er">Nhận dạng lỗi</span><div class="xs mut">Nguồn vẫn giữ · có thể nhận dạng lại</div></td><td class="mut">—</td><td class="mut">22/10/2026</td><td style="text-align: right"><div class="hs" style="justify-content: flex-end; gap: 6px"><button class="btn sm">Nhận dạng lại</button><button class="btn sm ic g" aria-label="Xoá dự án"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></div></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <sc-if value="{{ showForm }}" hint-placeholder-val="{{ false }}"><div class="ov" style="z-index: 5"><div class="scrim"></div>
+    <form class="dlg vs" role="dialog" aria-modal="true" style="width: 480px; padding: 22px; gap: 14px" aria-labelledby="nc">
+      <div class="hs"><h2 class="h2" id="nc">Tạo dự án cắt clip</h2><span class="sp"></span><button class="btn sm ic g" type="button" aria-label="Đóng" onClick="{{ close }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+      <label class="lbl">Tên dự án <span class="req" style="display: inline">*</span><input class="inp" value="Livestream 04/11 – Trà Actiso"><span class="hint">30/200 ký tự</span></label>
+      <label class="lbl">Thuật ngữ / tên riêng <span class="hint" style="display: inline">(không bắt buộc)</span><textarea class="inp" rows="3">Vinh Gia, Trà Actiso, Cacao Actiso, dược sĩ Hằng</textarea><span class="hint">Ngăn bằng dấu phẩy · 49/500 · giúp nhận dạng đúng tên sản phẩm, thương hiệu, tên người</span></label>
+      <div class="note ne"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><span>Sau khi tạo, bạn tải <b>một</b> video nguồn: MP4, MOV, MKV, WebM · tối đa 4 GiB · 3 giờ (theo hệ thống).</span></div>
+      <div class="hs" style="justify-content: flex-end"><button class="btn" type="button" onClick="{{ close }}">Huỷ</button><a class="btn p" href="ClipSource.dc.html">Tạo dự án</a></div>
+    </form></div></sc-if>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Nhận dạng lời nói: model đã cài</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+  <span class="sp"></span><span>Dữ liệu: D:\AutoVideo</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showForm: !!(this.state && this.state.showForm),
+      sideCls: (this.state && this.state.mini) ? 'mini' : '',
+      sideOpen: (this.state && this.state.mini) ? 'false' : 'true',
+      tgLabel: (this.state && this.state.mini) ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: (this.state && this.state.mini) ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !(this.state && this.state.mini) }),
+      open: () => this.setState({ showForm: true }),
+      close: () => this.setState({ showForm: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

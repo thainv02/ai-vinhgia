@@ -28,7 +28,7 @@ import {
 } from '../services/refs.js';
 import { eventJson, getJobJson, getProject, getRef, projectRefs, refJson } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
-import { deleteProject } from '../services/trash.js';
+import { assertConfirmName, awaitDeletable, deleteProject } from '../services/trash.js';
 
 const stageSchema = z.enum(['storyboard', 'video']);
 
@@ -40,7 +40,7 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   app.get('/api/projects', async () => {
-    const rows = ctx.db.prepare('SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY id DESC').all() as ProjectRow[];
+    const rows = ctx.db.prepare("SELECT * FROM projects WHERE deleted_at IS NULL AND kind <> 'html' ORDER BY id DESC").all() as ProjectRow[];
     return rows.map((p) => projectSummary(ctx, p));
   });
 
@@ -59,7 +59,8 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
   app.delete('/api/projects/:id', async (req) => {
     const id = intParam((req.params as { id: string }).id);
     const body = parse(z.object({ confirm_name: z.string({ error: 'cần confirm_name (tên dự án)' }) }), req.body ?? {});
-    getProject(ctx, id);
+    assertConfirmName(getProject(ctx, id), body.confirm_name);
+    await awaitDeletable(ctx, id);
     const r = deleteProject(ctx, id, { by: 'app', confirmName: body.confirm_name });
     return { ok: true, id: r.id, name: r.name, restorable_days: ctx.config.trashRetentionDays };
   });

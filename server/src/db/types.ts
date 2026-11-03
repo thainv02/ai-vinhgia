@@ -16,7 +16,7 @@ export const SCENE_STATUSES = [
 ] as const;
 export type SceneStatus = (typeof SCENE_STATUSES)[number];
 
-export const JOB_TYPES = ['analyze_brief', 'storyboard', 'video', 'revise_prompt', 'edit_plan', 'clip_plan'] as const;
+export const JOB_TYPES = ['analyze_brief', 'storyboard', 'video', 'revise_prompt', 'edit_plan', 'clip_plan', 'html_compose'] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_STATUSES = ['queued', 'claimed', 'running', 'done', 'failed', 'cancelled'] as const;
@@ -37,7 +37,7 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
 export const COMMENT_ACTIONS = ['note', 'revise_and_regenerate', 'regenerate_same', 'regenerate_storyboard'] as const;
 export type CommentAction = (typeof COMMENT_ACTIONS)[number];
 
-export const FAIL_CODES = ['CAPTCHA', 'LOGIN_REQUIRED', 'FLOW_OUT_OF_CREDIT', 'UI_CHANGED', 'OTHER'] as const;
+export const FAIL_CODES = ['CAPTCHA', 'LOGIN_REQUIRED', 'FLOW_OUT_OF_CREDIT', 'UI_CHANGED', 'OTHER', 'HTML_COMPOSE_FAILED'] as const;
 export type FailCode = (typeof FAIL_CODES)[number];
 /** Các mã lỗi làm tạm dừng hàng đợi. */
 export const PAUSING_FAIL_CODES: FailCode[] = ['CAPTCHA', 'LOGIN_REQUIRED', 'FLOW_OUT_OF_CREDIT', 'UI_CHANGED'];
@@ -48,7 +48,7 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export const PROJECT_SOURCES = ['app', 'lan'] as const;
 export type ProjectSource = (typeof PROJECT_SOURCES)[number];
 
-export const PROJECT_KINDS = ['scenes', 'clips'] as const;
+export const PROJECT_KINDS = ['scenes', 'clips', 'html'] as const;
 export type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 export interface ProjectRow {

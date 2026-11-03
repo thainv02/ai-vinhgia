@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Bước 3 · Tải và chọn video</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" style="min-height: 1000px">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav on" href="Main.dc.html" title="Kế hoạch video" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Main.dc.html">Kế hoạch video</a><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span>Quảng cáo Cacao Actiso</span></nav>
+      <div class="hs"><h1 class="h1">Quảng cáo Cacao Actiso</h1><span class="bd ok">Đã phân tích</span><span class="bd ne">1/4 cảnh có video</span></div>
+    </div>
+    <div class="sp"></div>
+    <button class="btn sm">Kế hoạch .md</button>
+    <button class="btn sm">Ảnh tham chiếu .zip</button>
+    <a class="btn sm" href="PlanRequest.dc.html">Phân tích lại <span class="tag ai">AI</span></a>
+  </header>
+  <nav class="tabs" aria-label="Phần của kế hoạch">
+    <a class="tab on" href="PlanScene1.dc.html" aria-current="page">Cảnh <span class="n">4</span></a>
+    <a class="tab" href="Final.dc.html">Bản hoàn chỉnh</a>
+    <a class="tab" href="#">Ảnh tham chiếu <span class="n">3</span></a>
+    <a class="tab" href="PlanRequest.dc.html">Yêu cầu</a>
+  </nav>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start; position: relative">
+    <aside class="card" style="flex: 1 1 290px; max-width: 320px; padding: 10px; display: flex; flex-direction: column; gap: 4px" aria-label="Danh sách cảnh">
+      <a class="li on" href="PlanScene3.dc.html" aria-current="true"><span class="ph" style="width: 44px; height: 64px">C1</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C1 · Văn phòng sáng sớm</b><span class="xs mut">Khung hình ✓ · 2 video · dùng bản 2</span><span class="bd ok" style="align-self: flex-start">Có video</span></span></a>
+      <a class="li" href="PlanScene1.dc.html"><span class="ph" style="width: 44px; height: 64px">C2</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C2 · Cận cảnh pha cacao</b><span class="xs mut">Khung hình cũ · chưa có video</span><span class="bd wa" style="align-self: flex-start">Cần kiểm tra lại</span></span></a>
+      <a class="li" href="PlanScene2.dc.html"><span class="ph" style="width: 44px; height: 64px">C3</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C3 · Thưởng thức bên cửa sổ</b><span class="xs mut">Khung hình ✓ · chưa có video</span><span class="bd ne" style="align-self: flex-start">Chưa có video</span></span></a>
+      <a class="li" href="PlanScene3.dc.html"><span class="ph" style="width: 44px; height: 64px">C4</span><span class="vs" style="gap: 4px; min-width: 0; flex: 1"><b class="s">C4 · Hộp sản phẩm &amp; kêu gọi</b><span class="xs mut">Khung hình ✓</span><span class="bar st"><i style="width: 100%"></i></span><span class="xs" style="color: #174f8a; font-weight: 600">100% · đang kiểm tra video…</span></span></a>
+      <div class="hr" style="margin: 6px 0"></div>
+      <div class="vs" style="gap: 6px; padding: 4px 6px 6px"><span class="s"><b>1/4</b> cảnh đã chọn video</span></div>
+    </aside>
+
+    <div class="vs" style="flex: 999 1 560px; min-width: 0; gap: 16px">
+      <div class="hs">
+        <h2 style="font-size: 18px; font-weight: 700">C1 · Văn phòng sáng sớm</h2>
+        <span class="sp"></span>
+        <button class="btn sm" disabled=""><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg>Cảnh trước</button>
+        <a class="btn sm" href="PlanScene1.dc.html">Cảnh sau<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a>
+      </div>
+      <nav class="hs" style="gap: 10px" aria-label="Các bước sản xuất">
+        <a class="step done" href="PlanScene1.dc.html"><span class="num">✓</span><span class="vs" style="gap: 1px"><b class="s">Khung hình mở đầu</b><span class="xs mut">c1_storyboard.png</span></span></a>
+        <a class="step done" href="PlanScene2.dc.html"><span class="num">✓</span><span class="vs" style="gap: 1px"><b class="s">Video trên Google Flow</b><span class="xs mut">Đã sao chép prompt</span></span></a>
+        <a class="step on" href="PlanScene3.dc.html" aria-current="step"><span class="num">3</span><span class="vs" style="gap: 1px"><b class="s">Tải &amp; chọn video</b><span class="xs mut">2/5 bản · dùng bản 2</span></span></a>
+      </nav>
+
+      <div class="card pad vs" style="gap: 10px">
+        <div class="drop"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px; color: #55616d" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg><div class="vs" style="gap: 2px; flex: 1"><b class="s">Kéo video từ Flow vào đây</b><span class="xs mut">MP4 hoặc MOV · 1–60 giây · tối đa [dung lượng từ hệ thống] · còn 3/5 lượt cho cảnh này</span></div><button class="btn">Chọn file…</button></div>
+        <div class="note er"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span class="sp"><b class="mono" style="font-size: 12px">c1_take3.mkv</b> — định dạng không hỗ trợ. Chỉ nhận MP4 hoặc MOV.</span><button class="btn sm g">Chọn file khác</button></div>
+        <p class="xs mut">Video mới tải lên sẽ <b>tự trở thành bản đang dùng</b> của cảnh. Đổi bản đang dùng có thể làm bản hoàn chỉnh hiện có thành "Cũ vì đổi video".</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+        <div class="card pad vs" style="border-color: #207d79; box-shadow: inset 0 0 0 1px #207d79">
+          <div class="hs"><span class="h2">Bản 2</span><span class="bd ok"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>Đang dùng</span><span class="sp"></span><button class="btn sm g">Tải về</button></div>
+          <div class="hs" style="align-items: flex-start; flex-wrap: nowrap; gap: 14px">
+            <div class="vid" style="width: 150px; height: 266px; flex: none"><div class="scr">Video C1 · bản 2</div><div class="ctl"><button aria-label="Phát"><svg class="i fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg></button><span>0:00 / 0:10</span></div></div>
+            <dl class="kv" style="margin: 0"><dt>Tên file</dt><dd class="mono" style="font-weight: 500; word-break: break-all">c1_flow_take2_final.mp4</dd><dt>Thời lượng</dt><dd>10,0 giây</dd><dt>Khung hình</dt><dd>720×1280</dd><dt>Dung lượng</dt><dd>9,8 MB</dd><dt>Tải lúc</dt><dd>30/10 16:02</dd><dt>Âm thanh</dt><dd>Có</dd></dl>
+          </div>
+        </div>
+        <div class="card pad vs">
+          <div class="hs"><span class="h2">Bản 1</span><span class="bd ne">Không dùng</span><span class="sp"></span><button class="btn sm g">Tải về</button></div>
+          <div class="hs" style="align-items: flex-start; flex-wrap: nowrap; gap: 14px">
+            <div class="vid" style="width: 150px; height: 266px; flex: none"><div class="scr">Video C1 · bản 1</div><div class="ctl"><button aria-label="Phát"><svg class="i fi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg></button><span>0:00 / 0:10</span></div></div>
+            <div class="vs" style="gap: 10px">
+              <dl class="kv" style="margin: 0"><dt>Tên file</dt><dd class="mono" style="font-weight: 500; word-break: break-all">c1_flow_take1.mp4</dd><dt>Thời lượng</dt><dd>10,0 giây</dd><dt>Khung hình</dt><dd>720×1280</dd><dt>Dung lượng</dt><dd>8,1 MB</dd><dt>Tải lúc</dt><dd>30/10 15:31</dd></dl>
+              <span class="bd wa" style="align-self: flex-start"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path></svg>Không có âm thanh</span>
+              <button class="btn">Chọn lại bản này</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" role="status" aria-label="Tải lên đang chạy" style="position: absolute; right: 28px; bottom: 18px; width: 360px; padding: 14px; box-shadow: 0 12px 32px rgba(16,24,32,.18); display: flex; flex-direction: column; gap: 8px">
+      <div class="hs"><b class="s">Tải lên · C4</b><span class="sp"></span><button class="btn sm d">Huỷ tải lên</button></div>
+      <span class="mono" style="font-size: 12px">c4_flow_take3.mp4 · 64 MB</span>
+      <div class="bar st"><i style="width: 100%"></i></div>
+      <span class="xs" style="color: #174f8a; font-weight: 600">Đã truyền 100% · Đang kiểm tra video — chưa hoàn tất</span>
+      <span class="xs mut">Đổi cảnh không ảnh hưởng. Rời hẳn trang có thể huỷ lượt tải.</span>
+    </div>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Xoá logo Veo: khả dụng</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+  <span><i class="dot in"></i>Tải lên: 1 (C4 · đang kiểm tra)</span>
+  <span class="sp"></span><span>Dữ liệu: D:\AutoVideo</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mini = !!(this.state && this.state.mini);
+    return {
+      sideCls: mini ? 'mini' : '',
+      sideOpen: mini ? 'false' : 'true',
+      tgLabel: mini ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: mini ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !mini })
+    };
+  }
+}
+</script>
+</body>
+</html>

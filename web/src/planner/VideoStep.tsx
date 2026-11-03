@@ -129,7 +129,7 @@ export function VideoStep({ planId, scene, limits }: { planId: number; scene: Sc
             <Icon name="upload" size={22} className="av-muted" />
             <span className="ws-drop-title">Kéo video từ thư mục Tải xuống vào đây</span>
             <span className="av-muted" style={{ fontSize: 12 }}>mp4 hoặc mov, {limits.min_s}–{limits.max_s} giây, tối đa {fmtMB(limits.max_bytes)}</span>
-            <Btn size="sm" icon="upload" disabledReason={reason} onClick={() => input.current?.click()}>
+            <Btn size="sm" variant="primary" icon="upload" actionKind="local" disabledReason={reason} onClick={() => input.current?.click()}>
               {vs.count > 0 ? 'Chọn thêm một bản…' : 'Chọn file…'}
             </Btn>
             {reason && !up && <span style={{ fontSize: 12, color: 'var(--warn-fg)' }}>{reason}</span>}
@@ -150,7 +150,7 @@ export function VideoStep({ planId, scene, limits }: { planId: number; scene: Sc
             <div className="ws-progress" role="status">
               <div className="ws-progress-row">
                 <span title={up.name}>{up.name}</span>
-                <span className="av-muted">{verifying ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}</span>
+                <span className="av-muted">{verifying ? 'Đang kiểm tra video… chưa hoàn tất' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}</span>
               </div>
               <ProgressBar value={verifying ? null : pct} label={`Tiến độ tải video ${scene.code}`} />
               <Btn size="sm" onClick={() => abortRef.current?.()}>Hủy tải lên</Btn>

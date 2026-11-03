@@ -21,7 +21,6 @@ import {
   lanProject,
   lanProjectAny,
   listLanPlans,
-  ownsLanPlan,
   planDetail,
   planSummary,
   refsZipEntries,
@@ -33,17 +32,24 @@ import { projectRefs } from '../services/repo.js';
 import { lanFinalSummary, lanWatermarkInfo } from '../services/lan-final.js';
 import { clipLimits } from '../services/clips/lan.js';
 import { lanQueueLoad } from '../services/lan-queue.js';
-import { deleteProject, isHiddenByTrash } from '../services/trash.js';
+import { aiQueueSummary } from '../services/job-queue.js';
+import { deleteFromPlanner, isHiddenByTrash } from '../services/trash.js';
 import { getWorkerRow, isOnline } from '../services/worker.js';
 import { zipChunks } from '../services/zip.js';
-import { LanSessions, SESSION_TTL_MS, clearSessionCookie, codeMatches, sessionCookie } from './session.js';
-import { lanIp, sessionTokenOf } from './security.js';
+import { lanIp } from './security.js';
 import { ensureClientHash, peekClientHash } from './client-id.js';
 import { LAN_RATE, makeLimiters, tooMany } from './limits.js';
 import { registerLanClipRoutes } from './routes-clips.js';
 import { registerLanColorRoutes } from './routes-color.js';
+import { registerLanHtmlRoutes } from './routes-html.js';
+import { registerLanHtmlRendererRoutes } from './routes-html-renderer.js';
+import { registerLanHtmlTemplateRoutes } from './routes-html-templates.js';
+import { registerLanHtmlRenderRoutes } from './routes-html-render.js';
+import { registerLanHtmlPreviewRoutes } from './routes-html-preview.js';
+import { htmlPreviewOrigin } from '../services/html/preview.js';
 import { registerLanMediaRoutes } from './routes-media.js';
 import { registerLanToolRoutes } from './routes-tools.js';
+import { aiSettingsView, registerLanSettingsRoutes } from './routes-settings.js';
 
 export { LAN_RATE };
 
@@ -56,10 +62,11 @@ const refJson = (r: { id: number; label: string; file_path: string; original_nam
 });
 
 /** Route của trang planner LAN. CHỈ các route này (và file tĩnh của trang) tồn tại trên listener LAN. */
-export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, sessions: LanSessions): Promise<void> {
+export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const now = () => ctx.clock.now();
-  const L = makeLimiters(now);
-  const { loginFails, analyze: analyzeLimit, createPlan: createLimit, uploadFiles: uploadLimit } = L;
+  // một người dùng trên chính máy mình: không giới hạn lượt theo giờ (chỉ giữ giới hạn luồng tải đồng thời)
+  const L = makeLimiters(now, { unlimited: true });
+  const { analyze: analyzeLimit, createPlan: createLimit, uploadFiles: uploadLimit } = L;
   const planId = (req: FastifyRequest) => intParam((req.params as { id: string }).id);
 
   // ---- trang và assets build (công khai, không có dữ liệu) ----
@@ -68,7 +75,7 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
   await app.register(fastifyStatic, { root: ctx.config.rootDir, serve: false, acceptRanges: true });
   const page = (_req: FastifyRequest, reply: FastifyReply): void => {
     if (!fs.existsSync(path.join(dist, 'planner.html'))) {
-      void reply.code(503).type('text/plain; charset=utf-8').send('Chưa có bản build giao diện planner. Chủ máy chạy "npm run build" rồi tải lại trang.');
+      void reply.code(503).type('text/plain; charset=utf-8').send('Chưa có bản build giao diện planner. Chạy "npm run build" rồi tải lại trang.');
       return;
     }
     reply.header('Cache-Control', 'no-cache');
@@ -83,44 +90,16 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
     void reply.sendFile(`assets/${file}`, dist, { cacheControl: false });
   });
 
-  // ---- đăng nhập bằng mã truy cập (chỉ khi LAN_REQUIRE_CODE=true; mặc định không có đăng nhập, không có phiên) ----
-  const requireCode = ctx.config.lanRequireCode;
-  app.post('/lan/api/login', async (req, reply) => {
-    // Không cần mã: không tạo phiên, không đọc body. Trả ok để trang/bản cũ đang mở không báo lỗi.
-    if (!requireCode) return { ok: true, code_required: false, expires_at: null };
-    const ip = lanIp(req);
-    const lim = loginFails.check(ip);
-    if (!lim.allowed) throw tooMany(reply, 'Nhập sai mã quá nhiều lần.', lim.retryAfterMs);
-    const body = parse(z.object({ code: z.string().max(200) }), req.body);
-    if (!codeMatches(body.code, ctx.config.lanAccessCode)) {
-      loginFails.record(ip);
-      req.log.warn({ ip }, 'Đăng nhập LAN sai mã'); // không bao giờ ghi mã đã nhập
-      throw new AppError('INVALID_CODE', 'Mã truy cập không đúng', 401);
-    }
-    const s = sessions.create();
-    reply.header('Set-Cookie', sessionCookie(s.token, Math.floor(SESSION_TTL_MS / 1000)));
-    return { ok: true, code_required: true, expires_at: new Date(s.expiresAt).toISOString() };
-  });
-
-  app.post('/lan/api/logout', async (req, reply) => {
-    sessions.destroy(sessionTokenOf(req));
-    reply.header('Set-Cookie', clearSessionCookie()); // xoá luôn cookie phiên còn sót từ lúc còn đòi mã
-    return { ok: true };
-  });
-
-  // Công khai: cho trang biết có cần mã không và đã có phiên hay chưa (không lộ gì khác). Không cần mã → luôn `authenticated: true`, không có hạn phiên.
-  app.get('/lan/api/session', async (req) => {
-    if (!requireCode) return { authenticated: true, code_required: false, expires_at: null };
-    const exp = sessions.valid(sessionTokenOf(req));
-    return exp === null ? { authenticated: false, code_required: true } : { authenticated: true, code_required: true, expires_at: new Date(exp).toISOString() };
-  });
-
   /** Trạng thái worker (chỉ đọc, rút gọn) và giới hạn để trang hiển thị. */
   app.get('/lan/api/status', async (req) => {
     const ws = getWorkerRow(ctx);
     return {
       worker: { online: isOnline(ctx, ws), queue_paused: !!ws.queue_paused },
-      code_required: requireCode,
+      // hàng đợi AI của worker nhúng (thanh trạng thái): đang chạy / đang chờ
+      ai_queue: aiQueueSummary(ctx),
+      // thư mục dữ liệu trên máy (thanh trạng thái)
+      data_dir: ctx.config.rootDir,
+      html_preview_origin: htmlPreviewOrigin(ctx),
       limits: lanLimits(ctx),
       rate: LAN_RATE,
       // lượt phân tích còn lại của CHÍNH người gọi (theo IP) trong giờ này
@@ -148,6 +127,9 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
       queue: lanQueueLoad(ctx),
       // hàng đợi render chung (bản dựng + xoá logo, của app và LAN): đang chạy / đang chờ / số việc chạy cùng lúc
       render: ctx.finalRender?.summary() ?? null,
+      // API AI đang dùng (không có key). `desktop` giữ để giao diện cũ/mới cùng nhận ra bản desktop.
+      desktop: true,
+      ai: aiSettingsView(ctx),
       server_time: ctx.now(),
     };
   });
@@ -175,19 +157,11 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
     return { ...planDetail(ctx, p, peekClientHash(req)), final: { ...lanFinalSummary(ctx, p), watermark: wm } };
   });
 
-  // Xoá kế hoạch = chuyển vào thùng rác của chủ máy (30 ngày, chủ máy khôi phục được; LAN không có khôi phục/xoá vĩnh viễn).
-  // CHỈ trình duyệt đã tạo kế hoạch (băm cookie client trùng `lan_client_hash`); kế hoạch cũ hoặc của người khác → 403. 10 lần/giờ/IP.
-  app.delete('/lan/api/plans/:id', async (req, reply) => {
-    const ip = lanIp(req);
-    const lim = L.deletePlan.check(ip);
-    if (!lim.allowed) throw tooMany(reply, `Mỗi người chỉ được xoá tối đa ${LAN_RATE.deletePlan.max} kế hoạch mỗi giờ.`, lim.retryAfterMs);
+  // Xoá kế hoạch: xoá vĩnh viễn ngay (không có thùng rác). File đang bị chương trình khác mở → 409 FILE_IN_USE.
+  app.delete('/lan/api/plans/:id', async (req) => {
     const p = lanProjectAny(ctx, planId(req)); // 404 nếu không có / đã xoá / không phải dự án LAN (kế hoạch prompt hoặc cắt clip)
-    L.deletePlan.record(ip);
-    if (!ownsLanPlan(p, peekClientHash(req))) {
-      throw new AppError('NOT_PLAN_OWNER', 'Chỉ người tạo (trình duyệt đã tạo kế hoạch) mới xoá được; nhờ chủ máy xoá', 403);
-    }
-    deleteProject(ctx, p.id, { by: 'lan' });
-    return { ok: true, id: p.id, restorable_days: ctx.config.trashRetentionDays };
+    const r = await deleteFromPlanner(ctx, p.id);
+    return { ok: true, id: p.id, purged: r.purged, restorable_days: 0 };
   });
 
   // Ảnh tham chiếu: tải lên (multipart, ≤10 MB mỗi ảnh, magic bytes), tối đa 12 ảnh mỗi kế hoạch
@@ -289,6 +263,12 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
   registerLanColorRoutes(app, ctx, L);
   registerLanToolRoutes(app, ctx, L);
   registerLanClipRoutes(app, ctx, L);
+  registerLanSettingsRoutes(app, ctx);
+  registerLanHtmlRoutes(app, ctx); // Video HTML
+  registerLanHtmlRendererRoutes(app, ctx); // cài đặt bộ dựng Video HTML
+  registerLanHtmlTemplateRoutes(app, ctx); // mẫu Video HTML
+  registerLanHtmlRenderRoutes(app, ctx); // Video HTML: dựng MP4/tải/poster
+  registerLanHtmlPreviewRoutes(app, ctx); // cấp phiên xem trước
 
   app.setNotFoundHandler(() => {
     throw new AppError('NOT_FOUND', 'Không tìm thấy đường dẫn', 404);

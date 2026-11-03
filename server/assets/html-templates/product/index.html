@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={{w}}, height={{h}}">
+<title>Giới thiệu sản phẩm</title>
+<script src="__hf/gsap.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:{{w}}px;height:{{h}}px;overflow:hidden;background:#12132e;font-family:"Be Vietnam Pro",sans-serif}
+#root{position:relative;width:{{w}}px;height:{{h}}px;overflow:hidden;background:linear-gradient(165deg,#14153a 0%,#1d1b4d 55%,var(--hf-brand,#ff5a3c) 190%)}
+.scene{position:absolute;left:0;top:0;width:{{w}}px;height:{{h}}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:64px 24px 96px;text-align:center}
+.a-l .scene{flex-direction:row;padding:32px 40px;gap:32px}
+.a-s .scene{padding:28px 24px;gap:12px}
+.a-l #s2{flex-direction:column}
+.txt{display:flex;flex-direction:column;align-items:center;gap:8px}
+.a-l .txt{align-items:flex-start;text-align:left;max-width:340px}
+.product{position:relative;width:220px;height:220px;border-radius:44px;background:linear-gradient(145deg,#ffffff 0%,#dfe3ff 45%,var(--hf-brand,#ff5a3c) 140%);box-shadow:0 24px 48px rgba(0,0,0,.45)}
+.product::after{content:"";position:absolute;left:22px;top:20px;width:70px;height:130px;border-radius:40px;background:rgba(255,255,255,.55);transform:rotate(12deg)}
+.a-l .product{width:210px;height:210px}
+.a-s .product{width:140px;height:140px;border-radius:32px}
+h1{font-size:30px;line-height:1.22;font-weight:800;color:#fff}
+.a-l h1{font-size:32px}.a-s h1{font-size:25px}
+.sub{font-size:16px;line-height:1.4;font-weight:400;color:#ffd9cf}
+.a-s .sub{font-size:14px}
+.price{font-size:46px;font-weight:800;color:#fff;padding:8px 26px;border-radius:24px;background:var(--hf-brand,#ff5a3c);box-shadow:0 14px 32px rgba(0,0,0,.4)}
+.a-s .price{font-size:38px}
+.cta{white-space:nowrap;font-size:20px;font-weight:700;color:#14153a;background:#fff;padding:12px 30px;border-radius:40px}
+.a-s .cta{font-size:17px;padding:10px 24px}
+</style>
+</head>
+<body>
+<div id="root" class="{{aspect}}" data-composition-id="main" data-start="0" data-duration="{{d}}" data-width="{{w}}" data-height="{{h}}">
+  <div id="s1" class="clip scene" data-start="0" data-duration="{{d:0.55}}">
+    <div id="p1" class="product"></div>
+    <div class="txt">
+      <h1 id="headline" data-hf-var="headline">Sản phẩm mới, chất lượng đáng tin</h1>
+      <p id="sub" class="sub" data-hf-var="sub">Thiết kế tinh gọn cho mỗi ngày</p>
+    </div>
+  </div>
+  <div id="s2" class="clip scene" data-start="{{d:0.55}}" data-duration="{{r:0.55}}">
+    <div id="price" class="price" data-hf-var="price">199.000đ</div>
+    <div id="cta" class="cta" data-hf-var="cta">Mua ngay hôm nay</div>
+  </div>
+</div>
+<script>
+window.__timelines = window.__timelines || {};
+const D = {{d}};
+const T = (f) => Math.round(D * f * 100) / 100;
+const tl = gsap.timeline({ paused: true });
+tl.from("#p1", { scale: 0.6, opacity: 0, y: 30, duration: 0.8, ease: "back.out(1.6)" }, 0.1);
+tl.to("#p1", { y: -8, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0.9);
+tl.from("#headline", { y: 24, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.3);
+tl.from("#sub", { y: 16, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.55);
+tl.to("#s1", { opacity: 0, duration: 0.3 }, T(0.55) - 0.3);
+tl.from("#price", { scale: 0.5, opacity: 0, duration: 0.6, ease: "back.out(1.8)" }, T(0.55) + 0.1);
+tl.from("#cta", { y: 40, opacity: 0, duration: 0.5, ease: "power2.out" }, T(0.55) + 0.5);
+tl.to("#cta", { scale: 1.07, duration: 0.35, yoyo: true, repeat: 1, ease: "sine.inOut" }, T(0.55) + 1.1);
+window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

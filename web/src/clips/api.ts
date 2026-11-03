@@ -48,6 +48,8 @@ export function makeClipApi(base: '/api' | '/lan/api', io: ClipIo) {
       return io.upload<{ source: SourceVideo }>(`${base}/projects/${projectId}/source`, form, onProgress);
     },
     transcribe: (sourceId: number) => io.post<unknown>(`${base}/sources/${sourceId}/transcribe`),
+    /** Chỉ chạy lại AI chuẩn hoá chính tả trên lời thoại đã có. */
+    aiFix: (sourceId: number) => io.post<unknown>(`${base}/sources/${sourceId}/ai-fix`),
     cancelSource: (sourceId: number) => io.post<unknown>(`${base}/sources/${sourceId}/cancel`),
     transcript: (sourceId: number, from: number, limit: number) => io.get<TranscriptPage>(`${base}/sources/${sourceId}/transcript?from=${from}&limit=${limit}`),
     transcriptUrl: (sourceId: number, ext: 'srt' | 'txt') => `${base}/sources/${sourceId}/transcript.${ext}`,

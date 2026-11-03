@@ -1,7 +1,7 @@
 /**
  * Nhận dạng lời nói cho video nguồn: hàng đợi MỘT việc một lúc (dịch vụ STT xử lý tuần tự, file khác xếp hàng trong dịch vụ), ưu tiên việc của app chính
  * trước việc LAN. Mỗi việc: ffmpeg tách audio mono 16 kHz mp3 48k → gửi dịch vụ (stt-client: thử lại có backoff, lấy lại theo job id khi đứt kết nối) →
- * chuẩn hoá thành `transcript.json` (transcript.ts) → `transcribed`.
+ * chuẩn hoá thành `transcript.json` (transcript.ts) → AI nhẹ sửa chính tả/ngữ nghĩa (transcript-fix.ts, lỗi thì giữ bản ASR) → `transcribed`.
  *
  * Dịch vụ không trả %, nên tiến độ là ƯỚC TÍNH theo thời gian: `duration/20 s + 5 s` (tốc độ ~20× thời gian thực), kẹp 95% tới khi xong.
  */
@@ -14,11 +14,14 @@ import { RenderCancelled } from '../final-render/types.js';
 import { ffmpegOf } from '../media.js';
 import { emitProject } from '../project-view.js';
 import { getProject, logEvent, parseJson } from '../repo.js';
-import { abs, clipsDirRel, forgetTranscript, getSourceRow, transcriptRel } from './repo.js';
+import { abs, clipsDirRel, forgetTranscript, getSourceRow, projectClips, readTranscript, transcriptRel } from './repo.js';
 import { archiveTranscript } from './source.js';
 import { fetchJobResult, SttCancelled, SttError, transcribeAudio, type SttCallOptions, type SttOutcome } from './stt-client.js';
+import { STT_MODEL_MISSING, transcribeLocal } from './local-stt.js';
+import { sttModelStatus } from './stt-model.js';
 import { detectPauses } from './pauses.js';
-import { buildTranscript, type Pause, type PauseDetectInfo } from './transcript.js';
+import { buildTranscript, type Pause, type PauseDetectInfo, type Transcript } from './transcript.js';
+import { fixTranscript, type AlignedWord } from './transcript-fix.js';
 import { emitSource } from './view.js';
 
 export interface SttServiceOptions {
@@ -33,18 +36,36 @@ interface Item {
   lan: boolean;
   /** Khôi phục sau khi khởi động lại: thử lấy kết quả theo job id này trước. */
   recoverJob: string | null;
+  /** Chỉ chạy lại bước AI chuẩn hoá chính tả trên transcript đã có (video vẫn `transcribed`, lời thoại cũ xem được tới khi xong). */
+  aiOnly?: boolean;
+}
+
+/** Dựng lại transcript từ dãy từ AI đã sửa (giữ khoảng lặng, thuật ngữ, segment của bản trước). */
+function rebuildWithWords(before: Transcript, words: AlignedWord[], durationHintS: number | null): Transcript {
+  return buildTranscript(
+    { model: before.model ?? undefined, duration: before.duration_s, text: '', segments: before.segments, words: words.map((w) => ({ word: w.w, start: w.start, end: w.end, probability: w.p })) },
+    { terms: before.terms, contentHash: before.content_hash, durationHintS, pauses: before.pauses ?? null, pauseDetect: before.pause_detect ?? null },
+  );
 }
 
 export const STT_NOT_CONFIGURED = 'Chưa cấu hình nhận dạng lời nói (đặt STT_URL trong .env rồi khởi động lại server)';
 
-export const sttConfigured = (ctx: AppContext): boolean => ctx.config.sttProvider === 'omnix' && !!ctx.config.sttUrl;
+export const sttConfigured = (ctx: AppContext): boolean => ctx.config.sttProvider === 'local' || (ctx.config.sttProvider === 'omnix' && !!ctx.config.sttUrl);
+
+/** Lý do chưa nhận dạng được ngay (chưa cấu hình / chưa có model trên máy); null = sẵn sàng. */
+export function sttUnavailable(ctx: AppContext): { code: string; message: string } | null {
+  if (!sttConfigured(ctx)) return { code: 'STT_NOT_CONFIGURED', message: STT_NOT_CONFIGURED };
+  if (ctx.config.sttProvider === 'local' && !sttModelStatus(ctx.config.sttModelsDir).installed) return { code: 'STT_MODEL_MISSING', message: STT_MODEL_MISSING };
+  return null;
+}
 
 /** Thời gian nhận dạng ước tính (giây) cho video dài `durationS` giây: ~20× thời gian thực + 5 giây. */
 export const estimateSeconds = (durationS: number): number => durationS / 20 + 5;
 
 export class SttService {
   private queue: Item[] = [];
-  private running: { item: Item; abort: AbortController } | null = null;
+  /** `phase`: `asr` = đang nhận dạng; `ai_fix` = AI đang chuẩn hoá chính tả (kết quả chưa hiển thị). */
+  private running: { item: Item; abort: AbortController; phase: 'asr' | 'ai_fix' } | null = null;
   private closed = false;
   private idleWaiters: Array<() => void> = [];
 
@@ -69,15 +90,28 @@ export class SttService {
     this.pump();
   }
 
+  /** Xếp chạy lại riêng bước AI chuẩn hoá chính tả cho video đã nhận dạng (route đã kiểm tra điều kiện). */
+  enqueueAiFix(sourceId: number): void {
+    if (this.closed || this.isQueued(sourceId) || this.running?.item.id === sourceId) return;
+    this.queue.push({ id: sourceId, lan: false, recoverJob: null, aiOnly: true });
+    this.pump();
+    emitSafe(() => this.emit(sourceId));
+  }
+
+  /** Video đang chờ/đang chạy lại bước AI chuẩn hoá (chặn tạo clip: chỉ số từ sắp đổi). */
+  isAiFixing(sourceId: number): boolean {
+    return this.queue.some((j) => j.id === sourceId && j.aiOnly) || (this.running?.item.id === sourceId && !!this.running.item.aiOnly);
+  }
+
   private isQueued(id: number): boolean {
     return this.queue.some((j) => j.id === id);
   }
 
   /** `running` | `waiting` (+ vị trí 1 = kế tiếp) | null nếu không có trong hàng đợi. */
-  queueInfo(sourceId: number): { state: 'waiting' | 'running'; position: number | null } | null {
-    if (this.running?.item.id === sourceId) return { state: 'running', position: null };
+  queueInfo(sourceId: number): { state: 'waiting' | 'running'; position: number | null; phase?: 'asr' | 'ai_fix' } | null {
+    if (this.running?.item.id === sourceId) return { state: 'running', position: null, phase: this.running.phase };
     const i = this.queue.findIndex((j) => j.id === sourceId);
-    return i < 0 ? null : { state: 'waiting', position: i + 1 };
+    return i < 0 ? null : { state: 'waiting', position: i + 1, ...(this.queue[i]!.aiOnly ? { phase: 'ai_fix' as const } : {}) };
   }
 
   /** Số video đang chờ + đang chạy nhận dạng (của LAN: tính vào trần hàng đợi LAN). */
@@ -112,9 +146,9 @@ export class SttService {
     }
     const item = this.queue.shift()!;
     const abort = new AbortController();
-    this.running = { item, abort };
+    this.running = { item, abort, phase: item.aiOnly ? 'ai_fix' : 'asr' };
     emitSafe(() => this.emit(item.id));
-    void this.execute(item, abort)
+    void (item.aiOnly ? this.executeAiFix(item, abort) : this.execute(item, abort))
       .catch((err) => console.error('[stt] lỗi không lường trước:', err))
       .finally(() => {
         this.running = null;
@@ -144,6 +178,55 @@ export class SttService {
     return (this.ctx.db.prepare('SELECT status FROM source_videos WHERE id = ?').get(id) as { status: string } | undefined)?.status === 'transcribing';
   }
 
+  /**
+   * Chỉ chạy lại AI chuẩn hoá chính tả trên transcript hiện tại. Video giữ `transcribed`; chỉ thay transcript khi dự án vẫn chưa có clip
+   * (route chặn tạo clip lúc đang chạy). AI lỗi: giữ transcript, ghi lý do vào `stt_meta.ai_fix` nếu bản hiện tại chưa chuẩn hoá được.
+   */
+  private async executeAiFix(item: Item, abort: AbortController): Promise<void> {
+    const ctx = this.ctx;
+    try {
+      const row = ctx.db.prepare('SELECT * FROM source_videos WHERE id = ?').get(item.id) as SourceVideoRow | undefined;
+      if (!row || row.status !== 'transcribed' || !row.transcript_path) return;
+      let project: ProjectRow;
+      try {
+        project = getProject(ctx, row.project_id);
+      } catch {
+        return;
+      }
+      const current = readTranscript(ctx, row);
+      if (!current) return;
+      const fix = await fixTranscript(ctx, current, abort.signal);
+      if (abort.signal.aborted) return;
+      ctx.tx(() => {
+        const now = ctx.db.prepare('SELECT * FROM source_videos WHERE id = ?').get(item.id) as SourceVideoRow | undefined;
+        if (!now || now.status !== 'transcribed' || now.transcript_path !== row.transcript_path) return;
+        const meta = parseJson<Record<string, unknown>>(now.stt_meta, {});
+        const hadFix = !!(current.ai_fix?.model && !current.ai_fix.error);
+        if (!fix.words || projectClips(ctx, project.id).length) {
+          const error = fix.words ? 'dự án đã có clip trong lúc chuẩn hoá nên giữ lời thoại cũ' : fix.info.error;
+          // bản hiện tại đã chuẩn hoá được thì giữ thông tin đó, chỉ ghi lỗi của lần chạy lại
+          this.patch(item.id, { stt_meta: JSON.stringify({ ...meta, ai_fix: hadFix ? { ...current.ai_fix, retry_error: error, at: ctx.now() } : { ...fix.info, error } }) });
+          logEvent(ctx, { project_id: project.id, type: 'clip.transcript_fix_failed', message: `Chuẩn hoá lại bằng AI không thành công (giữ lời thoại hiện tại): ${error}` });
+        } else {
+          const next = rebuildWithWords(current, fix.words, now.duration_s);
+          next.ai_fix = fix.info;
+          const rel = transcriptRel(project.slug);
+          const tmp = abs(ctx, `${clipsDirRel(project.slug)}/.transcript.${row.id}.tmp.json`);
+          fs.writeFileSync(tmp, JSON.stringify(next));
+          archiveTranscript(ctx, project.slug);
+          fs.renameSync(tmp, abs(ctx, rel));
+          forgetTranscript(ctx, rel);
+          this.patch(item.id, { transcript_path: rel, stt_meta: JSON.stringify({ ...meta, word_count: next.words.length, ai_fix: fix.info }) });
+          logEvent(ctx, { project_id: project.id, type: 'clip.transcript_fixed', message: `Chuẩn hoá lại bằng AI (${fix.info.model}): sửa ${fix.info.changed_words} từ ở ${fix.info.accepted}/${fix.info.sentences} câu` });
+        }
+        emitProject(ctx, project.id);
+      });
+    } finally {
+      // `running` được pump() xoá sau khi hàm này xong; phát lại để giao diện bỏ trạng thái "đang chuẩn hoá"
+      setImmediate(() => emitSafe(() => this.emit(item.id)));
+    }
+  }
+
   private async execute(item: Item, abort: AbortController): Promise<void> {
     const ctx = this.ctx;
     const row = ctx.db.prepare('SELECT * FROM source_videos WHERE id = ?').get(item.id) as SourceVideoRow | undefined;
@@ -157,15 +240,18 @@ export class SttService {
     const audioRel = `${clipsDirRel(project.slug)}/.stt-${row.id}.mp3`;
     const audioAbs = abs(ctx, audioRel);
     const startedAt = Date.now();
-    const est = estimateSeconds(row.duration_s ?? 0);
+    const local = ctx.config.sttProvider === 'local';
     let lastPct = -1;
-    const tick = setInterval(() => {
-      if (abort.signal.aborted || !this.still(item.id)) return;
-      const pct = Math.min(95, Math.max(1, Math.round(((Date.now() - startedAt) / 1000 / est) * 100)));
-      if (pct === lastPct) return;
+    const setPct = (pct: number) => {
+      if (pct === lastPct || abort.signal.aborted || !this.still(item.id)) return;
       lastPct = pct;
       this.patch(item.id, { progress: pct });
       emitSafe(() => this.emit(item.id));
+    };
+    // Dịch vụ STT không báo %: ước tính theo thời gian. Nhận dạng trên máy báo số giây đã xử lý (tiến độ thật, xem transcribeLocal).
+    const est = estimateSeconds(row.duration_s ?? 0);
+    const tick = setInterval(() => {
+      if (!local && this.running?.phase !== 'ai_fix') setPct(Math.min(95, Math.max(1, Math.round(((Date.now() - startedAt) / 1000 / est) * 100))));
     }, this.opts.progressTickMs ?? 2000);
     tick.unref();
     try {
@@ -175,6 +261,19 @@ export class SttService {
       let cacheHit = false;
       if (cached) {
         cacheHit = true;
+      } else if (local) {
+        await this.extractAudio(row, audioAbs, abort.signal);
+        if (abort.signal.aborted) throw new SttCancelled();
+        const bin = await ffmpegOf(ctx.config);
+        if (!bin) throw new AudioError('Không tìm thấy ffmpeg để đọc âm thanh');
+        const total = row.duration_s ?? 0;
+        outcome = await transcribeLocal(audioAbs, {
+          modelsDir: ctx.config.sttModelsDir,
+          ffmpeg: bin,
+          threads: ctx.config.sttThreads,
+          signal: abort.signal,
+          onProgress: (s) => total > 0 && setPct(Math.min(99, Math.max(1, Math.round((s / total) * 100)))),
+        });
       } else {
         const callOpts = this.callOptions(item, abort);
         // 2. Khôi phục sau khi khởi động lại: thử lấy kết quả theo job id đã lưu
@@ -216,9 +315,27 @@ export class SttService {
         words: cached!.transcript.words.map(({ w, start, end, p }) => ({ word: w, start, end, probability: p })),
       } : outcome!.result;
       // Upgrade only this new project's cached copy; existing clip word/sentence IDs stay intact.
-      const transcript = cacheHit && !pauseResult
+      let transcript: Transcript = cacheHit && !pauseResult
         ? { ...cached!.transcript, content_hash: row.content_hash }
         : buildTranscript(raw, { terms: project.stt_terms, contentHash: row.content_hash, durationHintS: row.duration_s, pauses: pauseResult?.pauses ?? null, pauseDetect: pauseResult?.info ?? null });
+      if (cacheHit && cached!.transcript.ai_fix) transcript.ai_fix = cached!.transcript.ai_fix;
+      // 4. AI nhẹ chuẩn hoá chính tả / ngữ nghĩa trước khi hiển thị (bản dùng lại đã chuẩn hoá thành công thì thôi). Lỗi: giữ bản ASR, ghi lý do.
+      if (ctx.config.sttAiFix && !(transcript.ai_fix?.model && !transcript.ai_fix.error)) {
+        if (this.running?.item.id === item.id) this.running.phase = 'ai_fix';
+        setPct(99);
+        emitSafe(() => this.emit(item.id));
+        const fix = await fixTranscript(ctx, transcript, abort.signal);
+        if (abort.signal.aborted || !this.still(item.id)) return;
+        if (fix.words) transcript = rebuildWithWords(transcript, fix.words, row.duration_s);
+        transcript.ai_fix = fix.info;
+        logEvent(ctx, {
+          project_id: project.id,
+          type: fix.words ? 'clip.transcript_fixed' : 'clip.transcript_fix_failed',
+          message: fix.words
+            ? `AI (${fix.info.model}) chuẩn hoá chính tả: sửa ${fix.info.changed_words} từ ở ${fix.info.accepted}/${fix.info.sentences} câu${fix.info.rejected ? `, bỏ qua ${fix.info.rejected} câu sửa quá tay` : ''}`
+            : `Không chuẩn hoá được chính tả bằng AI (dùng bản nhận dạng gốc): ${fix.info.error}`,
+        });
+      }
       const rel = transcriptRel(project.slug);
       const tmp = abs(ctx, `${clipsDirRel(project.slug)}/.transcript.${row.id}.tmp.json`);
       fs.mkdirSync(path.dirname(tmp), { recursive: true });
@@ -240,6 +357,7 @@ export class SttService {
           cached: cacheHit,
           pauses: transcript.pauses?.length ?? null,
           pause_threshold_db: transcript.pause_detect?.threshold_db ?? null,
+          ai_fix: transcript.ai_fix ?? null,
         };
         this.patch(item.id, { status: 'transcribed', progress: 100, error: null, error_code: null, transcript_path: rel, stt_meta: JSON.stringify(meta), transcribed_at: ctx.now() });
         logEvent(ctx, { project_id: project.id, type: 'clip.transcribed', message: `Đã nhận dạng lời nói: ${transcript.words.length} từ, ${transcript.sentences.length} câu${cacheHit ? ' (dùng lại kết quả đã có)' : ''}` });
@@ -340,11 +458,13 @@ export class SttService {
       } catch {
         /* thư mục chưa có */
       }
-      if (!sttConfigured(ctx)) {
-        this.patch(r.id, { status: 'failed', progress: null, error: STT_NOT_CONFIGURED, error_code: 'STT_NOT_CONFIGURED' });
+      const why = sttUnavailable(ctx);
+      if (why) {
+        this.patch(r.id, { status: 'failed', progress: null, error: why.message, error_code: why.code });
         continue;
       }
-      this.enqueue(r.id, { recoverJob: r.stt_job_id });
+      // nhận dạng trên máy không có job id để lấy lại: chạy lại từ đầu
+      this.enqueue(r.id, { recoverJob: ctx.config.sttProvider === 'local' ? null : r.stt_job_id });
     }
     return rows.length;
   }
@@ -364,8 +484,9 @@ function emitSafe(fn: () => void): void {
 export function startTranscription(ctx: AppContext, sourceId: number): void {
   ctx.tx(() => {
     const row = getSourceRow(ctx, sourceId);
-    if (!sttConfigured(ctx)) {
-      ctx.db.prepare("UPDATE source_videos SET status = 'failed', progress = NULL, error = ?, error_code = 'STT_NOT_CONFIGURED' WHERE id = ?").run(STT_NOT_CONFIGURED, sourceId);
+    const why = sttUnavailable(ctx);
+    if (why) {
+      ctx.db.prepare("UPDATE source_videos SET status = 'failed', progress = NULL, error = ?, error_code = ? WHERE id = ?").run(why.message, why.code, sourceId);
       emitSource(ctx, row);
       return;
     }

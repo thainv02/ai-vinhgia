@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={{w}}, height={{h}}">
+<title>Khuyến mãi</title>
+<script src="__hf/gsap.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:{{w}}px;height:{{h}}px;overflow:hidden;background:#7a0f2e;font-family:"Be Vietnam Pro",sans-serif}
+#root{position:relative;width:{{w}}px;height:{{h}}px;overflow:hidden;background:linear-gradient(160deg,#b3123f 0%,#6d0c3a 60%,#2a0a3d 100%);color:#fff}
+.orb{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.35),rgba(255,255,255,0) 65%),var(--hf-brand,#ffcc00);opacity:.28}
+#o1{width:260px;height:260px;left:-80px;top:-60px}
+#o2{width:200px;height:200px;right:-70px;bottom:-50px}
+.a-l #o1{width:300px;height:300px}.a-s #o1{width:200px;height:200px}
+.scene{position:absolute;left:0;top:0;width:{{w}}px;height:{{h}}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:64px 24px 96px;text-align:center}
+.a-l .scene{padding:32px 48px}
+.a-s .scene{padding:28px 24px;gap:10px}
+.tag{font-size:16px;font-weight:700;letter-spacing:1px;padding:8px 18px;border-radius:30px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.4)}
+.a-s .tag{font-size:14px}
+.big{font-size:100px;line-height:1;font-weight:800;color:var(--hf-brand,#ffcc00);text-shadow:0 10px 30px rgba(0,0,0,.4)}
+.a-l .big{font-size:110px}.a-s .big{font-size:84px}
+h1{font-size:32px;line-height:1.2;font-weight:800}
+.a-l h1{font-size:36px}.a-s h1{font-size:26px}
+.sub{font-size:18px;line-height:1.4;color:#ffe6ef}
+.a-s .sub{font-size:15px}
+.cta{font-size:20px;font-weight:700;color:#4a0a27;background:var(--hf-brand,#ffcc00);padding:14px 30px;border-radius:44px;box-shadow:0 14px 30px rgba(0,0,0,.4)}
+.a-s .cta{font-size:18px;padding:11px 24px}
+.note{font-size:13px;color:#ffd0df;max-width:300px;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="root" class="{{aspect}}" data-composition-id="main" data-start="0" data-duration="{{d}}" data-width="{{w}}" data-height="{{h}}">
+  <div id="o1" class="orb"></div>
+  <div id="o2" class="orb"></div>
+  <div id="s1" class="clip scene" data-start="0" data-duration="{{d:0.4}}">
+    <p id="tag" class="tag" data-hf-var="tag">SIÊU ƯU ĐÃI CUỐI NĂM</p>
+    <div id="discount" class="big" data-hf-var="discount">-30%</div>
+  </div>
+  <div id="s2" class="clip scene" data-start="{{d:0.4}}" data-duration="{{d:0.35}}">
+    <h1 id="headline" data-hf-var="headline">Giảm sâu toàn bộ cửa hàng</h1>
+    <p id="sub" class="sub" data-hf-var="sub">Áp dụng đến hết ngày 30/11</p>
+  </div>
+  <div id="s3" class="clip scene" data-start="{{d:0.75}}" data-duration="{{r:0.75}}">
+    <div id="cta" class="cta" data-hf-var="cta">Mua ngay, số lượng có hạn</div>
+    <p id="note" class="note" data-hf-var="note">Điều kiện áp dụng xem tại cửa hàng</p>
+  </div>
+</div>
+<script>
+window.__timelines = window.__timelines || {};
+const D = {{d}};
+const T = (f) => Math.round(D * f * 100) / 100;
+const tl = gsap.timeline({ paused: true });
+tl.to("#o1", { x: 40, y: 30, duration: 2.5, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
+tl.to("#o2", { x: -40, y: -30, duration: 2.5, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
+tl.from("#tag", { y: -30, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.1);
+tl.from("#discount", { scale: 0.2, opacity: 0, rotation: -12, duration: 0.8, ease: "back.out(2)" }, 0.3);
+tl.to("#s1", { opacity: 0, duration: 0.3 }, T(0.4) - 0.3);
+tl.from("#headline", { x: -60, opacity: 0, duration: 0.6, ease: "power3.out" }, T(0.4) + 0.05);
+tl.from("#sub", { y: 20, opacity: 0, duration: 0.5 }, T(0.4) + 0.35);
+tl.to("#s2", { opacity: 0, duration: 0.3 }, T(0.75) - 0.3);
+tl.from("#cta", { scale: 0.6, opacity: 0, duration: 0.6, ease: "back.out(1.8)" }, T(0.75) + 0.05);
+tl.from("#note", { opacity: 0, duration: 0.5 }, T(0.75) + 0.5);
+tl.to("#cta", { scale: 1.06, duration: 0.4, yoyo: true, repeat: 1, ease: "sine.inOut" }, T(0.75) + 0.8);
+window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

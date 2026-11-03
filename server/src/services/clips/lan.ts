@@ -8,7 +8,7 @@ import { notFound } from '../../lib/errors.js';
 import { getProject } from '../repo.js';
 import { clipProjectSummary, type ViewOpts } from './view.js';
 import { captionSupport } from './render.js';
-import { sttConfigured } from './stt.js';
+import { sttConfigured, sttUnavailable } from './stt.js';
 
 /** Dự án cắt clip của LAN; dự án app hoặc kế hoạch prompt → 404 như không tồn tại. */
 export function lanClipProject(ctx: AppContext, id: number): ProjectRow {
@@ -47,8 +47,9 @@ export async function clipLimits(ctx: AppContext, lan: boolean) {
   return {
     max_bytes: lan ? c.lanClipSourceMaxBytes : c.clipSourceMaxBytes,
     max_s: lan ? c.lanClipSourceMaxS : c.clipSourceMaxS,
-    retention_days: lan ? c.lanClipSourceRetentionDays : null,
-    stt: { configured: sttConfigured(ctx) },
+    retention_days: null,
+    // `ready`: nhận dạng được ngay; không thì `reason` (vd chưa tải model nhận dạng trên máy)
+    stt: { configured: sttConfigured(ctx), ready: !sttUnavailable(ctx), reason: sttUnavailable(ctx)?.message ?? null },
     captions: { available: cap.available, reason: lan ? (cap.available ? null : 'Máy chủ chưa hỗ trợ phụ đề; hãy chọn "Không phụ đề" hoặc báo chủ máy') : cap.reason, font: c.clipCaptionFont },
     plan: { min_count: 1, max_count: 15 },
   };

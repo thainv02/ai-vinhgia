@@ -15,9 +15,10 @@ interface Cell {
 
 const GROUP = 3;
 
-const WordInput = memo(function WordInput({ cell, value, onChange }: { cell: Cell; value: string; onChange: (i: number, v: string) => void }) {
+const WordInput = memo(function WordInput({ cell, value, onChange, disabled }: { cell: Cell; value: string; onChange: (i: number, v: string) => void; disabled: boolean }) {
   const hidden = value.trim() === '';
   return (
+    <label className="cd-caption-cell">
     <input
       value={value}
       onChange={(e) => onChange(cell.i, e.target.value)}
@@ -25,8 +26,11 @@ const WordInput = memo(function WordInput({ cell, value, onChange }: { cell: Cel
       placeholder={cell.asr}
       title={hidden ? `Đã ẩn (bản nhận dạng: ${cell.asr})` : cell.asr !== value ? `Bản nhận dạng: ${cell.asr}` : undefined}
       size={Math.max(3, value.length || cell.asr.length)}
-      className={`min-h-8 w-auto px-1.5 py-0.5 text-[13px] ${hidden ? 'border-dashed bg-surface-3 italic' : ''}`}
+      disabled={disabled}
+      className={`cd-caption-word min-h-8 w-auto px-1.5 py-0.5 text-[13px] ${hidden ? 'cd-caption-hidden border-dashed bg-surface-3 italic' : ''}`}
     />
+    <span className="cd-caption-time">{clock(cell.start)} · “{cell.asr}”</span>
+    </label>
   );
 });
 
@@ -89,36 +93,38 @@ export function CaptionEditor({ open, clip, idx, onClose, onSave, canRender }: P
       wide
       footer={
         <>
-          <Button onClick={() => setVals(Object.fromEntries(cells.map((c) => [c.i, c.asr])))} disabled={!!busy} className="mr-auto">
+          <Button onClick={() => setVals(Object.fromEntries(cells.map((c) => [c.i, c.asr])))} disabledReason={busy ? 'Đang lưu phụ đề' : null} className="mr-auto">
             Về bản nhận dạng
           </Button>
-          <Button onClick={onClose} disabled={!!busy}>
+          <Button onClick={onClose} disabledReason={busy ? 'Đang lưu phụ đề' : null}>
             Đóng
           </Button>
-          <Button loading={busy === 'save'} disabled={!!busy && busy !== 'save'} disabledReason={changed ? null : 'Chưa sửa gì'} onClick={() => void run(false)}>
+          <Button loading={busy === 'save'} disabled={!!busy && busy !== 'save'} disabledReason={busy ? 'Đang lưu phụ đề' : changed ? null : 'Chưa sửa gì'} onClick={() => void run(false)}>
             Lưu
           </Button>
-          <Button variant="primary" loading={busy === 'render'} disabled={!!busy && busy !== 'render'} disabledReason={!changed ? 'Chưa sửa gì' : canRender} onClick={() => void run(true)}>
+          <Button variant="primary" loading={busy === 'render'} disabled={!!busy && busy !== 'render'} disabledReason={busy ? 'Đang lưu phụ đề' : !changed ? 'Chưa sửa gì' : canRender} onClick={() => void run(true)}>
             Lưu và dựng lại
           </Button>
         </>
       }
     >
       <div className="space-y-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2"><span className="av-badge av-badge-info">Clip {clip.code}</span><span className="font-mono text-xs text-muted">{clock(clip.start_s)}–{clock(clip.end_s)}</span></div>
         <p className="text-[13px] text-muted">
           Sửa chữ từng từ, mốc thời gian giữ nguyên. <strong className="text-fg">Để trống một ô là ẩn từ đó.</strong> Nếu một từ bị nhận dạng tách thành nhiều từ (vd «ca cao a tiso»), sửa từ đầu thành «Cacao», «Actiso» và để trống các ô thừa.
         </p>
         <p className="text-xs text-muted">
           {cells.length} từ · {hiddenCount} từ đang ẩn · chữ mờ trong ô trống là bản nhận dạng gốc.
         </p>
+        {busy && <p role="status" className="text-xs text-info-fg">{busy === 'render' ? 'Đang lưu phụ đề và xếp hàng dựng trên máy…' : 'Đang lưu phụ đề…'}</p>}
         {cells.length === 0 && <InlineError>Chưa tải được lời thoại của clip này. Đợi transcript tải xong rồi mở lại.</InlineError>}
+        {cells.length > 0 && <div className="text-[10px] font-bold tracking-wide text-muted">BẢN NHẬN DẠNG GỐC</div>}
         <div className="flex flex-wrap gap-x-3 gap-y-2.5">
           {groups.map((g) => (
-            <div key={g[0]!.i} className="rounded-md border border-line bg-surface-2 p-1.5">
-              <div className="mb-1 font-mono text-[10px] leading-none text-muted">{clock(g[0]!.start)}</div>
+              <div key={g[0]!.i} className="cd-caption-group rounded-md border border-line bg-surface-2 p-1.5">
               <div className="flex flex-wrap gap-1">
-                {g.map((c) => (
-                  <WordInput key={c.i} cell={c} value={vals[c.i] ?? c.asr} onChange={(i, v) => setVals((s) => ({ ...s, [i]: v }))} />
+                  {g.map((c) => (
+                  <WordInput key={c.i} cell={c} value={vals[c.i] ?? c.asr} disabled={!!busy} onChange={(i, v) => setVals((s) => ({ ...s, [i]: v }))} />
                 ))}
               </div>
             </div>

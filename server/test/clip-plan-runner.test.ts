@@ -94,7 +94,7 @@ const makeApi = (): RunnerDeps['api'] => async (method, url, body, lease, jobId,
   if (res.statusCode >= 400) throw new ApiFailure(b.error?.code ?? 'HTTP_ERROR', b.error?.message ?? 'lỗi', b.error?.details);
   return b;
 };
-const deps = (api: RunnerDeps['api']): RunnerDeps => ({ api, root: env.root, sleep: async () => undefined, stopping: () => false, makeBrowser: () => ({ guard: async () => undefined, run: async () => ({}) as never, close: async () => undefined, uploads: [] }) as never });
+const deps = (api: RunnerDeps['api']): RunnerDeps => ({ api, root: env.root, sleep: async () => undefined, stopping: () => false });
 
 describe('worker managed chạy clip_plan end-to-end', () => {
   it('claim → nhiều lời gọi /infer (kèm lưới 4 khung thật từ video nguồn) → complete: clip proposed do agent tạo, điểm cắt do server tính, chữ phụ đề khôi phục', async () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '../api/errors';
 import { Icon } from '../components/Icon';
+import { ActionTag } from '../components/ActionTag';
 import { Modal } from '../components/Modal';
 import { ErrorState, Skeleton } from '../components/States';
 import { toast } from '../lib/toast';
@@ -240,6 +241,7 @@ export function DesktopClipWorkspace({ projectId, crumb, onDeleted }: { projectI
   const rendering = cutIsActive(cut);
   const outdated = !!selected && (selected.captions_outdated || wordsStale.has(selected.id)) && cut?.status === 'ready';
   const captionsOk = serverStatus ? serverStatus.captions.available : true;
+  const renderDisabledReason = renderBlock ?? (selected?.status === 'rejected' ? 'Khôi phục clip trước khi dựng.' : actions.render.isPending ? 'Đang đưa clip vào hàng đợi dựng…' : null);
   const sourceBadge = source ? (transcribed ? `Đã nhận dạng lời nói${source.duration_s ? ` · ${clock(source.duration_s)}` : ''}` : (SOURCE_STATUS_LABEL[source.status] ?? source.status)) : 'Chưa tải video';
   const draftReady = !!draft && draft.clipId === null && draft.start !== null && draft.end !== null;
   const dur = source?.duration_s ?? 0;
@@ -258,29 +260,32 @@ export function DesktopClipWorkspace({ projectId, crumb, onDeleted }: { projectI
               <span className={`av-badge ${transcribed ? 'av-badge-ok' : source?.status === 'failed' ? 'av-badge-danger' : 'av-badge-warn'}`}>{sourceBadge}</span>
             </div>
           </div>
-          <button type="button" className="av-btn av-btn-sm" disabled={!!planBlock} title={planBlock ?? undefined} onClick={() => setPlanOpen(true)}>
-            AI chọn thêm đoạn
-          </button>
-          <button
-            type="button"
-            className="av-btn av-btn-sm"
-            disabled={!transcribed}
-            onClick={() => (draftReady ? saveDraft() : startManual())}
-          >
-            Tạo clip từ đoạn đang chọn
-          </button>
-          {ready > 0 ? (
-            <a className="av-btn av-btn-sm" href={api.zipUrl(projectId)} download>
-              Tải tất cả .zip
-            </a>
-          ) : (
-            <button type="button" className="av-btn av-btn-sm" disabled title="Chưa có clip nào dựng xong">
-              Tải tất cả .zip
+          <div className="cd-head-actions" role="group" aria-label="Thao tác dự án cắt clip">
+            <button type="button" className="av-btn av-btn-sm" disabled={!!planBlock} title={planBlock ?? undefined} onClick={() => setPlanOpen(true)}>
+              AI chọn thêm đoạn <ActionTag kind="ai" />
             </button>
-          )}
-          <button type="button" className="av-btn av-btn-sm av-btn-ghost" aria-label="Cài đặt dự án" onClick={() => setSettings(true)}>
-            <Icon name="gear" size={15} />
-          </button>
+            <button
+              type="button"
+              className="av-btn av-btn-sm"
+              disabled={!transcribed}
+              title={!transcribed ? 'Chờ nhận dạng lời nói xong' : undefined}
+              onClick={() => (draftReady ? saveDraft() : startManual())}
+            >
+              Tạo clip từ đoạn đang chọn
+            </button>
+            {ready > 0 ? (
+              <a className="av-btn av-btn-sm" href={api.zipUrl(projectId)} download>
+                Tải tất cả .zip
+              </a>
+            ) : (
+              <button type="button" className="av-btn av-btn-sm" disabled title="Chưa có clip nào dựng xong">
+                Tải tất cả .zip
+              </button>
+            )}
+            <button type="button" className="av-btn av-btn-sm av-btn-ghost cd-head-settings" aria-label="Cài đặt dự án" onClick={() => setSettings(true)}>
+              <Icon name="gear" size={15} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -304,7 +309,7 @@ export function DesktopClipWorkspace({ projectId, crumb, onDeleted }: { projectI
                   <span className="cd-sub-line">
                     {clock(c.start_s)}–{clock(c.end_s)} · {spokenDuration(c.duration_s)}
                   </span>
-                  <span className={`av-badge av-badge-${b.tone}`}>{b.label}</span>
+                  <span className={`av-badge av-badge-${b.tone} ${c.captions_outdated ? 'cd-old-badge' : ''}`}>{b.label}</span>
                 </button>
               );
             })}
@@ -417,7 +422,7 @@ export function DesktopClipWorkspace({ projectId, crumb, onDeleted }: { projectI
                 />
                 <div className="av-seg cd-seg" role="group" aria-label="Kiểu phụ đề">
                   {(['highlight', 'karaoke', 'minimal', 'none'] as const).map((p) => (
-                    <button key={p} type="button" aria-pressed={style.preset === p} disabled={!captionsOk && p !== 'none'} title={!captionsOk && p !== 'none' ? (serverStatus?.captions.reason ?? undefined) : undefined} onClick={() => setPreset(p)}>
+                    <button key={p} type="button" aria-pressed={style.preset === p} disabled={!captionsOk && p !== 'none'} onClick={() => setPreset(p)}>
                       {PRESET_LABEL[p]}
                     </button>
                   ))}
@@ -436,14 +441,18 @@ export function DesktopClipWorkspace({ projectId, crumb, onDeleted }: { projectI
                       </button>
                     </>
                   ) : (
-                    <button type="button" className="av-btn av-btn-primary" disabled={!!renderBlock || selected.status === 'rejected' || actions.render.isPending} title={renderBlock ?? undefined} onClick={() => void doRender(selected)}>
+                    <button type="button" className="av-btn av-btn-primary" disabled={!!renderBlock || selected.status === 'rejected' || actions.render.isPending} onClick={() => void doRender(selected)}>
                       {selected.cuts_count > 0 ? 'Dựng lại' : 'Dựng'} {selected.code}
                     </button>
                   )}
                 </div>
+                {preview.isPending && <span className="cd-inline-why" role="status">Đang dựng khung hình xem thử trên máy…</span>}
+                {!captionsOk && <span className="cd-inline-why">{serverStatus?.captions.reason ?? 'Phông chữ phụ đề chưa sẵn sàng.'}</span>}
+                {captionsOk && style.preset === 'none' && <span className="cd-inline-why">Chọn một kiểu phụ đề để xem thử khung hình có chữ.</span>}
+                {!rendering && renderDisabledReason && <span className="cd-inline-why">{renderDisabledReason}</span>}
                 {cut?.status === 'failed' && cut.error && <span className="av-badge av-badge-danger cd-note">{cut.error}</span>}
                 {outdated && cut && (
-                  <div className="av-badge av-badge-warn cd-note">
+                  <div className="av-badge av-badge-warn cd-note cd-old-badge">
                     Đã đổi phụ đề so với bản v{cut.version}. Bản v{cut.version} vẫn giữ, bấm Dựng lại để ra v{cut.version + 1}.
                   </div>
                 )}

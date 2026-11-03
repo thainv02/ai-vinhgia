@@ -1,0 +1,16 @@
+{
+  "id": "slideshow",
+  "label": "Trình chiếu ba ý",
+  "description": "Ba slide nối tiếp, mỗi slide một tiêu đề và một câu mô tả, có thanh tiến độ và tên thương hiệu. Hợp video giới thiệu ba điểm nổi bật.",
+  "aspects": ["9:16", "16:9", "1:1"],
+  "variables": [
+    { "id": "brand_name", "type": "text", "label": "Tên thương hiệu", "value": "Thương hiệu của bạn", "target": "brand_name", "maxLength": 30 },
+    { "id": "slide1_title", "type": "text", "label": "Slide 1 - tiêu đề", "value": "Chất lượng ổn định", "target": "slide1_title", "maxLength": 40 },
+    { "id": "slide1_text", "type": "text", "label": "Slide 1 - mô tả", "value": "Chọn lọc kỹ từ khâu nguyên liệu đến thành phẩm.", "target": "slide1_text", "maxLength": 90 },
+    { "id": "slide2_title", "type": "text", "label": "Slide 2 - tiêu đề", "value": "Giá hợp lý", "target": "slide2_title", "maxLength": 40 },
+    { "id": "slide2_text", "type": "text", "label": "Slide 2 - mô tả", "value": "Minh bạch giá, không phát sinh chi phí ẩn.", "target": "slide2_text", "maxLength": 90 },
+    { "id": "slide3_title", "type": "text", "label": "Slide 3 - tiêu đề", "value": "Hỗ trợ tận tâm", "target": "slide3_title", "maxLength": 40 },
+    { "id": "slide3_text", "type": "text", "label": "Slide 3 - mô tả", "value": "Đội ngũ luôn sẵn sàng giải đáp mọi thắc mắc của bạn.", "target": "slide3_text", "maxLength": 90 },
+    { "id": "accent", "type": "color", "label": "Màu nhấn", "value": "#5b8cff" }
+  ]
+}

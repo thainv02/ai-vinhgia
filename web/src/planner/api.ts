@@ -2,7 +2,7 @@ import { ApiError } from '../api/errors';
 import { makeClipApi, type ClipIo } from '../clips/api';
 import type { LibraryEntry } from '../components/LibraryPickerDialog';
 import type { ColorRef, ColorRefList, Edl, FinalCut, Grade, GradePreview } from '../api/types';
-import type { LanFinalCut, LanLibraryItem, PlanDetail, PlanRefInfo, PlanSummary, PlannerStatus, SceneVideo, SceneVideos, ToolJob, ToolStatus } from './types';
+import type { AiSettings, SttSettings, LanFinalCut, LanLibraryItem, PlanDetail, PlanRefInfo, PlanSummary, PlannerStatus, SceneVideo, SceneVideos, ToolJob, ToolStatus } from './types';
 
 /** Phản hồi 401 UNAUTHENTICATED: phiên hết hạn hoặc chưa đăng nhập → App hiện lại màn nhập mã. */
 const unauthListeners = new Set<() => void>();
@@ -88,14 +88,14 @@ export interface CreatePlanInput {
 const P = '/lan/api';
 
 export const planner = {
-  /**
-   * Công khai. Không cần mã (mặc định, LAN_REQUIRE_CODE=false): luôn `{authenticated:true, code_required:false, expires_at:null}`.
-   * Cần mã: `{authenticated:false, code_required:true}` khi chưa có phiên (không phải 401). Server cũ không có `code_required` (coi là cần mã).
-   */
-  session: () => get<{ authenticated: boolean; code_required?: boolean; expires_at?: string | null }>(`${P}/session`),
-  login: (code: string) => post<{ ok: true; code_required?: boolean; expires_at: string | null }>(`${P}/login`, { code }),
-  logout: () => post<{ ok: true }>(`${P}/logout`),
   status: () => get<PlannerStatus>(`${P}/status`),
+  /** Bản desktop: kiểm tra API key (key mới, hoặc key đang lưu khi bỏ trống), lưu key; server tự chọn model. */
+  checkAi: (apiKey?: string) => post<{ ok: true; models: string[] }>(`${P}/settings/ai/check`, apiKey ? { api_key: apiKey } : {}),
+  saveAi: (input: { api_key?: string }) => request<AiSettings>('PUT', `${P}/settings/ai`, input),
+  /** Bản desktop: model nhận dạng lời nói trên máy (trạng thái, tải bù, hủy tải). */
+  sttSettings: () => get<SttSettings>(`${P}/settings/stt`),
+  downloadSttModel: () => post<SttSettings>(`${P}/settings/stt/download`),
+  cancelSttDownload: () => post<SttSettings>(`${P}/settings/stt/download/cancel`),
   listPlans: () => get<PlanSummary[]>(`${P}/plans`),
   createPlan: (input: CreatePlanInput) => post<{ plan: PlanSummary }>(`${P}/plans`, input),
   getPlan: (id: number) => get<PlanDetail>(`${P}/plans/${id}`),
@@ -163,8 +163,8 @@ export const planner = {
   },
   cancelToolJob: (id: number) => post<{ job: ToolJob }>(`${P}/tools/jobs/${id}/cancel`),
   retryToolJob: (id: number) => post<{ job: ToolJob }>(`${P}/tools/jobs/${id}/retry`),
-  /** Xoá kế hoạch (chỉ trình duyệt đã tạo): chuyển vào thùng rác của chủ máy, chủ máy khôi phục được trong 30 ngày. */
-  deletePlan: (planId: number) => request<{ ok: true; restorable_days: number }>('DELETE', `${P}/plans/${planId}`),
+  /** Xoá kế hoạch. Bản desktop: xoá vĩnh viễn (`purged`). Trang LAN: chỉ trình duyệt đã tạo, vào thùng rác của chủ máy (khôi phục được 30 ngày). */
+  deletePlan: (planId: number) => request<{ ok: true; purged: boolean; restorable_days: number }>('DELETE', `${P}/plans/${planId}`),
   planMdUrl: (planId: number) => `${P}/plans/${planId}/plan.md`,
   refsZipUrl: (planId: number) => `${P}/plans/${planId}/refs.zip`,
 };
@@ -186,5 +186,5 @@ const lanIo: ClipIo = {
 /** API cắt clip của trang LAN (`/lan/api/...`, cùng hợp đồng với app chính). */
 export const lanClipApi = makeClipApi('/lan/api', lanIo);
 
-/** Xoá dự án cắt clip (chỉ trình duyệt đã tạo): vào thùng rác của chủ máy. */
-export const lanDeleteClipProject = (id: number) => request<{ ok: true; restorable_days: number }>('DELETE', `/lan/api/clip-projects/${id}`);
+/** Xoá dự án cắt clip: như `planner.deletePlan` (bản desktop xoá vĩnh viễn; LAN chỉ người tạo, vào thùng rác của chủ máy). */
+export const lanDeleteClipProject = (id: number) => request<{ ok: true; purged: boolean; restorable_days: number }>('DELETE', `/lan/api/clip-projects/${id}`);

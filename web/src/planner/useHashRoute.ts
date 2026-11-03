@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export type Route = { name: 'list' } | { name: 'new' } | { name: 'plan'; id: number } | { name: 'tool' } | { name: 'clips' } | { name: 'clip'; id: number } | { name: 'settings' };
+export type Route = { name: 'list' } | { name: 'new' } | { name: 'plan'; id: number } | { name: 'tool' } | { name: 'clips' } | { name: 'clip'; id: number } | { name: 'settings' } | { name: 'html' } | { name: 'html-project'; id: number };
 
 /** Đường dẫn dạng hash (#/, #/new, #/plan/12, #/tools/remove-logo, #/clips, #/clips/5): listener LAN chỉ cần phục vụ một trang planner.html. */
 export function parseHash(hash: string): Route {
@@ -8,6 +8,9 @@ export function parseHash(hash: string): Route {
   if (m) return { name: 'plan', id: Number(m[1]) };
   const c = /^#\/clips\/(\d+)$/.exec(hash);
   if (c) return { name: 'clip', id: Number(c[1]) };
+  const hp = /^#\/html\/(\d+)$/.exec(hash);
+  if (hp) return { name: 'html-project', id: Number(hp[1]) };
+  if (hash === '#/html') return { name: 'html' };
   if (hash === '#/clips') return { name: 'clips' };
   if (hash === '#/settings') return { name: 'settings' };
   if (hash === '#/new') return { name: 'new' };
@@ -28,7 +31,11 @@ export const hrefOf = (route: Route): string =>
           ? '#/clips'
           : route.name === 'clip'
             ? `#/clips/${route.id}`
-            : '#/';
+            : route.name === 'html'
+              ? '#/html'
+              : route.name === 'html-project'
+                ? `#/html/${route.id}`
+                : '#/';
 
 export function navigate(route: Route): void {
   window.location.hash = hrefOf(route);

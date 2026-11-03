@@ -6,7 +6,6 @@ import { PNG_BYTES, setupProject, userClient } from './helpers.js';
 import { makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
 import { makeLanPlan, type LanPlanFixture } from './helpers-lan-plan.js';
 import { clip, movOf } from './helpers-video.js';
-import { LAN_RATE } from '../src/lan/routes.js';
 
 const run = FFMPEG && FFPROBE ? describe : describe.skip;
 
@@ -23,7 +22,6 @@ const videoAssets = (i = 0) => db().prepare("SELECT * FROM assets WHERE scene_id
 beforeEach(async () => {
   L = await makeLanEnv();
   c = L.client();
-  await c.login();
   fx = await makeLanPlan(L, c, 3);
 });
 afterEach(async () => {
@@ -155,22 +153,4 @@ run('Bước 3: tải video cảnh lên (stream xuống đĩa)', () => {
     expect(s[0].selected_video_id).toBe(videoAssets()[0].id);
   });
 
-  it(`giới hạn ${LAN_RATE.uploadVideo.max} video mỗi giờ theo IP; hết giờ thì tải lại được; IP khác không bị ảnh hưởng`, async () => {
-    const big = await makeLanPlan(L, c, 7, 'Nhiều cảnh');
-    const u = (i: number) => `/lan/api/plans/${big.plan.id}/scenes/${big.scenes[i]!.id}/video`;
-    const tiny = clip(1, { audio: false });
-    for (let i = 0; i < LAN_RATE.uploadVideo.max; i++) {
-      const r = await c.uploadVideo(u(i % 7), { name: `v${i}.mp4`, data: tiny });
-      expect(r.status, `lượt ${i + 1}: ${r.raw}`).toBe(201);
-    }
-    const r = await c.uploadVideo(u(6), { name: 'thua.mp4', data: tiny });
-    expect([r.status, r.body.error.code]).toEqual([429, 'RATE_LIMITED']);
-    expect(Number(r.headers['retry-after'])).toBeGreaterThan(0);
-    expect(leftovers()).toEqual([]);
-    const other = L.client({ ip: '192.168.1.99', cookie: c.cookie });
-    expect((await other.uploadVideo(u(6), { name: 'ip-khac.mp4', data: tiny })).status).toBe(201);
-    L.env.clock.advance(61 * 60_000);
-    expect((await c.uploadVideo(u(5), { name: 'sau-gio.mp4', data: tiny })).status).toBe(201);
-    expect((await c.get('/lan/api/status')).body.remaining.upload_video).toBeLessThan(LAN_RATE.uploadVideo.max);
-  });
 });

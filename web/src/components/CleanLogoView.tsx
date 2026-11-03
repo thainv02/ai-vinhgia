@@ -13,7 +13,7 @@ export function CleanLogoView({ fc, size = 'md', loading, disabledReason, onClic
   const action = cleanAction(fc);
   if (!action) return null;
   return (
-    <Button size={size} variant={action === 'retry' ? 'primary' : 'secondary'} icon={<Icon name="refresh" size={14} />} loading={loading} disabledReason={disabledReason} onClick={onClick}>
+    <Button size={size} variant={action === 'retry' ? 'primary' : 'secondary'} actionKind="local" icon={<Icon name="refresh" size={14} />} loading={loading} disabledReason={disabledReason} onClick={onClick}>
       {action === 'retry' ? 'Thử xoá logo lại' : 'Xoá logo Veo'}
     </Button>
   );

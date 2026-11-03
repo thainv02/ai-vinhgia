@@ -12,7 +12,7 @@
 .planner-brand-mark { display: grid; place-items: center; width: 37px; height: 39px; color: var(--header-fg); border-radius: 11px; background: transparent; border: 1px solid color-mix(in srgb,var(--header-fg) 35%,transparent); }
 .planner-brand-sub { display: block; margin-top: 6px; color: color-mix(in srgb,var(--header-fg) 65%,transparent); font-size: 10px; letter-spacing: .5px; font-weight: 500; }
 .planner-server-status { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 20px; border: 1px solid color-mix(in srgb,var(--header-fg) 15%,transparent); background: color-mix(in srgb,var(--header-fg) 5%,transparent); color: var(--header-fg); font-size: 11px; font-weight: 550; }
-.planner-server-status.is-ready > span:first-child { background: #4ade80; }
+.planner-server-status.is-ready > span:first-child { background: var(--dot-ok); }
 .plan-page > a:first-child { margin-bottom: 22px; font-size: 12px; }
 .plan-overview { margin-bottom: 20px; }
 .plan-heading-row { display: flex; justify-content: space-between; align-items: center; gap: 24px; }

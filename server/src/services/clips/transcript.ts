@@ -5,6 +5,7 @@
  * Thời gian cắt KHÔNG BAO GIỜ lấy từ số giây do LLM viết: AI trả ID câu, server ánh xạ ID → từ → giây ở đây (xem `snapBounds`).
  */
 import type { SttVerbose } from './stt-client.js';
+import type { TranscriptFixInfo } from './transcript-fix.js';
 
 export interface TWord {
   /** Chỉ số toàn cục, tăng dần theo thời gian (0-based). */
@@ -51,6 +52,8 @@ export interface Transcript {
   /** Giữ nguyên segment của dịch vụ. */
   segments: { id: number; start: number; end: number; text: string }[];
   speech_ratio: number;
+  /** Kết quả bước AI chuẩn hoá chính tả (transcript-fix.ts). Thiếu = chưa chạy (transcript cũ / tắt STT_AI_FIX). */
+  ai_fix?: TranscriptFixInfo | null;
 }
 
 // ---- hằng số dựng câu (đặc tả 4.2) ----

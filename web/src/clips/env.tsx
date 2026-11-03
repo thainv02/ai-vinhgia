@@ -20,7 +20,7 @@ export interface ClipEnv {
   refreshQuota?: () => void;
   /** Hủy việc AI đang chọn clip (chỉ app chính có route này). */
   cancelJob?: (jobId: number) => Promise<unknown>;
-  /** Chuyển dự án vào thùng rác (app: cần gõ lại tên; LAN: chỉ người tạo). */
+  /** Xoá vĩnh viễn dự án (app không có thùng rác). */
   deleteProject?: (id: number, confirmName: string) => Promise<unknown>;
 }
 

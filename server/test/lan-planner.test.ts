@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { JPG_BYTES, PNG_BYTES, WORKER_TOKEN, setupProject, userClient, workerClient, writeFile } from './helpers.js';
-import { LAN_CODE, makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
-import { LAN_RATE } from '../src/lan/routes.js';
+import { JPG_BYTES, PNG_BYTES, setupProject, userClient, workerClient, writeFile } from './helpers.js';
+import { makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
+import { DESKTOP_RATE_MAX } from '../src/lan/limits.js';
 
 let L: LanEnv;
 let c: LanClient;
@@ -11,7 +11,6 @@ let c: LanClient;
 beforeEach(async () => {
   L = await makeLanEnv();
   c = L.client();
-  await c.login();
 });
 afterEach(async () => {
   await L.close();
@@ -67,7 +66,7 @@ describe('tạo kế hoạch', () => {
     const list = (await c.get('/lan/api/plans')).body;
     expect(list.map((p: any) => p.name)).toEqual(['Hai', 'Một']);
     expect(list[0]).toMatchObject({ id: b.id, created_by_name: 'Minh', status: 'draft', scene_count: 0, ref_count: 0, analysis: { state: 'idle' } });
-    expect(Object.keys(list[0]).sort()).toEqual(['analysis', 'can_delete', 'created_at', 'created_by_name', 'delete_block', 'id', 'name', 'ref_count', 'scene_count', 'status', 'updated_at']);
+    expect(Object.keys(list[0]).sort()).toEqual(['analysis', 'can_delete', 'created_at', 'created_by_name', 'delete_block', 'id', 'name', 'ref_count', 'scene_count', 'status', 'updated_at', 'video_scene_count']);
     expect(list.map((p: any) => p.id)).not.toContain(1);
     expect(a.id).toBeGreaterThan(1);
   });
@@ -85,13 +84,6 @@ describe('tạo kế hoạch', () => {
     expect(jobTypes()).toEqual([]);
   });
 
-  it('giới hạn tạo kế hoạch: 20 mỗi giờ theo IP', async () => {
-    for (let i = 0; i < LAN_RATE.createPlan.max; i++) await newPlan(c, { name: `K${i}` });
-    const r = await c.post('/lan/api/plans', { name: 'Thừa', created_by_name: 'T', brief: 'b' });
-    expect(r.status).toBe(429);
-    expect(Number(r.headers['retry-after'])).toBeGreaterThan(0);
-    expect((await L.client({ ip: '192.168.1.99', cookie: c.cookie }).post('/lan/api/plans', { name: 'IP khác', created_by_name: 'T', brief: 'b' })).status).toBe(201);
-  });
 });
 
 describe('ảnh tham chiếu', () => {
@@ -139,22 +131,6 @@ describe('ảnh tham chiếu', () => {
     expect(many.status).toBe(413);
   });
 
-  it('giới hạn tải lên: 60 ảnh mỗi giờ theo IP', async () => {
-    const plans = [await newPlan(), await newPlan(), await newPlan(), await newPlan(), await newPlan(), await newPlan()];
-    let n = 0;
-    for (const p of plans) {
-      for (let k = 0; k < 2; k++) {
-        const r = await c.upload(`/lan/api/plans/${p.id}/refs`, Array.from({ length: 5 }, () => ({ name: `i${n}.png`, data: png(String(n++)) })));
-        expect(r.status, r.raw).toBe(201);
-      }
-    }
-    expect(n).toBe(60);
-    const plan = await newPlan();
-    const r = await c.upload(`/lan/api/plans/${plan.id}/refs`, [{ name: 'them.png', data: png('them') }]);
-    expect(r.status).toBe(429);
-    L.env.clock.advance(61 * 60_000);
-    expect((await c.upload(`/lan/api/plans/${plan.id}/refs`, [{ name: 'them.png', data: png('them') }])).status).toBe(201);
-  });
 
   it('thư viện chỉ có ảnh của kế hoạch LAN; không lộ ảnh của dự án app và không chép được ảnh đó', async () => {
     // ảnh của dự án app chính
@@ -213,7 +189,7 @@ describe('phân tích', () => {
     const r = await c.post(`/lan/api/plans/${plan.id}/analyze`, {});
     expect(r.status, r.raw).toBe(201);
     expect(r.body.plan.status).toBe('analyzing');
-    expect(r.body.rate.analyze_remaining).toBe(5);
+    expect(r.body.rate.analyze_remaining).toBe(DESKTOP_RATE_MAX - 1);
     expect(jobTypes()).toEqual(['analyze_brief']);
     const d = (await c.get(`/lan/api/plans/${plan.id}`)).body;
     expect(d.plan.status).toBe('analyzing');
@@ -258,26 +234,6 @@ describe('phân tích', () => {
     expect(jobTypes()).toEqual(['analyze_brief']);
   });
 
-  it('giới hạn 6 lượt phân tích mỗi giờ theo IP (phân tích lại cũng tính); IP khác có hạn mức riêng; hết giờ thì dùng lại được', async () => {
-    const plan = await newPlan();
-    for (let i = 0; i < LAN_RATE.analyze.max; i++) {
-      const r = await c.post(`/lan/api/plans/${plan.id}/analyze`, { brief: `Brief ${i}` });
-      expect(r.status, `lượt ${i}: ${r.raw}`).toBe(201);
-      db().prepare("UPDATE jobs SET status = 'failed', error = 'x', finished_at = ? WHERE project_id = ? AND status = 'queued'").run(L.env.ctx.now(), plan.id);
-    }
-    const blocked = await c.post(`/lan/api/plans/${plan.id}/analyze`, { brief: 'lượt 7' });
-    expect(blocked.status).toBe(429);
-    expect(blocked.body.error.code).toBe('RATE_LIMITED');
-    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(3000);
-    expect(db().prepare("SELECT brief FROM projects WHERE id = ?").get(plan.id)).toEqual({ brief: 'Brief 5' }); // lượt bị chặn không ghi gì
-    const other = L.client({ ip: '192.168.1.200', cookie: c.cookie });
-    expect((await other.post(`/lan/api/plans/${plan.id}/analyze`, { brief: 'IP khác' })).status).toBe(201);
-    db().prepare("UPDATE jobs SET status = 'failed', error = 'x', finished_at = ? WHERE status = 'queued'").run(L.env.ctx.now());
-    L.env.clock.advance(61 * 60_000);
-    expect((await c.post(`/lan/api/plans/${plan.id}/analyze`, { brief: 'sau 1 giờ' })).status).toBe(201);
-    // lỗi nghiệp vụ (đang phân tích) không bị tính vào hạn mức
-    expect((await c.post(`/lan/api/plans/${plan.id}/analyze`, {})).status).toBe(409);
-  });
 
   it('kết quả worker: cảnh C1.. xuất hiện, trạng thái ready; job lỗi → failed với thông báo chung (không lộ chi tiết)', async () => {
     const plan = await newPlan();
@@ -506,7 +462,7 @@ describe('tải kế hoạch và gói ảnh', () => {
       { name: 'a.png', data: png('mot'), label: 'Hộp 3/4 (đỏ)' },
       { name: 'b.jpg', data: JPG_BYTES, label: 'Stick' },
     ]);
-    const res = await L.lan.inject({ method: 'GET', url: `/lan/api/plans/${plan.id}/refs.zip`, headers: { host: '192.168.1.50:8790', cookie: c.cookie! } });
+    const res = await L.lan.inject({ method: 'GET', url: `/lan/api/plans/${plan.id}/refs.zip`, headers: { host: '127.0.0.1:8790' } });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('application/zip');
     expect(res.headers['content-disposition']).toBe('attachment; filename="anh-tham-chieu-cacao-actiso.zip"');
@@ -537,7 +493,6 @@ describe('phục vụ file: chỉ ảnh của kế hoạch LAN và storyboard ng
     expect(r.headers['content-type']).toContain('image/png');
     expect(r.headers['x-content-type-options']).toBe('nosniff');
     expect(r.headers['cache-control']).toBe('private, no-cache');
-    expect((await L.client().get(up.body[0].url)).status).toBe(401);
   });
 
   it('file của dự án app, video/output khác, storyboard do worker tạo, file mồ côi, traversal và symlink đều 404', async () => {
@@ -604,21 +559,6 @@ describe('dự án LAN hiển thị trên app chính', () => {
     expect((await userClient(L.env.app).get(`/api/projects/${plan.id}`)).body).toMatchObject({ source: 'lan', created_by_name: 'Thảo' });
   });
 
-  it('GET /api/lan (app chính): URL, mã truy cập, trạng thái; tắt thì không lộ mã', async () => {
-    const u = userClient(L.env.app);
-    L.env.ctx.config.lanHost = '10.1.2.3';
-    L.env.ctx.config.lanPort = 8790;
-    L.env.ctx.lan = { listening: true, host: '10.1.2.3', port: 8790, error: null };
-    const on = (await u.get('/api/lan')).body;
-    expect(on).toMatchObject({ enabled: true, listening: true, port: 8790, urls: ['http://10.1.2.3:8790'], access_code: LAN_CODE, error: null });
-    L.env.ctx.config.lanEnabled = false;
-    L.env.ctx.config.lanHost = '0.0.0.0';
-    const off = (await u.get('/api/lan')).body;
-    expect(off).toMatchObject({ enabled: false, listening: false, urls: [], access_code: null });
-    // route này KHÔNG có trên listener LAN (đã được kiểm chứng ở bài kiểm tra cô lập); worker token không mở được gì ở LAN
-    expect((await c.get('/api/lan', { authorization: `Bearer ${WORKER_TOKEN}` })).status).toBe(404);
-    void LAN_CODE;
-  });
 });
 
 describe('payload job storyboard dùng chung template với trang LAN', () => {

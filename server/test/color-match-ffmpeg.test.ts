@@ -134,7 +134,7 @@ run('màu theo ảnh mẫu bằng ffmpeg thật (ảnh mẫu cam ấm + clip xan
     expect(Math.abs(after.luma - before.luma) / before.luma).toBeLessThan(0.03); // cả luma Y' của YUV (đo ~2,3%): lαβ giữ độ chói Y của điểm gốc
     writeComparison(process.env.COLOR_MATCH_COMPARE_OUT, cool, out, path.join(work, 'warm.png'), 2);
     // file LUT: đúng chỗ, đúng định dạng
-    expect(path.relative(env.root, luts.global!)).toMatch(new RegExp(`^output/${slug}/final/luts/[0-9a-f]{16}\\.cube$`));
+    expect(path.relative(env.root, luts.global!).split(path.sep).join('/')).toMatch(new RegExp(`^output/${slug}/final/luts/[0-9a-f]{16}\\.cube$`));
     expect(parseCube(fs.readFileSync(luts.global!, 'utf8')).size).toBe(33);
     expect(luts.scenes).toEqual([]);
     // đầu ra giữ độ phân giải, fps, thời lượng
@@ -235,9 +235,11 @@ run('màu theo ảnh mẫu bằng ffmpeg thật (ảnh mẫu cam ấm + clip xan
 
   it('đường dẫn LUT có dấu cách, hai chấm, nháy, phẩy, ngoặc vuông, chấm phẩy vẫn chạy được trong ffmpeg thật', async () => {
     const { luts } = await grade(match({ strength: 1 }));
-    const weird = path.join(work, "thư mục lạ: a 'b', [c];d=e");
+    // Windows không cho dấu hai chấm trong tên file/thư mục: ở đó chỉ thử các ký tự còn lại (ffmpeg vẫn phải thoát đúng ':' của ổ đĩa C:)
+    const colon = process.platform === 'win32' ? '' : ':';
+    const weird = path.join(work, `thư mục lạ${colon} a 'b', [c];d=e`);
     fs.mkdirSync(weird, { recursive: true });
-    const copy = path.join(weird, "lut ế: 'x',[1].cube");
+    const copy = path.join(weird, `lut ế${colon} 'x',[1].cube`);
     fs.copyFileSync(luts.global!, copy);
     const g = match({ strength: 1 });
     const filter = buildGradeFilter(g, [], { global: copy, scenes: [] })!;

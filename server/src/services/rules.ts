@@ -54,6 +54,7 @@ export const JOB_TYPE_LABEL: Record<string, string> = {
   revise_prompt: 'sửa prompt',
   edit_plan: 'chọn điểm cắt bản hoàn chỉnh',
   clip_plan: 'chọn đoạn clip từ video dài',
+  html_compose: 'tạo video HTML',
 };
 
 function activeJobError(scene: SceneRow, job: JobRow): AppError {

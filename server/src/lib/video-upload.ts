@@ -150,7 +150,7 @@ export async function streamVideoToDisk(req: FastifyRequest, o: StreamOptions): 
 
 /** Sau khi từ chối giữa chừng, phần thân còn lại của request phải được xả bỏ: nếu không, busboy dừng đọc và kết nối kẹt mãi. */
 const DRAIN_CAP_BYTES = 32 * 1024 * 1024;
-function drainRequest(req: FastifyRequest): void {
+export function drainRequest(req: FastifyRequest): void {
   const raw = req.raw;
   if (raw.complete || raw.destroyed) return;
   let seen = 0;

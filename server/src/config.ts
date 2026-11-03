@@ -33,12 +33,27 @@ export const DATA_DIR = path.resolve(argDataDir || REPO_ROOT);
 /** File cấu hình: chỉ định --data-dir → <DATA_DIR>/config.env; không thì `.env` ở thư mục repo như trước. */
 export const ENV_FILE = argDataDir ? path.join(DATA_DIR, 'config.env') : path.join(REPO_ROOT, '.env');
 
+/** Loại job AI do worker nhúng xử lý (app không còn job điều khiển trình duyệt). */
+export const TEXT_JOB_TYPES: JobType[] = ['analyze_brief', 'revise_prompt', 'edit_plan', 'clip_plan', 'html_compose'];
+
 export interface Config {
-  workerMode: 'legacy' | 'managed';
+  /** API AI gọi trực tiếp (chuẩn OpenAI, vd `http://ai.duocvinhgia.com/v1`). Rỗng = dùng account pool (gateway loopback). */
+  aiApiUrl: string;
+  /** Key của `aiApiUrl` (`AI_API_KEY`). Không bao giờ trả ra API/log. */
+  aiApiKey: string;
+  /** Model của `aiApiUrl` (`AI_MODEL`, mặc định `claude-sonnet-4-6`). */
+  aiModel: string;
+  /** Model nhẹ cho việc phụ (chuẩn hoá chính tả lời thoại): `AI_FAST_MODEL`; rỗng = tự chọn trong `/models` (haiku/lite/mini/flash…), không có thì `aiModel`. */
+  aiFastModel: string;
+  /** Chuẩn hoá chính tả/ngữ nghĩa kết quả nhận dạng lời nói bằng AI trước khi hiển thị (`STT_AI_FIX`, mặc định bật; test: tắt). */
+  sttAiFix: boolean;
+  /** File cấu hình đang dùng (`.env` hoặc `<DATA_DIR>/config.env`) để trang Cài đặt của bản desktop lưu key; null = không lưu được (test). */
+  envFile: string | null;
   /**
-   * Loại job do managed worker xử lý khi `workerMode='managed'`. null/rỗng = mọi loại.
-   * Loại còn lại do worker legacy (WORKER.md, curl) nhận. Luôn dùng `managedJobTypes()` để đọc giá trị hiệu lực.
+   * App chạy thật luôn `managed` với `TEXT_JOB_TYPES` (worker nhúng). `legacy` chỉ còn là mặc định của test: job được claim
+   * không kèm lease để test dựng trạng thái nhanh. Luôn dùng `managedJobTypes()` để đọc giá trị hiệu lực.
    */
+  workerMode: 'legacy' | 'managed';
   managedJobTypes: JobType[] | null;
   aiHome: string;
   port: number;
@@ -52,34 +67,22 @@ export interface Config {
   requirePromptApproval: boolean;
   heartbeatStaleMinutes: number;
   workerOnlineSeconds: number;
-  /** Origin bổ sung được phép gọi API ghi (ngoài origin mặc định và origin theo cổng đang chạy). */
-  extraAllowedOrigins: string[];
-  /** Thư mục web/dist để phục vụ khi chạy thật (null = không phục vụ). */
-  webDistDir: string | null;
   maxUploadBytes: number;
   /** Đường dẫn ffmpeg/ffprobe tùy chọn (mặc định tìm trong PATH, rồi thư mục bin/ cạnh app). */
   ffmpegPath: string | null;
   ffprobePath: string | null;
   /** Xoá logo Veo trên bản dựng hoàn chỉnh: auto (bật nếu GWR_CLI chạy được) | off (bỏ qua bước này). */
   watermarkRemover: 'auto' | 'off';
-  /** Đường dẫn tuyệt đối tới gemini-watermark-remover/bin/gwr.mjs. null = chưa cấu hình. */
+  /** Đường dẫn tuyệt đối tới tool xoá logo (mặc định `<APP_DIR>/tools/gwr/gwr.mjs`). null = chưa cấu hình. */
   gwrCli: string | null;
   /** Bitrate video (Mbps) truyền cho tool; null = mặc định của tool. */
   gwrVideoBitrateMbps: number | null;
   gwrTimeoutMs: number;
-  /** Listener LAN riêng cho trang prompt planner (mặc định TẮT). Chỉ đăng ký route planner, không mở API chính ra LAN. */
-  lanEnabled: boolean;
+  /** Listener giao diện (trang planner, tên lịch sử "LAN"): luôn 127.0.0.1. Chỉ đăng ký route planner, không có route của API chính. */
   lanHost: string;
   lanPort: number;
-  /**
-   * Trang planner có đòi mã truy cập không. Mặc định `false`: mở ngay, không có màn đăng nhập/phiên (mọi bảo vệ khác vẫn giữ:
-   * Host, Origin, cross-site, CSP, rate limit theo IP, trần hàng đợi, danh sách file được phép). `true`: đăng nhập bằng `lanAccessCode` như trước.
-   */
-  lanRequireCode: boolean;
-  /** Mã truy cập chung của trang planner. Chỉ dùng khi `lanRequireCode`; rỗng + lanEnabled + lanRequireCode: server tự sinh và ghi vào .env khi khởi động. */
-  lanAccessCode: string;
-  /** Hostname bổ sung được chấp nhận trong header Host của listener LAN (ngoài IP, localhost, *.local, tên một nhãn). */
-  lanAllowedHosts: string[];
+  /** Cổng listener preview Video HTML (127.0.0.1, chỉ bản desktop); 0 = ngẫu nhiên. Env HTML_PREVIEW_PORT. */
+  previewPort: number;
   /** Thư mục chứa bản build trang planner (planner.html + assets). Mặc định web/dist. */
   lanDistDir: string;
   /** Dung lượng tối đa của một video LAN tải lên (video cảnh và công cụ xoá logo). Mặc định 200 MB; chỉ test đổi. */
@@ -88,12 +91,22 @@ export interface Config {
    * Số việc render/xoá logo chạy CÙNG LÚC trong hàng đợi render (bản dựng của app + LAN và việc công cụ xoá logo LAN). Mặc định 2, kẹp 1–4.
    * Việc của dự án `app` vẫn được lấy trước việc LAN đang chờ; việc đang chạy không bị ngắt.
    */
-  renderConcurrency: number;
+  renderConcurrency: number | 'auto';
+  htmlComposeParallel?:number;
   /** Số ngày dự án nằm trong thùng rác trước khi tự xoá vĩnh viễn (`TRASH_RETENTION_DAYS`, mặc định 30, tối thiểu 1). */
   trashRetentionDays: number;
   // ---- Cắt clip từ video dài ----
-  /** `omnix`: dịch vụ nhận dạng lời nói nội bộ (chuẩn OpenAI); `none`: chưa cấu hình (báo "chưa cấu hình nhận dạng lời nói"). Mặc định `omnix` nếu có STT_URL. */
-  sttProvider: 'omnix' | 'none';
+  /**
+   * `local`: nhận dạng ngay trên máy bằng CPU (model gipformer chạy qua sherpa-onnx, mặc định của bản desktop);
+   * `omnix`: dịch vụ nhận dạng lời nói nội bộ (chuẩn OpenAI); `none`: chưa cấu hình. Mặc định `omnix` nếu có STT_URL.
+   */
+  sttProvider: 'omnix' | 'local' | 'none';
+  /** Thư mục chứa model nhận dạng tại máy (`--stt-models-dir` / `STT_MODELS_DIR`; mặc định `<ROOT_DIR>/models`). Model nằm ở thư mục con theo id. */
+  sttModelsDir: string;
+  /** Thư mục bộ dựng Video HTML (chrome-headless-shell tải riêng; `HTML_RENDERER_DIR`; mặc định cạnh thư mục model STT: `<cha của sttModelsDir>/html-renderer`). */
+  htmlRendererDir: string;
+  /** Số luồng CPU cho nhận dạng tại máy (`STT_THREADS`; mặc định số nhân − 1, tối đa 4). */
+  sttThreads: number;
   /** URL đầy đủ của `POST .../v1/audio/transcriptions` (vd http://10.0.3.214:18085/v1/audio/transcriptions). Rỗng = chưa cấu hình. */
   sttUrl: string;
   sttTenantId: string;
@@ -128,7 +141,16 @@ export const STT_DEFAULT_TENANT = 's-omnix-studio';
 export const STT_RETRY_DELAYS_MS = [10_000, 30_000, 90_000];
 export const GIB = 1024 * 1024 * 1024;
 
-export const LAN_MIN_ACCESS_CODE_LENGTH = 6;
+export const AI_MODEL_DEFAULT = 'claude-sonnet-4-6';
+/** Máy chủ AI mặc định (dịch vụ nội bộ): chỉ cần nhập API key trong Cài đặt. `AI_API_URL`/`STT_URL` vẫn ghi đè được. */
+// CLIProxyAPI tự host (IIS site `ai.duocvinhgia.vn` → 127.0.0.1:8317). Tạm dùng HTTP vì tên miền chưa có chứng chỉ HTTPS:
+// có chứng chỉ thì đổi sang https.
+export const DESKTOP_AI_API_URL = 'http://ai.duocvinhgia.com/v1';
+/** Số luồng mặc định cho nhận dạng tại máy: chừa một nhân cho giao diện/server, tối đa 4 (thêm luồng gần như không nhanh hơn). */
+export const defaultSttThreads = (): number => Math.max(1, Math.min(4, os.availableParallelism() - 1));
+/** Chừa CPU/RAM cho giao diện và nhận dạng voice. */
+export const autoRenderConcurrency = ({cores,freeMemBytes}:{cores:number;freeMemBytes:number}):number =>
+  clampRenderConcurrency(Math.max(1,Math.min(Math.floor((cores-2)/3),Math.floor(freeMemBytes/(1.5*1024**3)))));
 
 /** Origin luôn được phép (dev Vite 5173 + cổng mặc định của server); thêm origin theo cổng thực tế bằng `allowedOriginsFor`. */
 export const DEFAULT_ALLOWED_ORIGINS = [
@@ -139,12 +161,18 @@ export const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 /** Origin mặc định cộng với đúng cổng server đang dùng (cổng có thể do --port chọn). */
-export function allowedOriginsFor(port: number, extra: string[] = []): string[] {
-  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, `http://localhost:${port}`, `http://127.0.0.1:${port}`, ...extra])];
+export function allowedOriginsFor(port: number): string[] {
+  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, `http://localhost:${port}`, `http://127.0.0.1:${port}`])];
 }
 
 export function defaultConfig(rootDir: string, dbPath: string): Config {
   return {
+    aiApiUrl: '',
+    aiApiKey: '',
+    aiModel: AI_MODEL_DEFAULT,
+    aiFastModel: '',
+    sttAiFix: false,
+    envFile: null,
     workerMode: 'legacy',
     managedJobTypes: null,
     aiHome: path.join(os.homedir(), '.local/share/autovideo/accounts', crypto.createHash('sha256').update(dbPath).digest('hex').slice(0, 12)),
@@ -157,8 +185,6 @@ export function defaultConfig(rootDir: string, dbPath: string): Config {
     requirePromptApproval: true,
     heartbeatStaleMinutes: 5,
     workerOnlineSeconds: 90,
-    extraAllowedOrigins: [],
-    webDistDir: null,
     maxUploadBytes: 10 * 1024 * 1024,
     ffmpegPath: null,
     ffprobePath: null,
@@ -166,17 +192,18 @@ export function defaultConfig(rootDir: string, dbPath: string): Config {
     gwrCli: null,
     gwrVideoBitrateMbps: null,
     gwrTimeoutMs: 30 * 60_000,
-    lanEnabled: false,
-    lanHost: '0.0.0.0',
+    lanHost: '127.0.0.1',
     lanPort: 8790,
-    lanRequireCode: false,
-    lanAccessCode: '',
-    lanAllowedHosts: [],
+    previewPort: 0,
     lanDistDir: path.join(APP_DIR, 'web', 'dist'),
     lanVideoMaxBytes: 200 * 1024 * 1024,
-    renderConcurrency: RENDER_CONCURRENCY_DEFAULT,
+    renderConcurrency: 'auto',
+    htmlComposeParallel:2,
     trashRetentionDays: TRASH_RETENTION_DAYS_DEFAULT,
     sttProvider: 'none',
+    sttModelsDir: path.join(rootDir || '.', 'models'),
+    htmlRendererDir: path.join(rootDir || '.', 'html-renderer'),
+    sttThreads: defaultSttThreads(),
     sttUrl: '',
     sttTenantId: STT_DEFAULT_TENANT,
     sttTimeoutMs: 3_600_000,
@@ -203,15 +230,6 @@ export function managedJobTypes(config: Pick<Config, 'workerMode' | 'managedJobT
 export const isManagedJobType = (config: Pick<Config, 'workerMode' | 'managedJobTypes'>, type: string): boolean =>
   (managedJobTypes(config) as readonly string[]).includes(type);
 
-/** MANAGED_JOB_TYPES=a,b,c. Giá trị lạ làm server không khởi động: sai chính tả không được âm thầm đổi worker nhận việc. */
-export function parseManagedJobTypes(value: string | undefined): JobType[] | null {
-  const parts = (value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!parts.length) return null;
-  const bad = parts.find((p) => !(JOB_TYPES as readonly string[]).includes(p));
-  if (bad) throw new Error(`MANAGED_JOB_TYPES có loại job không hợp lệ: "${bad}" (hợp lệ: ${JOB_TYPES.join(', ')})`);
-  return [...new Set(parts)] as JobType[];
-}
-
 const num = (v: string | undefined, d: number): number => {
   if (v === undefined || v === '') return d;
   const n = Number(v);
@@ -223,25 +241,27 @@ const bool = (v: string | undefined, d: boolean): boolean => {
 };
 
 /**
- * Vị trí web build: repo dev ở <APP_DIR>/web/dist, bản đóng gói ở <APP_DIR>/web.
- * Xét web/dist trước: trong repo, web/index.html là file nguồn của Vite chứ không phải bản build.
+ * Vị trí web build (chỉ còn trang planner): repo dev ở <APP_DIR>/web/dist, bản đóng gói ở <APP_DIR>/web.
+ * Xét web/dist trước: trong repo, web/planner.html là file nguồn của Vite chứ không phải bản build.
  */
 function resolveWebDist(): string {
   const dev = path.join(APP_DIR, 'web', 'dist');
-  return fs.existsSync(path.join(dev, 'index.html')) ? dev : path.join(APP_DIR, 'web');
+  return fs.existsSync(path.join(dev, 'planner.html')) ? dev : path.join(APP_DIR, 'web');
 }
 
-/** Vị trí gwr: bản đóng gói <APP_DIR>/tools/gwr, repo dev <APP_DIR>/gemini-watermark-remover (thiếu file → `auto` tự tắt kèm lý do). */
+/**
+ * Tool xoá logo Veo của app: `<APP_DIR>/tools/gwr/gwr.mjs` (workspace `tools/gwr` trong repo; bản đóng gói chép cùng đường dẫn).
+ * `GWR_CLI` vẫn trỏ được sang bản clone đầy đủ của gemini-watermark-remover (`.../bin/gwr.mjs`).
+ */
 function resolveGwrCli(): string {
-  const packed = path.join(APP_DIR, 'tools', 'gwr', 'bin', 'gwr.mjs');
-  return fs.existsSync(packed) ? packed : path.join(APP_DIR, 'gemini-watermark-remover', 'bin', 'gwr.mjs');
+  return path.join(APP_DIR, 'tools', 'gwr', 'gwr.mjs');
 }
 
 /** `RENDER_CONCURRENCY`: số nguyên kẹp 1–4; thiếu/không phải số → 2. */
-export function parseRenderConcurrency(value: string | undefined): number {
-  if (value === undefined || value.trim() === '') return RENDER_CONCURRENCY_DEFAULT;
+export function parseRenderConcurrency(value: string | undefined): number | 'auto' {
+  if (value === undefined || value.trim() === '' || value.trim().toLowerCase()==='auto') return 'auto';
   const n = Number(value);
-  if (!Number.isFinite(n)) return RENDER_CONCURRENCY_DEFAULT;
+  if (!Number.isFinite(n)) return 'auto';
   return clampRenderConcurrency(n);
 }
 
@@ -258,38 +278,29 @@ export function parseTrashRetentionDays(value: string | undefined): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : TRASH_RETENTION_DAYS_DEFAULT;
 }
 
-/**
- * `LAN_REQUIRE_CODE`: mặc định (thiếu/rỗng) = `false`. `false/0/no/off` = không đòi mã. Mọi giá trị khác (kể cả gõ sai như `treu`)
- * = ĐÒI mã: lỗi chính tả không được âm thầm mở trang ra mạng.
- */
-export function parseRequireCode(value: string | undefined): boolean {
-  const v = (value ?? '').trim().toLowerCase();
-  if (v === '') return false;
-  return !['false', '0', 'no', 'off'].includes(v);
-}
-
 /** Đọc cấu hình từ biến môi trường (đã nạp .env) và tham số dòng lệnh (`--port`). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const rootDir = path.resolve(DATA_DIR, env.ROOT_DIR || '.');
   const dbPath = path.resolve(rootDir, env.DB_PATH || 'data/app.db');
   const base = defaultConfig(rootDir, dbPath);
-  return {
+  const cfg: Config = {
     ...base,
-    workerMode: env.WORKER_MODE === 'managed' ? 'managed' : 'legacy',
-    managedJobTypes: parseManagedJobTypes(env.MANAGED_JOB_TYPES),
+    aiApiUrl: ((env.AI_API_URL ?? '').trim() || DESKTOP_AI_API_URL).replace(/\/+$/, ''),
+    aiApiKey: (env.AI_API_KEY ?? '').trim(),
+    aiModel: (env.AI_MODEL ?? '').trim() || AI_MODEL_DEFAULT,
+    aiFastModel: (env.AI_FAST_MODEL ?? '').trim(),
+    sttAiFix: bool(env.STT_AI_FIX, true),
+    // mọi job AI do worker nhúng (managed) nhận
+    workerMode: 'managed',
+    managedJobTypes: TEXT_JOB_TYPES,
     aiHome: env.AI_HOME ? path.resolve(env.AI_HOME) : base.aiHome,
     port: num(cliArg('port') ?? env.PORT, base.port),
-    host: base.host, // luôn 127.0.0.1 (truy cập từ máy khác chỉ qua listener LAN riêng)
+    host: base.host, // luôn 127.0.0.1
     workerToken: env.WORKER_TOKEN || '',
     maxConcurrentVideoJobs: num(env.MAX_CONCURRENT_VIDEO_JOBS, base.maxConcurrentVideoJobs),
     requirePromptApproval: bool(env.REQUIRE_PROMPT_APPROVAL, base.requirePromptApproval),
     heartbeatStaleMinutes: num(env.HEARTBEAT_STALE_MINUTES, base.heartbeatStaleMinutes),
     workerOnlineSeconds: num(env.WORKER_ONLINE_SECONDS, base.workerOnlineSeconds),
-    extraAllowedOrigins: (env.EXTRA_ALLOWED_ORIGINS || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-    webDistDir: env.NODE_ENV === 'production' ? resolveWebDist() : null,
     ffmpegPath: env.FFMPEG_PATH || null,
     ffprobePath: env.FFPROBE_PATH || null,
     watermarkRemover: (env.WATERMARK_REMOVER ?? '').toLowerCase() === 'off' ? 'off' : 'auto',
@@ -297,29 +308,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gwrCli: env.GWR_CLI || resolveGwrCli(),
     gwrVideoBitrateMbps: env.GWR_VIDEO_BITRATE_MBPS ? num(env.GWR_VIDEO_BITRATE_MBPS, 0) || null : null,
     gwrTimeoutMs: num(env.GWR_TIMEOUT_MS, base.gwrTimeoutMs),
-    // Bật LAN chỉ khi giá trị là truthy rõ ràng (gõ sai chính tả thì vẫn tắt, tránh mở cổng ngoài ý muốn).
-    lanEnabled: ['true', '1', 'yes', 'on'].includes((env.LAN_ENABLED ?? '').trim().toLowerCase()),
-    lanHost: env.LAN_HOST || base.lanHost,
-    lanPort: num(env.LAN_PORT, base.lanPort),
-    lanRequireCode: parseRequireCode(env.LAN_REQUIRE_CODE),
-    lanAccessCode: (env.LAN_ACCESS_CODE ?? '').trim(),
-    lanAllowedHosts: (env.LAN_ALLOWED_HOSTS || '')
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
+    lanPort: num(cliArg('lan-port') ?? env.LAN_PORT, base.lanPort),
+    previewPort: Math.max(0, Math.min(65535, Math.trunc(num(env.HTML_PREVIEW_PORT, 0)))),
     lanDistDir: resolveWebDist(),
     renderConcurrency: parseRenderConcurrency(env.RENDER_CONCURRENCY),
-    trashRetentionDays: parseTrashRetentionDays(env.TRASH_RETENTION_DAYS),
-    ...parseClipConfig(env),
+    htmlComposeParallel:Math.max(1,Math.min(3,Math.floor(num(env.HTML_COMPOSE_PARALLEL,2)))),
+    // không có trang thùng rác (xoá là xoá vĩnh viễn): thứ còn sót trong thùng rác (từ bản cũ) được dọn ở lần bảo trì kế tiếp
+    trashRetentionDays: 0,
+    // nhận dạng lời nói ngay trên máy (CPU) trừ khi cấu hình dịch vụ STT riêng
+    ...parseClipConfig(!(env.STT_URL ?? '').trim() && !(env.STT_PROVIDER ?? '').trim() ? { ...env, STT_PROVIDER: 'local' } : env),
+    sttModelsDir: path.resolve(cliArg('stt-models-dir') || env.STT_MODELS_DIR || path.join(rootDir, 'models')),
+    htmlRendererDir: path.resolve(cliArg('html-renderer-dir') || env.HTML_RENDERER_DIR || path.join(path.dirname(path.resolve(cliArg('stt-models-dir') || env.STT_MODELS_DIR || path.join(rootDir, 'models'))), 'html-renderer')),
+    sttThreads: Math.floor(num(env.STT_THREADS, base.sttThreads)),
   };
+  // một người dùng trên chính máy mình → giới hạn video nguồn như dự án thường
+  return { ...cfg, lanClipSourceMaxBytes: cfg.clipSourceMaxBytes, lanClipSourceMaxS: cfg.clipSourceMaxS };
 }
 
-/** Cấu hình cắt clip (STT_*, CLIP_*, LAN_CLIP_*). `STT_PROVIDER` mặc định `omnix` nếu có `STT_URL`, ngược lại `none`; giá trị lạ → `none`. */
+/**
+ * Cấu hình cắt clip (STT_*, CLIP_*, LAN_CLIP_*). `STT_PROVIDER`: `local` (nhận dạng trên máy), `omnix` (cần `STT_URL`); bỏ trống → `omnix` nếu có
+ * `STT_URL`, ngược lại `none`; giá trị lạ → `none`.
+ */
 export function parseClipConfig(env: NodeJS.ProcessEnv): Pick<Config, 'sttProvider' | 'sttUrl' | 'sttTenantId' | 'sttTimeoutMs' | 'sttMaxRetries' | 'clipSourceMaxBytes' | 'clipSourceMaxS' | 'lanClipSourceMaxBytes' | 'lanClipSourceMaxS' | 'clipMinFreeGb' | 'lanClipSourceRetentionDays' | 'clipCaptionFont' | 'clipFontsDir' | 'clipFfmpegPath'> {
   const base = defaultConfig('', '');
   const sttUrl = (env.STT_URL ?? '').trim();
   const provider = (env.STT_PROVIDER ?? '').trim().toLowerCase();
-  const sttProvider: 'omnix' | 'none' = provider === '' ? (sttUrl ? 'omnix' : 'none') : provider === 'omnix' && sttUrl ? 'omnix' : 'none';
+  const sttProvider: Config['sttProvider'] =
+    provider === 'local' ? 'local' : provider === '' ? (sttUrl ? 'omnix' : 'none') : provider === 'omnix' && sttUrl ? 'omnix' : 'none';
   const nonNeg = (v: string | undefined, d: number): number => {
     if (v === undefined || v.trim() === '') return d;
     const n = Number(v);
@@ -343,18 +358,10 @@ export function parseClipConfig(env: NodeJS.ProcessEnv): Pick<Config, 'sttProvid
   };
 }
 
-/**
- * Kiểm tra cấu hình listener LAN lúc khởi động (chỉ khi LAN_ENABLED). Cấu hình sai làm server không bật LAN
- * thay vì bật với mã yếu hoặc cổng trùng app chính.
- */
-export function assertLanConfig(config: Pick<Config, 'lanEnabled' | 'lanPort' | 'lanRequireCode' | 'lanAccessCode' | 'port'>): void {
-  if (!config.lanEnabled) return;
+/** Kiểm tra cổng của listener giao diện lúc khởi động: sai thì không bật thay vì trùng cổng API chính. */
+export function assertLanConfig(config: Pick<Config, 'lanPort' | 'port'>): void {
   if (!Number.isInteger(config.lanPort) || config.lanPort < 1 || config.lanPort > 65535) {
     throw new Error(`LAN_PORT không hợp lệ: ${config.lanPort}`);
   }
   if (config.lanPort === config.port) throw new Error('LAN_PORT phải khác PORT của app chính');
-  // Mã chỉ bắt buộc khi LAN_REQUIRE_CODE=true; không đòi mã thì không kiểm tra (không tự sinh, không bắt nhập).
-  if (config.lanRequireCode && config.lanAccessCode.length < LAN_MIN_ACCESS_CODE_LENGTH) {
-    throw new Error(`LAN_REQUIRE_CODE=true cần LAN_ACCESS_CODE dài ít nhất ${LAN_MIN_ACCESS_CODE_LENGTH} ký tự (để trống để server tự sinh mã)`);
-  }
 }

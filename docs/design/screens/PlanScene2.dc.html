@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Bước 2 · Google Flow</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" style="min-height: 1000px">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav on" href="Main.dc.html" title="Kế hoạch video" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Main.dc.html">Kế hoạch video</a><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span>Quảng cáo Cacao Actiso</span></nav>
+      <div class="hs"><h1 class="h1">Quảng cáo Cacao Actiso</h1><span class="bd ok">Đã phân tích</span><span class="bd ne">1/4 cảnh có video</span></div>
+    </div>
+    <div class="sp"></div>
+    <button class="btn sm">Kế hoạch .md</button>
+    <button class="btn sm">Ảnh tham chiếu .zip</button>
+    <a class="btn sm" href="PlanRequest.dc.html">Phân tích lại <span class="tag ai">AI</span></a>
+  </header>
+  <nav class="tabs" aria-label="Phần của kế hoạch">
+    <a class="tab on" href="PlanScene1.dc.html" aria-current="page">Cảnh <span class="n">4</span></a>
+    <a class="tab" href="Final.dc.html">Bản hoàn chỉnh</a>
+    <a class="tab" href="#">Ảnh tham chiếu <span class="n">3</span></a>
+    <a class="tab" href="PlanRequest.dc.html">Yêu cầu</a>
+  </nav>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start">
+    <aside class="card" style="flex: 1 1 290px; max-width: 320px; padding: 10px; display: flex; flex-direction: column; gap: 4px" aria-label="Danh sách cảnh">
+      <a class="li" href="PlanScene3.dc.html"><span class="ph" style="width: 44px; height: 64px">C1</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C1 · Văn phòng sáng sớm</b><span class="xs mut">Khung hình ✓ · 2 video · dùng bản 2</span><span class="bd ok" style="align-self: flex-start">Có video</span></span></a>
+      <a class="li" href="PlanScene1.dc.html"><span class="ph" style="width: 44px; height: 64px">C2</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C2 · Cận cảnh pha cacao</b><span class="xs mut">Khung hình cũ · chưa có video</span><span class="bd wa" style="align-self: flex-start">Cần kiểm tra lại</span></span></a>
+      <a class="li on" href="PlanScene2.dc.html" aria-current="true"><span class="ph" style="width: 44px; height: 64px">C3</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C3 · Thưởng thức bên cửa sổ</b><span class="xs mut">Khung hình ✓ · chưa có video</span><span class="bd ne" style="align-self: flex-start">Chưa có video</span></span></a>
+      <a class="li" href="PlanScene3.dc.html"><span class="ph" style="width: 44px; height: 64px">C4</span><span class="vs" style="gap: 4px; min-width: 0; flex: 1"><b class="s">C4 · Hộp sản phẩm &amp; kêu gọi</b><span class="xs mut">Khung hình ✓ · đang tải video</span><span class="bar b"><i style="width: 82%"></i></span><span class="xs" style="color: #174f8a; font-weight: 600">Tải lên 82%</span></span></a>
+      <div class="hr" style="margin: 6px 0"></div>
+      <div class="vs" style="gap: 6px; padding: 4px 6px 6px"><span class="s"><b>1/4</b> cảnh đã chọn video</span><span class="why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>Bản hoàn chỉnh mở khi đủ 4/4.</span></div>
+    </aside>
+
+    <div class="vs" style="flex: 999 1 560px; min-width: 0; gap: 16px">
+      <div class="hs">
+        <h2 style="font-size: 18px; font-weight: 700">C3 · Thưởng thức bên cửa sổ</h2>
+        <span class="sp"></span>
+        <a class="btn sm" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg>Cảnh trước</a>
+        <a class="btn sm" href="PlanScene3.dc.html">Cảnh sau<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a>
+      </div>
+      <nav class="hs" style="gap: 10px" aria-label="Các bước sản xuất">
+        <a class="step done" href="PlanScene1.dc.html"><span class="num">✓</span><span class="vs" style="gap: 1px"><b class="s">Khung hình mở đầu</b><span class="xs mut">c3_storyboard.png</span></span></a>
+        <a class="step on" href="PlanScene2.dc.html" aria-current="step"><span class="num">2</span><span class="vs" style="gap: 1px"><b class="s">Video trên Google Flow</b><span class="xs mut">Làm ở trình duyệt</span></span></a>
+        <a class="step" href="PlanScene3.dc.html"><span class="num">3</span><span class="vs" style="gap: 1px"><b class="s">Tải &amp; chọn video</b><span class="xs mut">Chưa có video</span></span></a>
+      </nav>
+
+      <div class="note in"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><span>App <b>không tự tạo video</b>. Bạn tạo video trên Google Flow ở trình duyệt, tải file về máy rồi đưa vào Bước 3.</span></div>
+
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; align-items: start">
+        <div class="card pad vs" style="grid-column: span 3">
+          <div class="hs"><span class="h2">Prompt Flow</span><span class="xs mut">Giữ nguyên văn</span><span class="sp"></span><button class="btn sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>Sao chép prompt</button></div>
+          <div class="mono code">Start from the attached first frame (storyboard). The woman by the window lifts the cup of cacao, takes a slow sip and smiles toward the camera. Gentle push-in, warm morning light, steam rising from the cup. Keep the product box "Cacao Actiso" (reference image 1) on the window sill, label facing camera, logo unchanged. Natural ambient sound, no music, no on-screen text.</div>
+          <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span>Không thêm chữ lên hình. Nếu nhãn hộp bị biến dạng, tạo lại thay vì chấp nhận bản lỗi.</span></div>
+          <div class="hs" style="gap: 8px"><span class="h3">Thông số đặt trên Flow</span><span class="xs mut">— hướng dẫn từ hệ thống</span></div>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+            <div class="vs" style="gap: 2px; background: #f5f7f9; border-radius: 8px; padding: 10px"><span class="xs mut">Tỉ lệ</span><b>9:16</b></div>
+            <div class="vs" style="gap: 2px; background: #f5f7f9; border-radius: 8px; padding: 10px"><span class="xs mut">Thời lượng</span><b>10 giây</b></div>
+            <div class="vs" style="gap: 2px; background: #f5f7f9; border-radius: 8px; padding: 10px"><span class="xs mut">Số video</span><b>1</b></div>
+            <div class="vs" style="gap: 2px; background: #f5f7f9; border-radius: 8px; padding: 10px"><span class="xs mut">Độ phân giải</span><b>720p</b></div>
+            <div class="vs" style="gap: 2px; background: #f5f7f9; border-radius: 8px; padding: 10px"><span class="xs mut">Ước tính Flow</span><b>[số] credit</b></div>
+          </div>
+          <p class="xs mut">Credit là ước tính cho thao tác trên Google Flow, không phải ví credit trong app.</p>
+        </div>
+        <div class="vs" style="grid-column: span 2; gap: 16px">
+          <div class="card pad vs" style="gap: 10px">
+            <span class="h2">Đính kèm vào ô prompt</span>
+            <div class="note wa" style="padding: 8px 10px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span>Chỉ tải vào thư viện dự án Flow là <b>chưa đủ</b> — phải đính kèm vào ô prompt theo đúng thứ tự.</span></div>
+            <div class="hs" style="flex-wrap: nowrap; align-items: flex-start"><span class="b6 s" style="width: 18px">1</span><span class="ph" style="width: 40px; height: 64px">SB</span><span class="vs" style="gap: 2px; flex: 1"><b class="s">Storyboard C3</b><span class="xs mut">Vai trò: khung hình đầu (first frame)</span><button class="btn sm g" style="align-self: flex-start">Tải file</button></span></div>
+            <div class="hs" style="flex-wrap: nowrap; align-items: flex-start"><span class="b6 s" style="width: 18px">2</span><span class="ph" style="width: 40px; height: 40px">Hộp</span><span class="vs" style="gap: 2px; flex: 1"><b class="s">Hộp Cacao Actiso – mặt trước</b><span class="xs mut">Vai trò: "reference image 1"</span><button class="btn sm g" style="align-self: flex-start">Tải file</button></span></div>
+            <p class="xs mut">Tối đa 3 ảnh tham chiếu sản phẩm / prompt; storyboard tính riêng.</p>
+          </div>
+          <div class="card pad vs" style="gap: 10px">
+            <span class="h2">Việc cần làm trên Flow</span>
+            <label class="ck"><input type="checkbox" checked="">Sao chép prompt</label>
+            <label class="ck"><input type="checkbox">Đính kèm 2 ảnh đúng thứ tự</label>
+            <label class="ck"><input type="checkbox">Đặt thông số 9:16 · 10 s · 1 · 720p</label>
+            <label class="ck"><input type="checkbox">Tạo, kiểm tra và tải video về máy</label>
+            <button class="btn b">Mở Google Flow<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></button>
+            <a class="btn p" href="PlanScene3.dc.html">Đã có video: sang Bước 3</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Xoá logo Veo: khả dụng</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+  <span><i class="dot in"></i>Tải lên: 1 (C4 · 82%)</span>
+  <span class="sp"></span><span>Dữ liệu: D:\AutoVideo</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mini = !!(this.state && this.state.mini);
+    return {
+      sideCls: mini ? 'mini' : '',
+      sideOpen: mini ? 'false' : 'true',
+      tgLabel: mini ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: mini ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !mini })
+    };
+  }
+}
+</script>
+</body>
+</html>

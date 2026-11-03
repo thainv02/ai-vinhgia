@@ -29,7 +29,7 @@ export function draftTimes(idx: WordIndex, d: Draft): { start: number; end: numb
 function Edge({ label, wordIdx, active, idx, onPick, onNudge }: { label: string; wordIdx: number | null; active: boolean; idx: WordIndex; onPick: () => void; onNudge: (dir: -1 | 1) => void }) {
   const w = wordIdx === null ? null : idx.word(wordIdx);
   return (
-    <div className={`min-w-0 rounded-md border p-2 ${active ? 'border-violet-fg bg-violet-bg/40' : 'border-line bg-surface-2'}`}>
+    <div className={`min-w-0 rounded-md border p-2 ${active ? 'border-info-fg bg-info-bg/40' : 'border-line bg-surface-2'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold">{label}</span>
         <span className="font-mono text-[11px] text-muted">{w ? clock(w.start) : '—'}</span>
@@ -41,11 +41,11 @@ function Edge({ label, wordIdx, active, idx, onPick, onNudge }: { label: string;
         <Button size="sm" variant={active ? 'primary' : 'secondary'} onClick={onPick}>
           {active ? 'Đang chọn...' : 'Chọn từ'}
         </Button>
-        <Button size="sm" aria-label={`${label}: lùi một câu`} title="Lùi một câu" disabled={wordIdx === null} onClick={() => onNudge(-1)}>
+        <Button size="sm" aria-label={`${label}: lùi một câu`} disabledReason={wordIdx === null ? `Chọn từ ${label.toLowerCase()} trước` : null} onClick={() => onNudge(-1)}>
           <Icon name="chevronLeft" size={14} />
           <span className="max-[480px]:sr-only">Câu</span>
         </Button>
-        <Button size="sm" aria-label={`${label}: tiến một câu`} title="Tiến một câu" disabled={wordIdx === null} onClick={() => onNudge(1)}>
+        <Button size="sm" aria-label={`${label}: tiến một câu`} disabledReason={wordIdx === null ? `Chọn từ ${label.toLowerCase()} trước` : null} onClick={() => onNudge(1)}>
           <span className="max-[480px]:sr-only">Câu</span>
           <Icon name="chevronRight" size={14} />
         </Button>
@@ -98,11 +98,11 @@ export function RangeBar({ draft, idx, onChange, onPreview, onSave, onCancel, sa
   };
   const dstate = dur === null ? null : dur < MIN_CLIP_S || dur > MAX_CLIP_S ? 'bad' : 'ok';
   return (
-    <div className="space-y-2 border-b border-violet-fg/30 bg-violet-bg/25 p-2.5" role="group" aria-label="Soạn điểm cắt">
+    <div className="space-y-2 border-b border-info-fg/30 bg-info-bg/25 p-2.5" role="group" aria-label="Soạn điểm cắt">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[13px] font-bold">{draft.clipId === null ? 'Tạo clip thủ công' : `Sửa điểm cắt ${draft.code ?? ''}`}</h3>
         {times && dur !== null && (
-          <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${dstate === 'bad' ? 'bg-danger-bg text-danger-fg' : 'bg-violet-bg text-violet-fg'}`}>
+          <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${dstate === 'bad' ? 'bg-danger-bg text-danger-fg' : 'bg-info-bg text-info-fg'}`}>
             {clock(times.start)} → {clock(times.end)} · {spokenDuration(dur)}
           </span>
         )}
@@ -126,7 +126,7 @@ export function RangeBar({ draft, idx, onChange, onPreview, onSave, onCancel, sa
         <input id="range-title" value={draft.title} maxLength={120} onChange={(e) => onChange({ ...draft, title: e.target.value })} className="min-h-8 py-1 text-[13px]" placeholder="Vd: Công dụng chính của sản phẩm" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" icon={<Icon name="play" size={13} />} disabled={!times} onClick={() => times && onPreview(times.start, times.end, draft.clipId === null ? 'mới' : (draft.code ?? ''))}>
+        <Button size="sm" icon={<Icon name="play" size={13} />} disabledReason={!times ? 'Chọn đủ từ đầu và từ cuối để phát thử' : null} onClick={() => times && onPreview(times.start, times.end, draft.clipId === null ? 'mới' : (draft.code ?? ''))}>
           Phát thử
         </Button>
         <Button size="sm" variant="primary" loading={saving} disabledReason={reason} onClick={onSave}>
@@ -135,7 +135,6 @@ export function RangeBar({ draft, idx, onChange, onPreview, onSave, onCancel, sa
         <Button size="sm" onClick={onCancel} disabled={saving}>
           Hủy
         </Button>
-        {reason && <span className="text-xs text-warn-fg">{reason}</span>}
       </div>
     </div>
   );

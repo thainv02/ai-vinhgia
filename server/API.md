@@ -3,6 +3,8 @@
 Tài liệu này khớp với code trong `server/src` (kiểm chứng bằng `npm test`). Tên trường JSON là snake_case và đúng như server trả về.
 Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 
+> **App chỉ còn bản desktop.** Giao diện là trang planner (mục 13, `/lan/api/*`, chỉ nghe 127.0.0.1); AI do worker nhúng xử lý qua `/api/worker/*` (mục 6, chế độ managed). Không còn bản web, chia sẻ LAN, mã truy cập hay worker legacy/Chrome. Các mục 5, 7, 8, 10 mô tả API quản trị của bản web cũ: route vẫn còn trong `server/src/routes/` nhưng giao diện không gọi nữa.
+
 - [1. Quy ước chung](#1-quy-ước-chung)
 - [2. Cấu hình (.env)](#2-cấu-hình-env)
 - [3. Enum và máy trạng thái](#3-enum-và-máy-trạng-thái)
@@ -15,7 +17,7 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 - [10. Nút giao diện ↔ endpoint](#10-nút-giao-diện--endpoint)
 - [11. Quy tắc nghiệp vụ quan trọng](#11-quy-tắc-nghiệp-vụ-quan-trọng)
 - [12. Bố cục file, script, chạy thử](#12-bố-cục-file-script-chạy-thử)
-- [13. Trang planner LAN (listener riêng)](#13-trang-planner-lan-listener-riêng)
+- [13. Trang planner (listener giao diện)](#13-trang-planner-listener-giao-diện-tên-lịch-sử-lan)
 - Cắt clip từ video dài (long video → shorts): [14](#14-cắt-clip-từ-video-dài-long-video--shorts), [SSE `source.updated`/`clip.updated`/`clip_cut.updated`](#7-sse-get-apistream)
 - Bản dựng hoàn chỉnh (final cut): [4.12](#412-finalcut-bản-dựng-hoàn-chỉnh), [5.7](#57-bản-dựng-hoàn-chỉnh-final-cut), [6.5](#65-job-edit_plan), [SSE `final_cut.updated`](#7-sse-get-apistream)
 
@@ -52,11 +54,14 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 |---|---|---|
 | `PORT` | `8787` | Cổng API |
 | `HOST` | (đã bỏ) | Server luôn bind `127.0.0.1`, không còn cấu hình |
+| `AUTOVIDEO_DESKTOP` / `--desktop` | tắt | **Bản desktop một máy** (mục 13.5): listener planner bật ở `127.0.0.1:<LAN_PORT>` (`--lan-port`), không mã truy cập, không hạn mức theo giờ/trần hàng đợi LAN, không tự xoá video nguồn clip; `WORKER_MODE=managed` cho 5 loại job văn bản (thêm `html_compose`) (`MANAGED_JOB_TYPES` vẫn ghi đè được); bật worker nhúng; `AI_API_URL` mặc định `http://ai.duocvinhgia.com/v1`; nhận dạng lời nói mặc định `STT_PROVIDER=local` (trên máy, xem mục 14.5) |
+| `AI_API_URL` · `AI_API_KEY` · `AI_MODEL` | rỗng · rỗng · `claude-sonnet-4-6` | Có `AI_API_URL`: `POST /api/worker/jobs/:id/infer` gọi thẳng API chuẩn OpenAI này (`/chat/completions`, **luôn `stream: true`** vì proxy nội bộ cắt phản hồi không stream sau ~50 giây; chờ tối đa 10 phút, im lặng tối đa 90 giây), bỏ qua account pool. Thiếu/sai key, 429, 5xx, mạng → `503 AI_UNAVAILABLE` kèm `retry_at` (job chờ rồi tự chạy lại); 4xx khác → `AI_INVALID_REQUEST`. `ai_attempts.account_id = NULL`, provenance `provider="internal"`. Key không bao giờ trả ra API/log |
+| `EMBEDDED_WORKER` | `false` (desktop: `true`) | Server tự chạy worker văn bản (`worker/worker.mjs` của bản build, hoặc `worker/src/text-main.ts` qua tsx) làm tiến trình con trỏ về chính API, nhận `analyze_brief,revise_prompt,edit_plan,clip_plan,html_compose`; chết thì chạy lại (5 s → 60 s); server tắt thì dừng theo (đóng stdin, quá 3 giây thì kill) |
 | `ROOT_DIR` | thư mục gốc repo | Nơi chứa `output/` và `refs/` (đường dẫn trong DB tính từ đây) |
 | `DB_PATH` | `data/app.db` | File SQLite (tương đối so với `ROOT_DIR`). WAL, `foreign_keys=ON`, `busy_timeout=5000` |
 | `WORKER_TOKEN` | tự sinh | Token worker |
 | `WORKER_MODE` | `legacy` | `legacy`: mọi job do worker legacy (WORKER.md, curl). `managed`: bật managed worker (account pool, lease). Xem `MANAGED_JOB_TYPES` |
-| `MANAGED_JOB_TYPES` | rỗng | Chỉ có tác dụng khi `WORKER_MODE=managed`: danh sách loại job (cách nhau dấu phẩy: `analyze_brief,revise_prompt,edit_plan,clip_plan,storyboard,video`) do managed worker nhận. Rỗng = mọi loại. Loại còn lại do worker legacy nhận (chế độ kết hợp). Loại lạ làm server không khởi động |
+| `MANAGED_JOB_TYPES` | rỗng | Chỉ có tác dụng khi `WORKER_MODE=managed`: danh sách loại job (cách nhau dấu phẩy: `analyze_brief,revise_prompt,edit_plan,clip_plan,html_compose,storyboard,video`) do managed worker nhận. Rỗng = mọi loại. Loại còn lại do worker legacy nhận (chế độ kết hợp). Loại lạ làm server không khởi động |
 | `MAX_CONCURRENT_VIDEO_JOBS` | `4` | Tối đa job video ở trạng thái `claimed/running` cùng lúc (toàn hệ thống) |
 | `REQUIRE_PROMPT_APPROVAL` | `true` | `true`: cảnh mới vào `awaiting_approval`. `false`: tự vào `storyboard_queued` + tạo job storyboard |
 | `HEARTBEAT_STALE_MINUTES` | `5` | Job claimed/running không heartbeat quá số phút này bị trả về `queued` |
@@ -66,20 +71,16 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 > `FINAL_RENDERER`, `SHOTCUT_MCP_PYTHON`, `SHOTCUT_MCP_SERVER_SCRIPT` của bản cũ đã bị gỡ; nếu còn trong `.env`/`config.env` thì được bỏ qua (không lỗi).
 
 | `WATERMARK_REMOVER` | `auto` | Xoá logo Veo trên bản dựng hoàn chỉnh: `auto` (bật nếu `GWR_CLI` tồn tại và `node <GWR_CLI> --help` chạy được) · `off` (bỏ qua bước này) |
-| `GWR_CLI` | `<repo>/gemini-watermark-remover/bin/gwr.mjs` | Đường dẫn **tuyệt đối** tới `bin/gwr.mjs` của tool xoá logo Veo. Server chạy `node <GWR_CLI> remove <raw> --output <tmp> --json …` với `cwd` = thư mục repo của tool |
+| `GWR_CLI` | `<APP_DIR>/tools/gwr/gwr.mjs` | Đường dẫn **tuyệt đối** tới tool xoá logo Veo. Mặc định là workspace `tools/gwr` của app: chỉ dùng phần video của `@pilio/gemini-watermark-remover` (npm, ghim phiên bản trong lockfile) và chạy trang xử lý trong **Edge/Chrome có sẵn trên máy** (ẩn, qua playwright-core), không tải Chromium riêng; `--help` thoát mã 4 khi không có trình duyệt (status báo lý do). Vẫn trỏ được sang bản clone đầy đủ (`…/gemini-watermark-remover/bin/gwr.mjs`). Server chạy `node <GWR_CLI> remove <raw> --output <tmp> --json …` với `cwd` = thư mục cha của thư mục chứa tool |
+| `GWR_BROWSER_PATH` | rỗng | Đường dẫn trình duyệt Chromium cho `tools/gwr` (mặc định tự tìm Edge rồi Chrome) |
 | `GWR_VIDEO_BITRATE_MBPS` | rỗng | Truyền `--video-bitrate-mbps N` cho tool; trống = mặc định của tool |
 | `GWR_TIMEOUT_MS` | `1800000` (30 phút) | Truyền `--video-timeout-ms` cho tool; quá hạn (+30 giây) server dừng cả cây tiến trình và báo lỗi |
-| `RENDER_CONCURRENCY` | `2` | Số việc render/xoá logo chạy **cùng lúc** trong hàng đợi render chung (bản dựng của app và LAN, gồm bước render + xoá logo, và việc công cụ xoá logo LAN). Số nguyên kẹp 1–4; thiếu/không phải số → 2. Việc của dự án `app` vẫn được lấy trước việc LAN đang chờ, không ngắt việc đang chạy. Xem `GET /api/lan` → `render` |
+| `RENDER_CONCURRENCY` | `2` | Số việc render/xoá logo chạy **cùng lúc** trong hàng đợi render chung (bản dựng của app và LAN, gồm bước render + xoá logo, và việc công cụ xoá logo LAN). Số nguyên kẹp 1–4; thiếu/không phải số → 2. Việc của dự án `app` vẫn được lấy trước việc LAN đang chờ, không ngắt việc đang chạy. |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | rỗng | Tùy chọn; mặc định tìm: đường dẫn cấu hình → (Windows) `<APP_DIR>/bin/*.exe` → `PATH` → (macOS) Homebrew |
-| `LAN_ENABLED` | `false` | `true`/`1`/`yes`/`on`: bật **listener LAN riêng** cho trang planner (mục 13). Giá trị khác (kể cả gõ sai) = tắt. Đổi giá trị cần khởi động lại |
-| `LAN_HOST` | `0.0.0.0` | Địa chỉ bind của listener LAN |
-| `LAN_PORT` | `8790` | Cổng listener LAN (phải khác `PORT`, 1–65535; sai cấu hình thì server không khởi động) |
-| `LAN_REQUIRE_CODE` | `false` | `false` (mặc định): trang planner **mở ngay, không có màn đăng nhập và không có phiên** (mọi route LAN dùng được; Host, Origin, cross-site, CSP, giới hạn theo IP, trần hàng đợi, danh sách file được phép vẫn giữ). `true`: đòi mã truy cập chung như trước (mục 13). `false/0/no/off` hoặc trống = không đòi; **giá trị khác (kể cả gõ sai như `treu`) = đòi mã** để lỗi chính tả không âm thầm mở trang ra mạng. Đổi giá trị cần khởi động lại |
-| `LAN_ACCESS_CODE` | tự sinh khi cần | Mã truy cập chung của trang planner (≥ 6 ký tự, không phân biệt hoa thường). **Chỉ bắt buộc khi `LAN_REQUIRE_CODE=true`**; khi đó nếu để trống và `LAN_ENABLED=true`, server sinh mã ngẫu nhiên 8 ký tự dễ đọc (bỏ I/O/0/1) và ghi vào `.env` (quyền 0600) như `WORKER_TOKEN`. Khi `LAN_REQUIRE_CODE=false` không sinh, không đòi, không kiểm tra độ dài. Không bao giờ ghi vào log |
-| `LAN_ALLOWED_HOSTS` | rỗng | Hostname bổ sung (cách nhau dấu phẩy) mà listener LAN chấp nhận trong header `Host`, ngoài IP, `localhost`, `*.local`, `*.lan`, `*.internal`, `*.home.arpa` và tên một nhãn |
-| `STT_PROVIDER` · `STT_URL` · `STT_TENANT_ID` · `STT_TIMEOUT_MS` · `STT_MAX_RETRIES` | `omnix` nếu có `STT_URL` (ngược lại `none`) · rỗng · `s-omnix-studio` · `3600000` · `3` | Nhận dạng lời nói cho cắt clip (mục 14.5). `STT_URL` = URL đầy đủ `…/v1/audio/transcriptions` (chỉ HTTP). `none`/thiếu URL: báo "Chưa cấu hình nhận dạng lời nói" |
+| `LAN_PORT` (`--lan-port`) | `8790` | Cổng listener giao diện (luôn 127.0.0.1; phải khác `PORT`, 1–65535) |
+| `STT_PROVIDER` · `STT_URL` · `STT_TENANT_ID` · `STT_TIMEOUT_MS` · `STT_MAX_RETRIES` | `omnix` nếu có `STT_URL` (ngược lại `none`; bản desktop `local`) · rỗng · `s-omnix-studio` · `3600000` · `3` | Nhận dạng lời nói cho cắt clip (mục 14.5). `local` = chạy trên máy bằng CPU (gipformer INT8 qua sherpa-onnx). `STT_URL` = URL đầy đủ `…/v1/audio/transcriptions` (chỉ HTTP). `none`/thiếu URL: báo "Chưa cấu hình nhận dạng lời nói" |
+| `STT_MODELS_DIR` (`--stt-models-dir`) · `STT_THREADS` | `<ROOT_DIR>/models` · số nhân − 1 (tối đa 4) | Chỉ `local`: thư mục model (model ở thư mục con `gipformer1.5-68M-rnnt-int8`, có `model.json` sau khi kiểm SHA256) và số luồng CPU |
 | `CLIP_SOURCE_MAX_BYTES` · `CLIP_SOURCE_MAX_S` | 4 GiB · `10800` (3 giờ) | Giới hạn video nguồn ở app chính |
-| `LAN_CLIP_SOURCE_MAX_BYTES` · `LAN_CLIP_SOURCE_MAX_S` · `LAN_CLIP_SOURCE_RETENTION_DAYS` | 2 GiB · `10800` (3 giờ) · `7` | Giới hạn video nguồn ở trang LAN và hạn lưu video gốc (giữ transcript, bản xem thử, clip) |
 | `CLIP_MIN_FREE_GB` | `10` | Ổ đĩa phải còn trống ≥ giá trị này + 3 × dung lượng file khi tải lên (và + ước tính clip khi dựng), không thì `507 INSUFFICIENT_STORAGE` |
 | `CLIP_CAPTION_FONT` · `CLIP_FONTS_DIR` | `Arial` · rỗng | Font phụ đề ASS (luôn đậm, cần đủ dấu tiếng Việt) và thư mục font cho libass; rỗng = `<thư mục DB>/clip-fonts` chứa bản chép của Arial Bold hệ thống |
 | `CLIP_FFMPEG_PATH` | rỗng | ffmpeg có libass (`subtitles`) để cháy phụ đề; rỗng = tự dò (mục 14.6) |
@@ -441,7 +442,6 @@ Lỗi: `409 INVALID_STATE` (job không chờ đối soát / đang do worker gi�
 `mode` ∈ `auto|off`; `active=false` khi `off`, chưa cấu hình/thiếu `GWR_CLI`, hoặc `--help` lỗi (`reason` nêu rõ; bản dựng khi đó ra thẳng bản còn logo). `final_renderer.active` ∈ `ffmpeg|null` (null = không tìm thấy ffmpeg; `reason` nói rõ).
 **`GET /api/health`** → `{ ok: true, time }`.
 
-**`GET /api/lan`** (chỉ app chính) → `{ enabled, listening, error, host, port, urls: string[], require_code: boolean, access_code: string|null, plan_count, tool_jobs_24h, queue: {cuts, tools, total, cap}, render: {running_count, waiting_count, concurrency}|null }` (`require_code` = `LAN_REQUIRE_CODE`; **`access_code` chỉ khác `null` khi `require_code=true`** và có mã; `tool_jobs_24h` = số việc xoá logo tạo trong 24 giờ; `queue` = việc từ LAN đang trong hàng đợi và trần 6; `render` = hàng đợi render chung: đang chạy / đang chờ / `RENDER_CONCURRENCY`). Dữ liệu cho khối **Chia sẻ LAN** (nút trên header web): trạng thái, các URL `http://<IP LAN>:<LAN_PORT>` (IPv4 không loopback của máy), "Không cần mã truy cập" hoặc (khi `require_code`) mã truy cập (ẩn/hiện + sao chép), hướng dẫn bật bằng `.env`. Chỉ báo cáo, không sửa `.env`. Mã truy cập chỉ trả khi `enabled` và `require_code`; route này không tồn tại trên listener LAN (mục 13).
 
 ### 5.6 Dòng thời gian, sổ cái, xuất file
 
@@ -885,26 +885,22 @@ curl -s -H "Authorization: Bearer $WORKER_TOKEN" 'localhost:8787/api/worker/next
 
 ---
 
-## 13. Trang planner LAN (listener riêng)
+## 13. Trang planner (listener giao diện, tên lịch sử "LAN")
 
-**Mục đích:** đồng nghiệp trong cùng mạng nhập yêu cầu + ảnh tham chiếu, AI chia cảnh, trang hiển thị **kế hoạch prompt** cho từng cảnh để họ tự tạo ảnh (ChatGPT) và video (Google Flow) bằng tay trên tài khoản của họ. Trang LAN **không bao giờ** tạo job storyboard/video và không tốn credit Flow của máy chủ: job AI nó tạo là `analyze_brief` và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh, không tốn credit). Từ đợt 22/10/2026 trang còn có **Bước 3** (tải video đã tạo lên), **Bản hoàn chỉnh** (AI chọn điểm cắt → ffmpeg render → xoá logo Veo, người dùng chỉnh điểm cắt rồi render lại) và công cụ độc lập **Xoá logo Veo** (13.2–13.4).
+**Mục đích:** giao diện của app desktop: nhập yêu cầu + ảnh tham chiếu, AI chia cảnh và viết **kế hoạch prompt** cho từng cảnh (người dùng tự tạo ảnh/video bằng ChatGPT/Google Flow trên tài khoản của mình), **Bước 3** tải video đã tạo lên, **Bản hoàn chỉnh** (AI chọn điểm cắt → ffmpeg render → xoá logo Veo), công cụ **Xoá logo Veo**, **Cắt clip** (mục 14) và **Video HTML** (mục 15). Job AI nó tạo: `analyze_brief`, `edit_plan`, `clip_plan`, `html_compose`; không bao giờ tạo job storyboard/video.
 
-**Cô lập (bắt buộc, có test `lan-security`, `lan-listener`):**
-- Cùng tiến trình, **Fastify instance thứ hai** (`server/src/lan/`), chung `AppContext` (DB, SSE, đồng hồ). Bật bằng `LAN_ENABLED=true` (mặc định tắt). App chính vẫn chỉ nghe `127.0.0.1:8787`, vẫn kiểm tra Host/Origin như cũ, **không** có route `/lan/*`.
-- Listener LAN **chỉ** đăng ký: `GET /` và `/planner.html` (trang), `GET /assets/:file` (bundle build, tên file kiểm tra chặt), `/lan/api/*` (dưới đây) và `GET /lan/files/*`. Mọi đường dẫn khác, gồm toàn bộ `/api/*`, `/api/worker/*`, `/api/ai/*`, approve, jobs, `/files/*`, `index.html` của app quản trị: **404** (hoặc 401 nếu chưa có phiên). Code `server/src/lan/` không import route của app chính (test quét import). Bài test dựng bảng route hai bên và kiểm tra không route nào của app chính tồn tại trên LAN.
-- **Phiên (chỉ khi `LAN_REQUIRE_CODE=true`):** `POST /lan/api/login {code}` → cookie `autovideo_lan` (`HttpOnly; SameSite=Strict; Path=/lan; Max-Age=43200`, 12 giờ, token 256 bit lưu băm trong bộ nhớ; khởi động lại server thì đăng nhập lại). Mọi route cần phiên, trừ trang, assets, `login` và `GET /lan/api/session`. **Mặc định (`LAN_REQUIRE_CODE=false`) không có đăng nhập và không có phiên**: mọi route dùng được ngay (không còn `401 UNAUTHENTICATED`), `GET /lan/api/session` luôn trả `{authenticated:true, code_required:false, expires_at:null}`, `POST /lan/api/login` (bản trang cũ còn mở) trả `{ok:true, code_required:false, expires_at:null}` không tạo phiên và không đọc mã, `POST /lan/api/logout` chỉ xoá cookie phiên còn sót. Vẫn áp dụng: Host, Origin, cross-site, CSP, giới hạn theo IP (trừ giới hạn sai mã), trần hàng đợi, danh sách file được phép.
-- **Host:** chỉ IP, `localhost`, `*.local/.lan/.internal/.home.arpa`, tên một nhãn hoặc `LAN_ALLOWED_HOSTS` (chặn DNS rebinding bằng tên miền công cộng). **Origin:** request `POST/PUT/PATCH/DELETE` bắt buộc có `Origin` đúng bằng `http://<Host>` (thiếu cũng 403).
-- **Giới hạn theo IP** (`LAN_RATE` trong `lan/routes.ts`; **xoá kế hoạch 10 lần/giờ**): đăng nhập sai 10 lần/15 phút (chỉ khi đòi mã; kể cả mã đúng cũng bị chặn trong thời gian đó); phân tích 6 lượt/giờ (phân tích lại cũng tính; lỗi nghiệp vụ không tính); tạo kế hoạch 20/giờ; tải ảnh 60 ảnh/giờ; **tải video cảnh 30 lần/giờ** (lần tải thành công); **dựng bản hoàn chỉnh + render lại 6 lần/giờ** (dùng chung một hạn mức); **xoá logo 6 lần/giờ** (việc công cụ mới, thử lại việc công cụ và `/clean` một bản dựng, dùng chung). Vượt → `429 RATE_LIMITED` kèm `Retry-After`. **Trần hàng đợi toàn cục 6** cho việc từ LAN (bản dựng của dự án LAN đang `planning`/`rendering` + việc công cụ `queued`/`processing`; việc của app chính không tính): chạm trần → `429 QUEUE_FULL` "Hàng đợi đang đầy, thử lại sau" (kiểm tra trước khi nhận file). Tải video: tối đa 2 luồng đồng thời mỗi IP và 4 toàn listener (`429 UPLOAD_BUSY`). Ảnh ≤ 10 MB (png/jpg/webp, kiểm tra magic bytes, `files ≤ 12` mỗi request), tối đa 12 ảnh mỗi kế hoạch, body JSON ≤ 2 MB.
-- **File:** `GET /lan/files/<path>` chỉ phục vụ (a) ảnh tham chiếu (`project_refs.file_path`) của dự án `source='lan'`, (b) storyboard **và video** người dùng LAN tự tải lên (`assets.meta.source='lan_upload'`) của cảnh thuộc dự án `lan`, (c) file bản dựng của dự án `lan`: mp4 sạch (`video_path`), bản raw còn logo (`raw_video_path`), lưới khung hình (`contact_sheet_path`) — **không bao giờ file `.mlt`**, (d) bản sạch (`clean.mp4`) của việc công cụ `ready` **chỉ cho đúng chủ** (cookie client, mục 13.4). Mọi thứ khác (refs/output của dự án `app`, bản dựng của dự án `app`, storyboard/video do worker hoặc chủ máy tạo, input của việc công cụ, file mồ côi, `..`, symlink) → 404. Có hỗ trợ `Range` (video tua được).
-- **Header:** CSP `default-src 'self'`, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` cho API. **Log:** không ghi mã truy cập (nếu có), cookie hay nội dung ảnh (đăng nhập sai chỉ ghi IP).
+**Cô lập và bảo vệ (có test `lan-security`, `lan-listener`, `lan-open`):**
+- Cùng tiến trình, **Fastify instance thứ hai** (`server/src/lan/`), chung `AppContext` (DB, SSE, đồng hồ), luôn nghe `127.0.0.1:<LAN_PORT>` (mặc định 8790; vỏ Tauri truyền `--lan-port`). API chính nghe `127.0.0.1:8787` cho worker nhúng, **không** có route `/lan/*`.
+- Listener **chỉ** đăng ký: `GET /` và `/planner.html` (trang), `GET /assets/:file` (bundle build, tên file kiểm tra chặt), `/lan/api/*` (dưới đây) và `GET /lan/files/*`. Mọi đường dẫn khác, gồm toàn bộ `/api/*` và `/files/*`: **404**. Code `server/src/lan/` không import route của API chính (test quét import).
+- Không đăng nhập, không phiên. **Host:** chỉ `127.0.0.1`, `localhost`, `[::1]` (chặn DNS rebinding). **Origin:** request `POST/PUT/PATCH/DELETE` bắt buộc có `Origin` đúng bằng `http://<Host>` (thiếu cũng 403). Request API có `Sec-Fetch-Site: cross-site` bị chặn.
+- Không có hạn mức theo giờ (`makeLimiters(..., {unlimited:true})`) và không có trần hàng đợi; vẫn giới hạn số luồng tải video đồng thời (`429 UPLOAD_BUSY`). Ảnh ≤ 10 MB (png/jpg/webp, kiểm tra magic bytes, `files ≤ 12` mỗi request), tối đa 12 ảnh mỗi kế hoạch, body JSON ≤ 2 MB.
+- **File:** `GET /lan/files/<path>` chỉ phục vụ (a) ảnh tham chiếu của dự án `source='lan'`, (b) storyboard **và video** người dùng tự tải lên (`assets.meta.source='lan_upload'`), (c) file bản dựng của dự án `lan`: mp4 sạch, bản raw còn logo, lưới khung hình — **không bao giờ file `.mlt`**, (d) bản sạch của việc công cụ `ready` cho đúng cookie client (mục 13.4). Mọi thứ khác (file mồ côi, `..`, symlink) → 404. Có hỗ trợ `Range`.
+- **Header:** CSP `default-src 'self'` (trang planner thêm `frame-src <origin preview Video HTML>`), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` cho API.
 
 ### 13.1 Endpoint (JSON, lỗi dạng `{error:{code,message}}` như mục 9)
 
 | Method + đường dẫn | Việc |
 |---|---|
-| `POST /lan/api/login` `{code}` | Đòi mã: `200 {ok, code_required:true, expires_at}` + `Set-Cookie`; `401 INVALID_CODE`; `429 RATE_LIMITED`. Không đòi mã (mặc định): `200 {ok:true, code_required:false, expires_at:null}`, không cookie |
-| `POST /lan/api/logout` | hủy phiên |
-| `GET /lan/api/session` | công khai: đòi mã → `{authenticated:false, code_required:true}` hoặc `{authenticated:true, code_required:true, expires_at}`; không đòi mã (mặc định) → luôn `{authenticated:true, code_required:false, expires_at:null}`. (Server cũ không có `code_required`.) |
 | `GET /lan/api/status` | `{worker:{online,queue_paused}, code_required, limits, rate, analyze_remaining, remaining:{analyze,upload_video,create_final,remove_logo}, queue:{cuts,tools,total,cap}, render:{running_count,waiting_count,concurrency}, server_time}` (rút gọn từ trạng thái worker; không lộ `worker_id`/lý do tạm dừng; `remaining` = hạn mức còn lại của CHÍNH người gọi theo IP) |
 | `GET /lan/api/plans` | danh sách kế hoạch LAN (mới nhất trước, không có kế hoạch đã xoá): `{id,name,created_by_name,status,scene_count,ref_count,created_at,updated_at,analysis,can_delete,delete_block}` |
 | `DELETE /lan/api/plans/:id` | xoá kế hoạch = chuyển vào thùng rác của chủ máy (5.8). CHỈ trình duyệt đã tạo kế hoạch: băm SHA-256 của cookie client `autovideo_lan_client` phải trùng `projects.lan_client_hash` (ghi lúc `POST /lan/api/plans`, so sánh thời gian hằng số). Kế hoạch cũ (không có băm) hoặc của người khác → `403 NOT_PLAN_OWNER` "Chỉ người tạo (trình duyệt đã tạo kế hoạch) mới xoá được; nhờ chủ máy xoá". `409 PROJECT_BUSY` khi đang dựng/render/tải video; `404` nếu không có/đã xoá; `429` quá 10 lần/giờ/IP (tính cả lần bị từ chối). `200 {ok,id,restorable_days}`. LAN không có khôi phục hay xoá vĩnh viễn |
@@ -966,11 +962,22 @@ Không cần kế hoạch. Bảng `lan_tool_jobs` (migration 010): `id, kind='re
 - `POST …/jobs/:id/cancel` (đang chờ: bỏ khỏi hàng đợi; đang chạy: dừng cả cây tiến trình của tool; giữ input) · `POST …/jobs/:id/retry` (`failed`/`cancelled`; chịu hạn mức xoá logo và trần hàng đợi; `409 FILE_MISSING`/`INVALID_STATE`).
 - Vòng đời: server khởi động lại giữa lúc `queued`/`processing` (nhiều việc cùng lúc cũng vậy) → `failed` (giữ input để thử lại); việc **quá 7 ngày** (tính từ lúc tạo, chỉ ready/failed/cancelled) bị timer 1 giờ xoá file và đánh dấu `expired`; file tải dở > 1 giờ bị dọn.
 
-**Hàm thuần (có test `plan.test.ts`):** `server/src/services/plan.ts` (`buildStoryboardMessage`, `extractFrameLines`, `buildScenePlans`, `buildPlan`, `planToMarkdown`, `fenceFor`) và `services/zip.ts`. `GET /api/lan` (app chính, localhost) trả `{enabled, listening, error, host, port, urls[], require_code, access_code, plan_count, tool_jobs_24h, queue, render}` cho khối **Chia sẻ LAN** trên header web; chỉ báo cáo, bật/tắt bằng `.env` + khởi động lại.
+**Hàm thuần (có test `plan.test.ts`):** `server/src/services/plan.ts` (`buildStoryboardMessage`, `extractFrameLines`, `buildScenePlans`, `buildPlan`, `planToMarkdown`, `fenceFor`) và `services/zip.ts`.
 
-**Giao diện:** `web/planner.html` + `web/src/planner/*` (thêm `VideoStep.tsx` = Bước 3, `FinalBlock.tsx` = khối Bản hoàn chỉnh dùng lại `EdlEditor`/`FinalTimeline`/`CleanLogoView` qua props, `ToolPage.tsx` = tab "Xoá logo Veo" ở `#/tools/remove-logo`; tải video bằng XHR có tiến độ) (bundle Vite riêng, không có react-router/API của app chính). Dev: `npm run dev` rồi mở `http://localhost:5173/planner.html` (Vite proxy `/lan` → `LAN_PORT`, cần `LAN_ENABLED=true`). Nút sao chép dùng `document.execCommand('copy')` khi không có `navigator.clipboard` (trang LAN chạy HTTP, không phải secure context).
+**Giao diện:** `web/planner.html` + `web/src/planner/*` (thêm `VideoStep.tsx` = Bước 3, `FinalBlock.tsx` = khối Bản hoàn chỉnh dùng lại `EdlEditor`/`FinalTimeline`/`CleanLogoView` qua props, `ToolPage.tsx` = tab "Xoá logo Veo" ở `#/tools/remove-logo`; tải video bằng XHR có tiến độ) (bundle Vite riêng, không có react-router/API của app chính). Dev: `npm run dev` rồi mở `http://localhost:5173/planner.html` (Vite proxy `/lan` → `LAN_PORT`). Nút sao chép dùng `document.execCommand('copy')` khi không có `navigator.clipboard` (trang LAN chạy HTTP, không phải secure context).
 
 ---
+
+### 13.5 Cài đặt của app
+
+Video nguồn cắt clip không tự xoá theo hạn (`retention_days: null`), giới hạn 4 GiB / 3 giờ. AI qua worker nhúng + `AI_API_URL`.
+
+- `GET /lan/api/status` có thêm `desktop: true`, `ai: {url, model, key_set, key_hint}` (`key_hint` = `…` + 4 ký tự cuối; không bao giờ trả key).
+- `GET /lan/api/settings/ai` → `{url, model, key_set, key_hint}`.
+- `POST /lan/api/settings/ai/check` `{api_key?}` → `{ok:true, models:[…]}` (gọi `GET <AI_API_URL>/models` bằng key mới, hoặc key đang lưu khi bỏ trống; không lưu). `400 AI_KEY_INVALID` · `502 AI_UNREACHABLE` · `400 KEY_MISSING` · `409 AI_URL_MISSING`.
+- `PUT /lan/api/settings/ai` `{api_key?}` → ghi `AI_API_KEY` vào file cấu hình (`config.env`, quyền 0600) và áp dụng ngay; xoá cache danh sách/cooldown. Không nhận lựa chọn model từ Cài đặt. Key chỉ gồm ký tự in được không khoảng trắng (chặn chèn dòng). `409 CONFIG_READONLY` khi không có file cấu hình. `model` trong GET giữ tương thích, là cấu hình ưu tiên của quản trị, không bảo đảm là model thực tế của mọi yêu cầu.
+- API AI trực tiếp tự chọn model theo chức năng qua `lib/ai-routing.ts`: lập kế hoạch ưu tiên `AI_MODEL`, sửa lời thoại ưu tiên model nhẹ hoặc `AI_FAST_MODEL`, HTML/ảnh lọc năng lực trong registry dùng chung. Model dự phòng phải được `/models` công bố và có profile được xác nhận. Registry hiện hỗ trợ Sonnet 4.6, Haiku 4.5 (cả ID có ngày), Gemini 2.5 Flash, GPT-4.1 mini (cả ID có ngày); alias riêng cấu hình sẵn vẫn được tin cậy làm ưu tiên.
+- Trong cùng thao tác, thử tối đa 3 model khi upstream **từ chối rõ ràng**: HTTP 429, 503 có mã quota/rate limit, hoặc 400/404 báo model không tồn tại. Cooldown theo model + URL/key, dùng `Retry-After` (giây/ngày HTTP), mặc định 60 giây; các job sau bỏ qua model trong cooldown. Không thử model khác ngay khi sai key, mất mạng, timeout hoặc phản hồi không hợp lệ. Không lấy được `/models` thì chỉ dùng model cấu hình, không đoán model dự phòng. Hết lựa chọn → `AI_UNAVAILABLE` + `retry_at`, worker giữ job để thử lại. Sửa lời thoại là bước bổ trợ: nếu hết lựa chọn thì giữ transcript ASR gốc. `ai_attempts` và provenance phản ánh model thực tế từng lần gọi; policy HTML là ưu tiên snapshot, có thể khác model thành công khi failover.
 
 ## 14. Cắt clip từ video dài (long video → shorts)
 
@@ -1049,6 +1056,7 @@ PlanJob = {
 | `PATCH /api/clip-projects/:id {name?, stt_terms?}` | `ClipProjectDetail`. Đổi `stt_terms` không tự nhận dạng lại (xem `transcribe`) |
 | `POST /api/projects/:id/source` | multipart `file` (stream xuống đĩa, không giữ RAM) → `201 {source}`. Nhận mp4/mov/mkv/avi theo magic bytes; `ffprobe` phải thấy hình + tiếng; thời lượng ≤ `CLIP_SOURCE_MAX_S`, dung lượng ≤ `CLIP_SOURCE_MAX_BYTES` (LAN: `LAN_CLIP_SOURCE_*`); ổ đĩa trống ≥ `CLIP_MIN_FREE_GB` + 3 × dung lượng. Trùng `content_hash` trong dự án → dùng lại (không nhận dạng lại; nếu bản cũ `failed/cancelled` thì chạy lại). Video khác khi dự án đã có video: thay được nếu chưa có clip và không đang nhận dạng (bản cũ bị xoá, transcript cũ lưu thành `transcript.v<k>.json`), không thì `409 SOURCE_EXISTS`. Xong thì server tự xếp nhận dạng. Chưa cấu hình STT: vẫn nhận file nhưng `status:'failed', error_code:'STT_NOT_CONFIGURED'` |
 | `POST /api/sources/:id/transcribe` | `{source}`. Chạy lại khi `failed`/`cancelled`/`uploaded`, hoặc khi `transcribed` mà `stt_terms` đã đổi so với lần nhận dạng (bản transcript cũ được lưu, không ghi đè); có clip rồi thì `409 CLIPS_EXIST` (chỉ số từ sẽ đổi). Khác → `409 INVALID_STATE`; chưa cấu hình → `409 STT_NOT_CONFIGURED` |
+| `POST /api/sources/:id/ai-fix` | `{source}`. Chỉ chạy lại bước AI nhẹ chuẩn hoá chính tả/tên riêng/dấu câu trên transcript đã có (video vẫn `transcribed`, `stt_phase: "ai_fix"` trong lúc chạy; xong thì thay transcript, bản cũ được lưu; `ai_fix.at` đổi). Lỗi AI: giữ transcript, ghi `ai_fix.error` hoặc `ai_fix.retry_error`. `409 CLIPS_EXIST` khi đã có clip, `409 INVALID_STATE` khi AI đang chọn đoạn, `409 KEY_MISSING` / `AI_FIX_DISABLED`. Trong lúc chạy, tạo clip / AI chọn đoạn trả `409 AI_FIXING`; hủy bằng `POST /api/sources/:id/cancel` |
 | `POST /api/sources/:id/cancel` | `{source}` (`cancelled`); chỉ khi `transcribing`/`uploaded`. Dừng ffmpeg/fetch, kết quả muộn không ghi đè |
 | `GET /api/sources/:id/transcript?from=&limit=` | `{total, sentences:[{id,start,end,words:[{i,w,start,end}]}]}`; phân trang theo CÂU, `from` bắt đầu từ 0, `limit` mặc định 200 tối đa 500. Chữ thường, không dấu câu (đúng như ASR). Chưa xong → `409 NOT_TRANSCRIBED` |
 | `GET /api/sources/:id/transcript.srt` · `.txt` | tải về: SRT theo câu (viết hoa chữ đầu câu) · mỗi câu một dòng `[hh:mm:ss] nội dung` |
@@ -1074,6 +1082,7 @@ Xoá dự án/thùng rác dùng lại `DELETE /api/projects/:id` (5.8). Đang nh
 | 409 | `NOT_TRANSCRIBED` · `NO_SOURCE` · `NO_SPEECH` | video chưa nhận dạng xong · dự án chưa có video · transcript không có từ nào |
 | 409 | `SOURCE_EXISTS` · `SOURCE_DELETED` · `CLIPS_EXIST` | dự án đã có video khác và clip · video gốc đã bị xoá · không nhận dạng lại khi đã có clip |
 | 409 | `STT_NOT_CONFIGURED` | `POST transcribe` khi chưa cấu hình STT |
+| 409 | `STT_MODEL_MISSING` | `POST transcribe` khi `STT_PROVIDER=local` mà chưa tải model nhận dạng (bản desktop: Cài đặt > Nhận dạng lời nói) |
 | 409 | `CUT_ACTIVE` | clip đang dựng một bản khác |
 | 409 | `CAPTIONS_UNAVAILABLE` | ffmpeg trên máy chủ thiếu libass mà chọn phụ đề (chọn `none` vẫn dựng được) |
 | 409 | `NO_FFMPEG` | không tìm thấy ffmpeg |
@@ -1110,7 +1119,8 @@ Quy trình của worker: (1) phân loại nội dung (~3000 ký tự đầu); (2
 
 ### 14.5 Nhận dạng lời nói (STT nội bộ, Omnix)
 
-- Cấu hình: `STT_PROVIDER` (`omnix`|`none`, mặc định `omnix` nếu có `STT_URL`), `STT_URL`, `STT_TENANT_ID` (`s-omnix-studio`), `STT_TIMEOUT_MS` (1 giờ), `STT_MAX_RETRIES` (3). Chỉ HTTP.
+- Nhận dạng trên máy (`STT_PROVIDER=local`): server chạy `stt-runner` làm tiến trình con (ffmpeg → PCM 16 kHz → VAD silero → gipformer), tiến độ thật theo số giây đã xử lý; chưa có model → `409 STT_MODEL_MISSING` (`/lan/api/clip-status` → `stt.ready=false`, `stt.reason`). Bản desktop: `GET /lan/api/settings/stt`, `POST /lan/api/settings/stt/download`, `POST /lan/api/settings/stt/download/cancel`.
+- Cấu hình: `STT_PROVIDER` (`local`|`omnix`|`none`, mặc định `omnix` nếu có `STT_URL`), `STT_URL`, `STT_TENANT_ID` (`s-omnix-studio`), `STT_TIMEOUT_MS` (1 giờ), `STT_MAX_RETRIES` (3). Chỉ HTTP.
 - Hàng đợi **một việc một lúc** trong tiến trình (app chính trước LAN), vị trí ở `source.queue`. Mỗi việc: `ffmpeg -vn -ac 1 -ar 16000 -c:a libmp3lame -b:a 48k` ra file tạm (3 giờ ≈ 65 MB) → `POST /v1/audio/transcriptions` (multipart `file`, `response_format=verbose_json`, `timestamp_granularities[]=word`, `prompt`=`stt_terms` nếu có, header `X-Tenant-ID`) → `X-Job-Id` lưu ngay vào `source_videos.stt_job_id`.
 - Lỗi `retryable:true` (502/503 `no_capacity`, `fetch_failed`, `runtime_*`) và lỗi mạng → thử lại với backoff 10 s / 30 s / 90 s. 504 `transcription_timeout` hoặc đứt kết nối SAU khi có `X-Job-Id` → hỏi `GET /v1/stt/jobs/{id}` (header `X-Tenant-ID`) thay vì gửi lại file. Phản hồi thật của endpoint này (đã thử): `{job_id, tenant_id, state:"succeeded", platform_state, attempt_state, task_id, text, segments, duration_seconds, model, error, created_at, updated_at}` — **không có `words`**, nên thiếu mốc từng từ thì coi là lỗi tạm (`STT_JOB_NO_WORDS`) và gửi lại file. Lỗi khác → `failed` kèm `error_code` và thông báo tiếng Việt.
 - Audio không có lời: `text` rỗng, không lỗi → `transcribed` với 0 từ (`409 NO_SPEECH` khi chọn đoạn).
@@ -1150,3 +1160,101 @@ Cùng bộ endpoint dưới `/lan/api/...` (mục 13: Host, Origin, CSP, cookie 
 - **Không phục vụ video gốc qua LAN.** Sau khi tải, server sinh `source/preview_480p.mp4` (H.264 480p, CRF 28, trong hàng đợi render, xếp sau việc của app) làm `video_url`. Allowlist `/lan/files`: bản xem thử, poster, ảnh clip `thumbs/K<n>.jpg`, và clip `ready` (`clips/K<n>_v<m>.mp4|.srt`) của dự án LAN còn tồn tại; `.ass`, `transcript.json`, video gốc, file của bản chưa `ready`, file của dự án app → `404`.
 - Lỗi trong JSON LAN được lọc đường dẫn máy chủ (như mục 13).
 - Tự xoá video gốc sau `LAN_CLIP_SOURCE_RETENTION_DAYS` (7) ngày (timer mỗi giờ; bỏ qua video đang nhận dạng/dựng): giữ transcript, bản xem thử và clip; `source.status` vẫn `transcribed`, `source_deleted:true`; không dựng clip mới / chọn đoạn mới (`409 SOURCE_DELETED`), vẫn xem transcript và tải clip đã dựng.
+
+## 15. Video HTML (desktop)
+
+Tab độc lập "Video HTML" (xem `PLAN-html-video.md`). **Chỉ có trên listener planner của bản desktop** (`config.desktop=true`); trên listener LAN thật mọi route dưới đây trả 404. Tiền tố `/lan/api/html-projects`, cùng Host/Origin/CSP như mục 13. Dự án là `projects.kind='html'` (`source='lan'`); mọi route kiểm tra kind (dự án kế hoạch/cắt clip → 404) và ngược lại các route kế hoạch/cắt clip không thấy/không xoá được dự án HTML. Kiểu TS của phản hồi: `server/src/services/html/view.ts`. Dựng MP4 ở 15.7, xem trước ở 15.8, bộ dựng (trình duyệt) ở 15.9.
+
+### 15.1 Dự án
+| Route | Body | Trả |
+|---|---|---|
+| `GET /` | | `HtmlProjectView[]` (mới nhất trước) |
+| `POST /` | `{name, brief?, aspect:'9:16'\|'1:1'\|'16:9' (9:16), duration_s:1..60 (15), quality:'720p'\|'1080p' (720p), template:string\|null, model:{compose?,vision?} ('auto')}` | 201 `HtmlProjectView` |
+| `GET /:id` · `PATCH /:id {name?,brief?}` | | `HtmlProjectView` |
+| `DELETE /:id` | | `{ok,id,purged}` — xoá vĩnh viễn ngay (`deleteFromPlanner`). 409 `PROJECT_BUSY` (`details.reasons[].code`: `HTML_ACTIVE` khi có phiên bản đang `composing`/`validating` hoặc render `queued`/`rendering`; `JOB_RUNNING`; `UPLOAD_ACTIVE` khi đang tải asset) |
+
+`HtmlProjectView`: `{id, kind:'html', slug, name, brief, aspect, width, height, fps:30, duration_s, quality, template_id, model:{compose,vision}, asset_count, asset_bytes, version_count, latest_version:{id,version,status,created_by,summary,created_at,published_at}|null, active_versions, delete_block:{code,message}|null, created_at, updated_at}`. Kích thước: cạnh ngắn 720/1080 (9:16 → 720×1280, 16:9 → 1280×720, 1:1 → 720×720).
+
+### 15.2 Asset (ảnh/video/nhạc người dùng)
+- `POST /:id/assets` multipart một file (trường `file`), nhận theo luồng, nhận diện bằng magic bytes (png/jpg/webp/gif · mp4/mov/webm · mp3/wav/m4a/aac/ogg; mkv bị loại). Trần: ảnh 20 MB, video/nhạc 200 MB, 1 GB/dự án, ảnh ≤ 12000 px/cạnh và 64 MP. Video/nhạc cần ffprobe (đọc thời lượng, kích thước, có tiếng). Lưu `output/<slug>/html/assets/<sha256 8 ký tự>-<id>.<ext>`; tên gốc chỉ là nhãn. 201 `HtmlAssetView`. Lỗi: 413 `FILE_TOO_LARGE`/`PROJECT_ASSET_QUOTA`/`IMAGE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE`/`INVALID_IMAGE`/`INVALID_MEDIA`.
+- `GET /:id/assets` → `HtmlAssetView[]`; `GET /:id/assets/:assetId/file` (nội dung gốc, `nosniff`); `DELETE /:id/assets/:assetId` → `{ok}` (409 `ASSET_IN_USE` khi một phiên bản đang `composing`/`validating` còn dùng; bản đã công bố có bản chụp riêng nên không ảnh hưởng).
+- `HtmlAssetView`: `{id, name, kind:'image'|'video'|'audio', media_type, bytes, width, height, duration_s, has_audio, path:'assets/u/<id>.<ext>', url, created_at}`. `path` là đường dẫn HTML/AI dùng trong phiên bản.
+
+### 15.3 Phiên bản (bất biến)
+- `GET /:id/versions` → `HtmlVersionView[]` (mới nhất trước); `GET /:id/versions/:v` (`:v` = số phiên bản 1, 2, …).
+- `POST /:id/compose {prompt, idempotency_key, model?:{compose?,vision?}}` → tạo phiên bản `composing` + job `html_compose` (duyệt sẵn, vì người dùng bấm) trong một transaction; 201 `{version, created:true}`; cùng `idempotency_key` → 200 `{version, created:false}` (nội dung khác → 409 `IDEMPOTENCY_CONFLICT`). `idempotency_key` bắt buộc (8–100 ký tự `[\w.:-]`).
+- `POST /:id/versions/:v/revise {feedback, idempotency_key, model?}` → phiên bản mới từ phiên bản cha `ready` (409 `PARENT_NOT_READY`; bản cha giữ nguyên). Payload job mang file của bản cha.
+- `POST /:id/versions/:v/variables {values:{<id biến>:<giá trị>}, idempotency_key}` → phiên bản `created_by='user'` (không gọi AI): áp biến an toàn, kiểm tra lại, công bố ngay (201 `{version,created}`; 409 `UNKNOWN_VARIABLE`/`PARENT_NOT_READY`; 400 `VARIABLE_INVALID`/`VARIABLE_TARGET_*`/`HTML_VALIDATION_FAILED`).
+- `POST /:id/versions/:v/cancel` → `{version}` (chỉ `composing`/`validating`; hủy luôn job; 409 `INVALID_STATE` nếu đã kết thúc).
+- `HtmlVersionView`: `{id, project_id, version, parent_version, status:'composing'|'validating'|'ready'|'failed'|'cancelled', created_by:'ai'|'user', prompt, feedback, summary, variables:HtmlVariable[], files:[{path,bytes,sha256}], assets:[{asset_id,path,content_hash}], content_hash, lint_report:{ok,errors,warnings,checks}|null, policy:{compose,vision}, error, error_code, job:{id,status,error,error_code,queue}|null, created_at, published_at}`. `ready` = file HTML đã công bố ở `output/<slug>/html/versions/v<n>/` (bất biến), chưa nghĩa là đã có MP4.
+- `HtmlVariable`: `{id, type:'text'|'color'|'asset', label, value, target, maxLength?}`. Biến chữ chỉ thay nội dung chữ của phần tử `data-hf-var="<target>"` không có thẻ con (giá trị được escape); biến màu `#rrggbb` ghi `--hf-<id>` vào `<style data-hf-vars>:root{…}`; biến ảnh đặt `src` của img/video/audio/source theo id asset của dự án.
+
+### 15.4 Job `html_compose` và quy tắc file
+- Thuộc `TEXT_JOB_TYPES` (managed trên desktop; worker nhúng nhận). Payload là **snapshot bất biến** lúc tạo phiên bản (không bao giờ tính lại): `{project, version:{id,number,parent_version}, prompt, feedback, spec:{aspect,width,height,fps,duration_s,quality,template_id}, base_canvas:{w,h}, template:{id,label,variables,files}|null, policy:{compose,vision,reason}, assets:[…], parent:{version,summary,variables,files}|null, limits, allowed_paths}`. Vòng compose ở 15.6.
+- Kết quả worker `POST /api/worker/jobs/:id/complete {result:{files:[{path,content}], summary, variables}}`: server kiểm tra manifest (chỉ `index.html`, `compositions/<tên>.html`, `assets/css/*.css`, `assets/js/*.js`; tối đa 40 file, 256 KB/file, 1,5 MiB tổng, sâu ≤ 2; chặn tuyệt đối/UNC/ổ đĩa/`..`/backslash/ADS/tên thiết bị Windows/dấu chấm-khoảng trắng cuối/ký tự điều khiển/trùng tên không phân biệt hoa thường), kiểm tra biến khớp nội dung, ghi staging `output/<slug>/html/staging/<versionId>-<attempt>/`, chụp asset (hard link) vào `assets/u/`, chạy hook `validateComposition` rồi rename nguyên tử thành `versions/v<n>/`. Lỗi dữ liệu → 400 (`INVALID_MANIFEST`, `VARIABLE_*`, `HTML_VALIDATION_FAILED`) và job giữ nguyên để worker sửa; kết quả về muộn sau hủy/lỗi → 409 `JOB_CANCELLED`/`VERSION_NOT_ACTIVE`. Job lỗi → phiên bản `failed`; job hủy → `cancelled`.
+- Job queued mà phiên bản không còn `composing` bị hủy lúc claim.
+
+### 15.5 Bảng
+`html_project_meta` (cấu hình dự án), `html_versions`, `html_assets`, `html_version_assets` (asset gắn với phiên bản + `snapshot_path`), `html_renders` (unique `(version_id, idempotency_key)`, tối đa một render `queued|rendering` cho mỗi `(version_id, quality)`). Migration `016_html_video.sql` dựng lại `projects` (lần đầu) và `jobs`.
+
+### 15.6 Vòng compose AI và chính sách model
+- Chính sách snapshot lúc tạo phiên bản (`services/ai/models.ts` `resolveHtmlPolicy`, `html_versions.compose_policy_json` = `payload.policy`). compose `auto` = `AI_MODEL` nếu có trong `GET <AI_API_URL>/models` (cache 10 phút, `lib/ai-models.ts`), không thì model đầu tiên có profile code; vision `auto` = model compose nếu profile có ảnh, không thì model vision đầu tiên, không có → `none` (bỏ bước vision). ID cụ thể phải có trong `/models` (409 `MODEL_UNAVAILABLE`; vision không hỗ trợ ảnh → 400 `MODEL_NO_VISION`). Profile đã kiểm chứng: chỉ `claude-sonnet-4-6` (`MODEL_PROFILES`).
+- `POST /api/worker/jobs/:id/infer` nhận thêm `purpose?:'compose'|'vision'`: chỉ với job `html_compose`, server lấy model ưu tiên theo `payload.policy` (worker không gửi được ID model; vision khi policy `none` → 400 `AI_INVALID_REQUEST`). Job khác ưu tiên `AI_MODEL`. API trực tiếp có thể chuyển sang model dự phòng cùng năng lực theo cơ chế tự chọn trong mục Cài đặt AI; account pool giữ model của tài khoản. Registry năng lực được dùng chung tại `lib/ai-routing.ts`, không còn chỉ có Sonnet.
+- `POST /api/worker/jobs/:id/html-check {files, summary?, variables?, capture?}` (managed lease, job `html_compose`, body ≤ 4 MB) → `{report, frames?:[{t, png_base64}]}`: kiểm tra manifest/biến/lint trên thư mục tạm; lỗi trả 200 với `report.ok=false`. `capture` (khi lint đạt) chụp 3–5 khung (0,2d · 0,5d · 0,85d + mốc chuyển cảnh) qua hàng đợi render chung (kind `html-capture`); thiếu bộ dựng/lỗi chụp → cảnh báo `CAPTURE_SKIPPED_NO_BROWSER`/`CAPTURE_FAILED`, không có khung. Phiên bản/job hết active → 409, hủy chụp.
+- Worker (`worker/src/html-compose.ts`): compose → check → ≤ 2 lượt sửa lint → (có vision: check+capture → 1 lượt vision → nếu có vấn đề 1 lượt sửa) → check cuối → `/complete`. Trần 6 infer tổng (kể cả vision). Checkpoint sau mỗi infer; resume không gọi lại. `/complete` bị 400 tính vào lượt sửa lint. Hết ngân sách → `/fail` `HTML_COMPOSE_FAILED`. `AI_UNAVAILABLE` → `/wait ai_quota`.
+- Lint (`services/html/engine/lint.ts`): lint bảo mật riêng (cấm fetch/XHR/WebSocket/EventSource/sendBeacon/import()/eval/new Function/Worker/service worker/điều hướng/storage, URL từ xa hoặc tuyệt đối trong src/href/srcset/CSS url()/@import, `@font-face` do AI viết, `<script src>` ngoài `__hf/gsap.min.js` và `assets/js/*.js`, iframe/object/embed/form/base/meta http-equiv, Math.random/Date.now/performance.now/new Date()) + canvas/thời lượng khớp dự án (±0,1 s) + `@hyperframes/lint`. Lint chuỗi chỉ là lớp phụ: lớp chặn chính là CSP chèn đầu `<head>` lúc preview/chụp/dựng (15.8).
+- Mẫu: `GET /lan/api/html-templates` → `[{id,label,description,aspects}]` (`product`, `promo`, `compare`, `slideshow` trong `server/assets/html-templates/`; một `index.html` dùng cho cả 3 tỉ lệ).
+
+### 15.7 Dựng MP4
+Tiền tố `/lan/api/html-projects`.
+
+| Route | Mô tả |
+|---|---|
+| `POST /:id/versions/:v/renders {quality, idempotency_key}` | 201 tạo / 200 trả lại bản cùng key. 409 `VERSION_NOT_READY`, `HTML_RENDER_ACTIVE` (đã có queued/rendering cùng version+chất lượng), `HTML_RENDERER_MISSING` (không tạo dòng), `IDEMPOTENCY_CONFLICT` |
+| `GET /:id/renders`, `GET /:id/renders/:rid` | `HtmlRenderView` (mới nhất trước) |
+| `POST /:id/renders/:rid/cancel` | queued/rendering → `cancelled`; đang chạy thì abort, slot hàng đợi chỉ nhả sau khi tiến trình thoát |
+| `POST /:id/renders/:rid/retry {idempotency_key}` | failed/cancelled → dòng MỚI (không ghi đè) |
+| `GET /:id/renders/:rid/video[?download=1]` | mp4, Range/206; `download=1` → tải về `<slug>-v<n>-<quality>.mp4` |
+| `GET /:id/renders/:rid/poster` | jpeg |
+| `POST /:id/renders/:rid/reveal` | mở Explorer chọn file → `{ok:true}` |
+
+`HtmlRenderView = {id, version_id, version, quality, status:'queued'|'rendering'|'ready'|'failed'|'cancelled', progress (0–100)|null, queue:{state,position}|null, error, error_code, created_at, started_at, finished_at, video_url, poster_url, duration_s, bytes, width, height}`; `HtmlVersionView.renders[]` = bản mới nhất mỗi chất lượng.
+- Chạy trong hàng đợi render chung (kind `html`, `RENDER_CONCURRENCY`, việc app trước việc planner). Composition viết ở khung gốc 360×640 / 640×360 / 360×360, xuất 720p (×2) hoặc 1080p (×3), 30 fps, chụp kiểu screenshot (Windows không có BeginFrame).
+- Trước khi `ready`: ffprobe h264, đúng W×H, 30 fps, thời lượng ±0,1 s, có audio khi và chỉ khi composition có `<audio>` hoặc `<video>` không `muted`. File `output/<slug>/html/renders/<id>/{video.mp4,poster.jpg}` (ghi tạm rồi rename). Mã lỗi `HTML_RENDERER_MISSING`, `HTML_RENDER_FAILED`, `HTML_RENDER_TIMEOUT`, `HTML_RENDER_VERIFY_FAILED`, `CANCELLED`. Khởi động lại: queued/rendering → failed "Bị gián đoạn do ứng dụng tắt", không tự dựng lại.
+- Tiến trình dựng: mỗi việc một `node html-runner.mjs` (env tối thiểu: không key AI/WORKER_TOKEN; TEMP/HOME riêng của job), vá `puppeteer.launch` để BẬT lại sandbox Chrome (engine tự thêm `--no-sandbox`) và site isolation, userDataDir riêng, allowlist request chỉ data:/blob:/about: + file-server 127.0.0.1 của chính lần dựng; thêm cờ chặn mạng (`--proxy-server=http://127.0.0.1:9` cho mọi thứ ngoài loopback, `--host-resolver-rules` không phân giải DNS, WebRTC không UDP, `--block-new-web-contents` không cho mở cửa sổ mới). CSP (`worker-src 'none'`, `connect-src 'self'`…) chèn ngay sau doctype — trước mọi thẻ của AI — nên luôn nằm đầu `<head>`; file AI chứa `data-hf-engine` bị lint từ chối. Test `html-engine-render.test.ts` dựng thật một composition độc hại (WebSocket/fetch/Worker/popup né lint, `<head>` giả) và kiểm honeypot 0 lượt. ffmpeg/ffprobe chạy trên media người dùng/AI nhận env tối thiểu (không key). Timeout tổng 30 s + 8 × thời lượng; hủy/timeout kill cả cây và chờ thoát.
+
+### 15.8 Xem trước (origin riêng)
+- `POST /:id/versions/:v/preview` (phiên bản `ready`) → `{url, origin, expires_at}`; url `http://127.0.0.1:<port>/s/<token>/index.html` (token 32 byte, TTL trượt 2 giờ, gắn phiên bản, tối đa 32 phiên). 409 `VERSION_NOT_READY` / `PREVIEW_UNAVAILABLE`. `GET /lan/api/status` (desktop) có `html_preview_origin`. Cổng `HTML_PREVIEW_PORT` (0 = ngẫu nhiên).
+- Listener preview riêng, bind 127.0.0.1, chỉ GET/HEAD/OPTIONS, không log request, không cookie. Chỉ phục vụ file trong manifest, asset đã chụp của phiên bản và `__hf/runtime.js|gsap.min.js|fonts/*`; mọi lỗi = 404. Header: CSP của composition + `frame-ancestors` planner, `Access-Control-Allow-Origin: *`, CORP cross-origin, nosniff, no-referrer, no-store, Range; không X-Frame-Options.
+- Planner nhúng `<hyperframes-player sandbox-origin="opaque">` (iframe `sandbox="allow-scripts"`, không same-origin). Chỉ trang `/` và `/planner.html` được thêm `frame-src <origin preview>`; mọi route khác giữ CSP và `X-Frame-Options: DENY`.
+
+### 15.9 Bộ dựng (chrome-headless-shell)
+- `GET /lan/api/settings/html-renderer` → `{installed, version:'152.0.7977.30', path?, source?:'env'|'managed', download_bytes, disk_bytes, download:{state:'idle'|'downloading'|'done'|'failed'|'cancelled', received, total, error?}}`; `POST …/download`, `POST …/download/cancel`. Chỉ desktop.
+- Tải khi người dùng bấm (không bao giờ tự tải): URL Chrome for Testing ghim + SHA256, ~119 MB tải, ~270 MB trên đĩa, vào `HTML_RENDERER_DIR` (mặc định cạnh thư mục model nhận dạng lời nói ở `%LOCALAPPDATA%`). `.part` tiếp tục bằng Range, sai hash thì xoá, giải nén bằng `tar.exe` rồi rename, `manifest.json` ghi cuối. `HTML_RENDERER_BROWSER` (đường dẫn exe) ghi đè cho dev/test.
+- Đóng gói: `build:win` thêm `server/html-runner.mjs`, closure `@hyperframes/producer` + `@hyperframes/lint` vào `server/node_modules`, và `server/assets/` (runtime, font Be Vietnam Pro, GSAP, mẫu, `NOTICE.md`). Trình duyệt không đóng gói.
+# Video HTML từ lời đọc và bộ ảnh
+
+Quét ảnh lỗi không đánh dấu job failed. Worker lưu mã lỗi ngắn (`SCAN_UNAVAILABLE`, `SCAN_INVALID_RESULT`, `SCAN_FAILED`, `SCAN_LIMIT`), quét tiếp ảnh khác rồi chuyển job sang `queued` với `wait_reason=image_labels`, `next_attempt_at=null`. Job chưa gọi compose và không được tự claim lại cho đến khi người dùng xác nhận nhãn. Hủy/mất lease vẫn dừng ngay, không bị bắt như lỗi ảnh.
+
+Asset trả thêm `scan_error_code`, `manual_label`, `label_confirmed`. `POST /lan/api/html-projects/:id/image-labels/confirm` nhận `{confirmed:true,labels:[{id,label}]}`; cần đủ toàn bộ ảnh lỗi chưa xác nhận trong dự án, nhãn 1–600 ký tự. Xác nhận nguyên tử lưu nhãn vào mô tả, bổ sung mô tả vào payload các job đang chờ có cùng snapshot asset/hash và mở lại chính job đó. Không đổi tên file, không tạo lại job/phiên bản. Nhãn không được xác nhận trong lúc worker còn quét. Tạo một job mới khi còn ảnh lỗi chưa xác nhận trả `409 IMAGE_LABELS_REQUIRED`.
+
+Mô tả AI được cắt tại cả worker và schema server: summary/text tối đa 600 ký tự, details tối đa 400. JSON sai kiểu hoặc không có model đọc ảnh chuyển sang gán nhãn. Đọc ảnh vẫn tách biệt với vision kiểm tra khung hình; tối đa 30 lượt quét mới, ảnh vượt giới hạn cũng chuyển sang gán nhãn.
+
+Migration `018_html_asset_review.sql` bổ sung trường nhãn/ảnh lỗi và `html_voice.request_id`. Mỗi lượt ASR có request ID riêng; UPDATE processing/ready/failed kiểm tra đồng thời project, asset, request ID và trạng thái đang hoạt động. Chỉ cập nhật thời lượng dự án khi kết quả đúng lượt đã được nhận, nên kết quả/lỗi cũ không ghi đè khi hủy, đổi nguồn hoặc chọn lại cùng file.
+
+Các route dưới đây nằm trên listener planner loopback, cùng kiểm tra Host/Origin như các route `/lan/api/*` khác.
+
+- `GET /lan/api/html-projects/:id/voice`: `null` hoặc `{asset_id,status,captions,error,transcript}`. Transcript dùng cùng cấu trúc ASR với Cắt clip, có mốc từng từ và câu.
+- `POST .../:id/voice` với `{asset_id,captions?:true}`: chọn asset âm thanh/video có tiếng, dài 1–600 giây; trả 202 và xếp nhận dạng. Trạng thái `queued → processing → ready|failed`. Gửi lại cùng asset đang chạy/đã ready không nhận dạng lại. Hủy trước khi đổi nguồn đang chạy.
+- `POST .../:id/voice/cancel`: hủy nhận dạng. `DELETE .../:id/voice`: bỏ lời đọc cho lần tạo tiếp theo; các phiên bản đã tạo giữ nguyên snapshot.
+- `PATCH .../:id/voice` với `{words:[{i,w}],captions:boolean}`: sửa chữ theo chỉ số từ có sẵn, giữ timestamp. Không gọi AI để viết lại phụ đề.
+
+Khi tạo phiên bản, voice/transcript được snapshot vào `html_versions.voice_json`; thời lượng theo file voice (giữ phần thập phân), không theo ước lượng của model. App chèn audio và phụ đề highlight theo từng từ vào composition, tái sử dụng `displayWords/groupWords` của Cắt clip. Phiên bản cũ vẫn dựng được sau khi đổi/bỏ voice hoặc xóa file gốc.
+
+Ảnh mới được worker quét trước compose bằng model vision do server chọn. Mỗi ảnh được thu nhỏ tối đa 1024px trước khi gửi; kết quả `{summary,text,details,uncertain}` được lưu ở asset và đưa vào prompt dưới dạng dữ liệu. Không gọi lại vision cho ảnh đã có mô tả; tối đa 30 ảnh mới mỗi lần compose. Bước quét ảnh độc lập với tùy chọn vision kiểm tra khung hình cuối. Trong UI người dùng xem trước và đổi ảnh từng cảnh qua biến asset, không cần đặt nhãn ảnh trước.
+
+Worker dùng `GET/POST /api/worker/jobs/:id/html-assets/:assetId` để lấy thumbnail/cache và ghi mô tả; chỉ asset trong snapshot của job có lease hợp lệ. `/infer` thêm purpose `asset_vision`, model lấy từ `asset_vision_model` trong payload phía server. Không ghi ảnh base64 hoặc key vào asset metadata.
+
+ASR, trích audio và thumbnail dùng hàng đợi xử lý chung với render; hỗ trợ hủy, đóng app và báo nhận dạng bị gián đoạn để thử lại. Việc AI vẫn chạy qua worker văn bản nhúng.
+
+Video dài: migration `019_html_long_video` nâng giới hạn HTML/voice lên 600 giây, giữ thời lượng lẻ bằng REAL và bảo toàn dữ liệu meta cũ. Khi phụ đề làm index.html lớn hơn khoảng 180 KB, app chuyển dữ liệu phụ đề sang `assets/js/hv-voice-captions.js` rồi tạo clip phụ đề tĩnh trước DOMContentLoaded; vẫn dùng timestamp ASR và textContent để escape lời đọc. File này được app tạo lại từ snapshot, không tích lũy khi sửa phiên bản. Giới hạn manifest 256 KB/file và bảo mật composition giữ nguyên.

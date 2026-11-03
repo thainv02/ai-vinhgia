@@ -5,6 +5,7 @@ import App from './App';
 import '../index.css';
 import './planner.css';
 import './desktop.css';
+import './design-system.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

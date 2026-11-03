@@ -69,7 +69,7 @@ describe('runner migration', () => {
       events: db.prepare('SELECT * FROM events').all(),
     };
 
-    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions']);
+    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
     expect(runMigrations(db)).toEqual([]);
 
     expect(db.prepare('SELECT * FROM jobs ORDER BY id').all().map((row: any) => Object.fromEntries(Object.keys(jobsBefore[0] as object).map((key) => [key, row[key]])))).toEqual(jobsBefore);
@@ -100,6 +100,95 @@ describe('runner migration', () => {
     expect(() => db.prepare("INSERT INTO jobs (project_id, scene_id, type, created_at) VALUES (1, 999, 'video', ?)").run(now)).toThrow(/FOREIGN KEY/);
   });
 
+  it('016 dựng lại projects + jobs (lần đầu với projects): giữ dòng/id/AUTOINCREMENT/index/khóa ngoại con; cho phép kind html + job html_compose; check sạch', () => {
+    const file = path.join(tmp, 'pre016.db');
+    db = openDb(file);
+    const upTo015 = fs.readdirSync(MIGRATIONS_DIR).filter((f) => /^0(0\d|1[0-5])_/.test(f)).sort();
+    expect(runMigrations(db, migDir(upTo015))).toHaveLength(15);
+    const now = '2026-01-01T00:00:00.000Z';
+    const P = db.prepare("INSERT INTO projects (slug, name, brief, status, source, created_by_name, kind, stt_terms, deleted_at, deleted_by, trash_path, lan_client_hash, created_at, updated_at) VALUES (?, ?, 'brief', 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    P.run('canh', 'Dự án cảnh', 'app', null, 'scenes', null, null, null, null, null, now, now);
+    P.run('clip', 'Dự án clip', 'lan', 'Lan', 'clips', 'tên riêng', null, null, null, 'h'.repeat(64), now, now);
+    P.run('da-xoa', 'Đã xoá mềm', 'lan', 'Lan', 'scenes', null, now, 'lan', 'output/.trash/3-da-xoa', null, now, now);
+    P.run('bi-xoa-hang', 'Sẽ bỏ id 4', 'app', null, 'scenes', null, null, null, null, null, now, now);
+    db.prepare('DELETE FROM projects WHERE id = 4').run(); // AUTOINCREMENT phải nhớ id 4
+    db.prepare("INSERT INTO scenes (project_id, code, created_at, updated_at) VALUES (1, 'C1', ?, ?)").run(now, now);
+    const J = db.prepare("INSERT INTO jobs (project_id, scene_id, type, status, payload, created_at) VALUES (?, ?, ?, ?, '{\"a\":1}', ?)");
+    J.run(1, 1, 'video', 'done', now);
+    J.run(2, null, 'clip_plan', 'queued', now);
+    J.run(1, null, 'edit_plan', 'failed', now);
+    db.prepare("INSERT INTO assets (scene_id, job_id, kind, file_path, attempt, created_at) VALUES (1, 1, 'video', 'output/canh/video/C1_v1.mp4', 1, ?)").run(now);
+    db.prepare("INSERT INTO final_cuts (project_id, version, status, selection_signature, created_by, created_at, job_id) VALUES (1, 1, 'ready', 's', 'user', ?, 3)").run(now);
+    db.prepare("INSERT INTO source_videos (project_id, path, original_name, bytes, content_hash, created_at) VALUES (2, 'output/clip/clips/source/a.mp4', 'a.mp4', 10, 'h', ?)").run(now);
+    db.prepare("INSERT INTO clips (project_id, source_id, code, start_sentence, end_sentence, start_word, end_word, start_s, end_s, created_by, job_id, created_at, updated_at) VALUES (2, 1, 'K1', 0, 1, 0, 5, 0, 3, 'agent', 2, ?, ?)").run(now, now);
+    db.prepare("INSERT INTO ai_accounts (alias, provider, base_url, model, created_at) VALUES ('a', 'claude', 'http://x/v1', 'm', ?)").run(now);
+    db.prepare("INSERT INTO ai_attempts (account_id, job_id, model, outcome, latency_ms, created_at) VALUES (1, 1, 'm', 'ok', 5, ?)").run(now);
+    db.prepare("INSERT INTO ai_project_policy (project_id, policy) VALUES (1, '{}')").run();
+    db.prepare("INSERT INTO color_refs (project_id, kind, file_path, content_hash, created_at) VALUES (1, 'image', 'x.png', 'h', ?)").run(now);
+    db.prepare("INSERT INTO events (project_id, type, message, created_at) VALUES (1, 'x', 'y', ?)").run(now);
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
+    const snap = (d: DB) => Object.fromEntries(tables.map((t) => [t, d.prepare(`SELECT * FROM "${t}" ORDER BY 1`).all()]));
+    const before = snap(db);
+    const colsOf = (t: string) => (db.prepare(`PRAGMA table_info('${t}')`).all() as { name: string }[]).map((c) => c.name);
+    const projCols = colsOf('projects');
+    const jobCols = colsOf('jobs');
+    expect((db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'projects'").get() as { seq: number }).seq).toBe(4);
+
+    expect(runMigrations(db)).toEqual(['016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
+    expect(runMigrations(db)).toEqual([]);
+    expect(snap(db)).toEqual(before); // mọi dòng mọi bảng cũ (kể cả projects/jobs) giữ nguyên, cùng id
+    expect(colsOf('projects')).toEqual(projCols); // thứ tự cột không đổi
+    expect(colsOf('jobs')).toEqual(jobCols);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    const idx = (t: string) => (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND name NOT LIKE 'sqlite_autoindex%'").all(t) as { name: string }[]).map((r) => r.name);
+    expect(idx('projects').sort()).toEqual(['idx_projects_deleted', 'idx_projects_source']);
+    expect(idx('jobs').sort()).toEqual(['idx_jobs_project', 'idx_jobs_scene', 'idx_jobs_status', 'idx_jobs_type_status']);
+    expect((db.prepare("SELECT sql FROM sqlite_master WHERE name = 'idx_projects_deleted'").get() as { sql: string }).sql).toMatch(/WHERE deleted_at IS NOT NULL/);
+
+    // AUTOINCREMENT giữ nguyên: id 4 đã dùng không được cấp lại
+    const ins = (kind: string, slug: string) =>
+      db.prepare("INSERT INTO projects (slug, name, kind, source, created_at, updated_at) VALUES (?, 'n', ?, 'lan', ?, ?)").run(slug, kind, now, now);
+    expect(Number(ins('html', 'html-1').lastInsertRowid)).toBe(5);
+    expect(() => ins('bogus', 'bogus-1')).toThrow(/CHECK/);
+    expect(() => ins('html', 'html-1')).toThrow(/UNIQUE/); // slug vẫn duy nhất
+    expect(() => db.prepare("UPDATE projects SET status = 'zzz' WHERE id = 1").run()).toThrow(/CHECK/);
+    const jobIns = (type: string) => db.prepare('INSERT INTO jobs (project_id, type, created_at) VALUES (5, ?, ?)').run(type, now);
+    expect(Number(jobIns('html_compose').lastInsertRowid)).toBe(4);
+    expect(() => jobIns('khong_co')).toThrow(/CHECK/);
+
+    // bảng con vẫn nối với projects/jobs mới: FK chặn mồ côi và CASCADE/SET NULL còn hiệu lực
+    expect(() => db.prepare("INSERT INTO scenes (project_id, code, created_at, updated_at) VALUES (999, 'C9', ?, ?)").run(now, now)).toThrow(/FOREIGN KEY/);
+    db.prepare('DELETE FROM jobs WHERE id = 1').run();
+    expect(db.prepare('SELECT job_id FROM assets WHERE id = 1').get()).toEqual({ job_id: null });
+    expect(db.prepare('SELECT job_id FROM ai_attempts WHERE id = 1').get()).toEqual({ job_id: null });
+    db.prepare('DELETE FROM projects WHERE id = 2').run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM clips').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM source_videos').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE project_id = 2').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM scenes WHERE project_id = 1').get()).toEqual({ n: 1 });
+
+    // bảng Video HTML: ràng buộc
+    db.prepare("INSERT INTO html_project_meta (project_id, aspect, duration_s, quality, created_at) VALUES (5, '9:16', 15, '720p', ?)").run(now);
+    expect(() => db.prepare("INSERT INTO html_project_meta (project_id, aspect, duration_s, quality, created_at) VALUES (1, '4:3', 15, '720p', ?)").run(now)).toThrow(/CHECK/);
+    const V = db.prepare("INSERT INTO html_versions (project_id, version, status, created_at) VALUES (5, ?, ?, ?)");
+    V.run(1, 'composing', now);
+    expect(() => V.run(1, 'composing', now)).toThrow(/UNIQUE/);
+    expect(() => V.run(2, 'xyz', now)).toThrow(/CHECK/);
+    const R = db.prepare("INSERT INTO html_renders (version_id, idempotency_key, quality, status, created_at) VALUES (1, ?, ?, ?, ?)");
+    R.run('k1', '720p', 'queued', now);
+    expect(() => R.run('k2', '720p', 'rendering', now)).toThrow(/UNIQUE/); // một render active/(version, chất lượng)
+    R.run('k3', '1080p', 'queued', now);
+    expect(() => R.run('k1', '1080p', 'failed', now)).toThrow(/UNIQUE/); // idempotency_key duy nhất theo version
+    db.prepare("UPDATE html_renders SET status = 'failed' WHERE idempotency_key = 'k1'").run();
+    R.run('k4', '720p', 'queued', now); // render cũ đã xong thì dựng lại được
+    db.prepare('DELETE FROM projects WHERE id = 5').run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM html_versions').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM html_renders').get()).toEqual({ n: 0 });
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
   it('013 tạo color_refs: chỉ thêm bảng/index (mọi bảng cũ nguyên vẹn); CHECK kind, UNIQUE (project, hash), NOT NULL; ON DELETE CASCADE theo dự án; check sạch', () => {
     const file = path.join(tmp, 'pre013.db');
     db = openDb(file);
@@ -113,13 +202,13 @@ describe('runner migration', () => {
     const snap = (d: DB) => Object.fromEntries(tables.map((t) => [t, d.prepare(`SELECT * FROM "${t}"`).all()]));
     const before = snap(db);
 
-    expect(runMigrations(db)).toEqual(['013_color_refs', '014_clips', '015_clip_captions']);
+    expect(runMigrations(db)).toEqual(['013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
     expect(runMigrations(db)).toEqual([]);
     const after = snap(db);
     // 014 thêm 2 cột vào projects (kind, stt_terms): bỏ hai cột đó rồi so sánh; mọi dòng của mọi bảng cũ không đổi
     const stripClipCols = (rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ kind: _k, stt_terms: _t, ...rest }) => rest);
     expect({ ...after, projects: stripClipCols(after.projects as unknown[]), schema_migrations: undefined }).toEqual({ ...before, schema_migrations: undefined }); // mọi dòng của mọi bảng cũ không đổi
-    expect((after.schema_migrations as unknown[]).length).toBe(15);
+    expect((after.schema_migrations as unknown[]).length).toBe(20);
     const cols = (db.prepare("PRAGMA table_info('color_refs')").all() as { name: string }[]).map((c) => c.name);
     expect(cols).toEqual(['id', 'project_id', 'kind', 'file_path', 'thumb_path', 'original_name', 'content_hash', 'width', 'height', 'lut_size', 'created_by_name', 'created_at']);
     const ins = (kind: string, hash: string, project = 1, path = 'output/cu/final/color-refs/a.png') =>
@@ -154,9 +243,9 @@ describe('runner migration', () => {
     const before = counts(db);
     const projectsBefore = db.prepare('SELECT * FROM projects').all();
 
-    expect(runMigrations(db)).toEqual(['010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions']);
+    expect(runMigrations(db)).toEqual(['010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
     expect(runMigrations(db)).toEqual([]);
-    expect(counts(db)).toEqual({ ...before, schema_migrations: 15 }); // số dòng mọi bảng cũ không đổi (chỉ thêm dòng ghi nhận migration)
+    expect(counts(db)).toEqual({ ...before, schema_migrations: 20 }); // số dòng mọi bảng cũ không đổi (chỉ thêm dòng ghi nhận migration)
     expect((db.prepare('SELECT COUNT(*) AS n FROM lan_tool_jobs').get() as { n: number }).n).toBe(0);
     expect(db.prepare('SELECT * FROM projects').all()).toEqual((projectsBefore as Record<string, unknown>[]).map((p) => ({ ...p, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null })));
     const ins = (kind: string, status: string, progress: number | null = null) =>
@@ -184,7 +273,7 @@ describe('runner migration', () => {
     db.prepare("INSERT INTO scenes (project_id, code, created_at, updated_at) VALUES (1, 'C1', ?, ?)").run(now, now);
     const before = db.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
 
-    expect(runMigrations(db)).toEqual(['009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions']);
+    expect(runMigrations(db)).toEqual(['009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
     expect(runMigrations(db)).toEqual([]);
     const after = db.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
     expect(after).toEqual([{ ...before[0], source: 'app', created_by_name: null, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null }]);
@@ -256,9 +345,9 @@ UPDATE assets SET scene_id = 999 WHERE id = 1;
     db = openDb(file);
     const db2 = openDb(file);
     try {
-      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions']);
+      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
       expect(runMigrations(db2)).toEqual([]);
-      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(15);
+      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(20);
     } finally {
       db2.close();
     }
@@ -267,7 +356,7 @@ UPDATE assets SET scene_id = 999 WHERE id = 1;
 
 describe('migration dạng danh sách {version, sql} và sao lưu trước khi migrate', () => {
   const embedded = () => loadMigrationsFromDir(MIGRATIONS_DIR);
-  const ALL = ['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions'];
+  const ALL = ['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments'];
   const LATEST = ALL[ALL.length - 1]!;
 
   it('runMigrations nhận danh sách đã nhúng, kết quả giống đọc từ thư mục', () => {

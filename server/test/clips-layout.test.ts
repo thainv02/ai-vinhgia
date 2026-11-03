@@ -288,7 +288,6 @@ describe.skipIf(!LIBASS)('xem thử trên LAN', () => {
   it('dự án LAN xem thử được, ảnh phục vụ qua /lan/files; dự án app thì 404 trên LAN', async () => {
     L = await makeLanEnv({ config: { clipMinFreeGb: 0, clipFfmpegPath: LIBASS, ffmpegPath: LIBASS! } });
     const c = L.client({ ip: '192.168.1.10' });
-    await c.login();
     const lanSeed = seedClipProject(L.env, { lan: true, video: { seconds: 20 } });
     const created = await c.post(`/lan/api/projects/${lanSeed.projectId}/clips`, { start_word: 0, end_word: 11 });
     expect(created.status, created.raw).toBe(201);

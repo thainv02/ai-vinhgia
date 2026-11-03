@@ -1,147 +1,13 @@
-# Vận hành account pool
+# Vận hành app desktop
 
-## Trạng thái và phạm vi
+App chỉ chạy dạng desktop Windows (Tauri + server Node sidecar ở 127.0.0.1). Không còn bản web, không mở cổng ra mạng LAN, không có mã truy cập, không có worker legacy (Claude Code theo curl) hay worker điều khiển Chrome (ChatGPT/Flow); các biến `LAN_ENABLED`, `LAN_HOST`, `LAN_REQUIRE_CODE`, `LAN_ACCESS_CODE`, `LAN_ALLOWED_HOSTS`, `WORKER_MODE`, `MANAGED_JOB_TYPES`, `EMBEDDED_WORKER`, `AUTOVIDEO_DESKTOP` bị bỏ qua.
 
-Managed worker là workspace `worker/`. Server mặc định giữ `WORKER_MODE=legacy` để không tự thay cách chạy dự án hiện có. Màn hình `/accounts` dùng được trong cả hai chế độ. Chế độ **kết hợp** (managed cho một số loại job, legacy cho phần còn lại) cấu hình bằng `MANAGED_JOB_TYPES`, xem bên dưới.
+- Giao diện: trang planner do listener "LAN" (tên lịch sử, `server/src/lan/`, route `/lan/api/*`) phục vụ ở 127.0.0.1. Host/Origin/CSP vẫn kiểm tra để chống DNS rebinding.
+- AI: worker văn bản nhúng (`worker/src/text-main.ts`) do server tự chạy, nhận `analyze_brief`, `revise_prompt`, `edit_plan`, `clip_plan`, `html_compose` qua `/api/worker/*` (token `WORKER_TOKEN` tự sinh). AI gọi thẳng `AI_API_URL` (mặc định dịch vụ nội bộ), key nhập trong Cài đặt.
+- Ghi chú bên dưới được viết từ thời còn bản web: chỗ nào nhắc "app chính", "trang LAN", "theo IP", "cookie client" thì nay đều là một người dùng trên chính máy đó.
 
-Đã có account routing theo priority, cooldown bền vững, policy per project, claim có lease, checkpoint, action journal và complete idempotent. Chờ quota được biểu diễn bằng `jobs.status=queued` + `wait_reason/next_attempt_at`, thay vì thêm enum mới; scheduler claim chỉ lấy job tới hạn. Cách này giữ tương thích các màn hình/state machine cũ. Scene đang chạy được giữ để ngăn sửa prompt giữa một job đang chờ.
+## Ghi chú tính năng
 
-Worker mặc định xử lý analyze_brief/revise_prompt/edit_plan; thêm storyboard/video khi có `BROWSER_CDP_URL`. Browser executor đang cần kiểm chứng UI thực tế ChatGPT/Flow; account pool inference không bảo đảm website automation luôn thành công.
-
-## Thêm Antigravity hoặc Codex
-
-1. Chạy server/web và mở `/accounts`. Thêm một dòng cho mỗi tài khoản; alias tùy chọn, priority số nhỏ được dùng trước. Model ID phải lấy từ gateway/tài khoản, không suy từ tên gói.
-2. `npm run ai:setup` cài proxy v8.0.37 từ GitHub release và xác minh SHA256. Trên máy hiện tại đã cài và chạy kiểm tra binary.
-3. `npm run ai:login -- <id>` mở OAuth riêng. Người dùng hoàn tất đăng nhập của provider. Không lấy token từ auth file global của IDE.
-4. `npm run ai:proxy -- <id>` giữ proxy chạy. Mỗi account có cổng, key và auth-dir riêng. Không đăng nhập hai account vào cùng một auth-dir; thêm account mới trên web trước.
-5. Bấm Kiểm tra. Nếu chưa biết model khi thêm tài khoản, có thể để trống rồi chọn ở bước này. Chọn model thực tế từ danh sách gateway trả về. Model có trong catalog chưa chứng minh entitlement; inference thành công mới xác nhận lượt đó dùng được.
-6. Thêm account thứ hai theo cùng quy trình. Dùng `npm run ai:pool` để tự giữ các proxy đã đăng nhập hoạt động thay vì mở từng terminal; supervisor bỏ qua proxy đang được chạy riêng. Một account hết quota → router thử account kế tiếp theo policy. Store bị lỗi auth cần đăng nhập lại; không tự sửa auth file của IDE.
-
-Proxy và autovideo cùng dùng config `AI_HOME`. Mặc định store nằm ngoài repo: `~/.local/share/autovideo/accounts/<hash-của-db-path>/<id>/`, quyền owner-only. Không đổi DB_PATH/AI_HOME giữa lệnh login và server nếu muốn dùng cùng account metadata.
-
-Proxy CLI sẽ hiển thị URL/tiến độ OAuth trong terminal. `process.lock` ngăn login và proxy cùng refresh một store. Dừng proxy trước khi đăng nhập lại. Có thể cần chọn lại tài khoản trong Google account chooser nếu trình duyệt còn phiên cũ.
-
-Claude/OpenAI API qua gateway ngoài: nhập loopback `base_url` và **tên biến môi trường** chứa API key. Server đọc giá trị từ môi trường; không nhập raw token vào form. Managed Claude subscription proxy không phải đường mặc định. Claude Code nguyên bản vẫn dùng được ở legacy mode.
-
-## Bật managed worker
-
-Đổi `.env` rồi restart server:
-
-```dotenv
-WORKER_MODE=managed
-# AI_HOME=/absolute/private/account-store  # tùy chọn, ngoài repo
-```
-
-Chạy worker văn bản/EDL trong terminal khác:
-
-```sh
-npm run worker:start
-```
-
-Chạy đúng một job rồi thoát:
-
-```sh
-npm run worker:start -- --once
-```
-
-### Chế độ kết hợp: managed cho văn bản/EDL, Claude legacy cho storyboard/video
-
-Chế độ được quyết định theo **loại job**, không theo cổng `WORKER_MODE` toàn cục:
-
-```dotenv
-WORKER_MODE=managed
-MANAGED_JOB_TYPES=analyze_brief,revise_prompt,edit_plan   # storyboard,video do worker legacy (Claude, WORKER.md) làm
-```
-
-- `WORKER_MODE=legacy`: danh sách managed luôn rỗng (như trước). `WORKER_MODE=managed` không đặt `MANAGED_JOB_TYPES`: managed làm mọi loại. Loại job lạ trong danh sách làm server không khởi động.
-- Claim: managed worker (`?mode=managed`) chỉ nhận loại trong danh sách (hoặc job đã từng do managed giữ, để resume không mắc kẹt khi đổi cấu hình); worker legacy (`?worker=claude-1`, không `mode=managed`) chỉ nhận các loại còn lại. Lệch chế độ không còn lỗi `WORKER_MODE`, chỉ trả `204`.
-- Endpoint ghi theo chế độ của **job**: có `X-Job-Lease` → kiểm tra managed (lease hiện hành, đúng phạm vi job); không có → legacy, chỉ hợp lệ với job/loại legacy. `POST /api/worker/scenes` không lease khi `analyze_brief` là loại managed, hay `POST /api/worker/comments` không lease trên cảnh đang có job managed → `409 MANAGED_REQUIRED`. Heartbeat/complete/fail không lease trên job managed → `409 LEASE_LOST`.
-- `WORKER_TYPES` của managed worker nên khớp danh sách này (vd bỏ `storyboard,video`). Server chỉ giao đúng loại managed nên cấu hình lệch không gây hại, nhưng worker sẽ không nhận được loại bị bỏ; khi khởi động worker in ra các loại sẽ nhận và cảnh báo nếu không có loại nào.
-- Đổi `MANAGED_JOB_TYPES` chỉ khi đã drain/đối soát job đang chạy; restart server để áp dụng. `/accounts` hiển thị các loại do managed xử lý.
-
-Để tạo ảnh/video trên browser riêng:
-
-```sh
-npm run ai:browser
-# Đăng nhập ChatGPT và Flow trong cửa sổ profile media vừa mở.
-BROWSER_CDP_URL=http://127.0.0.1:9222 npm run worker:start
-```
-
-Nếu `.env` có `WORKER_TYPES` từ giai đoạn chỉ chạy văn bản, đổi thành `analyze_brief,revise_prompt,edit_plan,storyboard,video` rồi restart worker để nhận cả job media. Browser dùng ChatGPT và Flow tại `https://flow.google.com`; entrypoint `https://labs.google/fx/tools/flow` cũ vẫn được chấp nhận.
-
-Browser tool chỉ mở ChatGPT/Google Flow, chỉ upload file được payload cho phép và chỉ ghi output path của job. Không có tool thực thi shell/JS tùy ý từ model. Một managed worker trên máy giữ process lock; không bật nhiều process cùng profile.
-
-Giao diện ChatGPT/Flow có thể thay đổi. Nếu tool không tìm được thao tác hoặc không có bằng chứng về kết quả, worker báo lỗi/chờ đối soát thay vì bấm Generate lại. Không dùng production video để test retry.
-
-## Quota và retry
-
-Trang `/accounts` có thanh **hạn mức còn lại**, thời điểm reset và thời điểm quan sát dữ liệu. Antigravity hiển thị theo model; Codex hiển thị các cửa sổ provider trả về, ví dụ 5 giờ/7 ngày khi có dữ liệu tương ứng. Đây là quota %, không phải số token còn lại hoặc context window.
-
-Quota được đọc khi mở trang, sau đó mỗi 5 phút; nút Cập nhật hạn mức có cache tối thiểu 60 giây để tránh gọi dồn. Không có dữ liệu thì để unknown, không mặc định 100%. Khi cập nhật lỗi, giữ snapshot trước và đánh dấu dữ liệu cũ. Mốc reset đã qua không tự làm thanh tăng về 100%.
-
-Collector dùng management API của từng proxy local; provider OAuth vẫn do proxy giữ/refresh, không trả về frontend. Với store cũ, lần đọc đầu lưu management key local vào file riêng và cập nhật cấu hình management key; có bản `config.before-quota.yaml` trong store. Không sửa access key inference hoặc file OAuth. Gateway không reload key kịp thì giao diện yêu cầu restart proxy.
-
-Antigravity đọc quotaInfo từ fetchAvailableModels. Codex ưu tiên tín hiệu quota quan sát gần đây, rồi thử usage qua gateway; adapter Codex chưa được xác nhận trên tài khoản thật trong phiên này. Claude/API gateway ngoài hiện không có nguồn quota subscription và hiển thị chưa có dữ liệu. Việc có quota của một model không chứng minh model đó được gateway hỗ trợ.
-
-Collector chỉ phục vụ hiển thị, không thay đổi policy chọn tài khoản, cooldown hay credit ledger. Nguồn tham khảo: [Codex rate-limit fields](https://learn.chatgpt.com/docs/app-server), [proxy management API](https://github.com/router-for-me/CLIProxyAPI/blob/ce07d189b3de2a39d37fd68ae093b102ce3aabee/internal/api/handlers/management/api_tools.go).
-
-- Theo priority, giữ cùng provider/model; mở fallback provider/model trên `/accounts` cho từng project nếu muốn.
-- Tối đa 3 lần thử inference ở một bước; retry nội bộ proxy tắt. Đây không phải giới hạn số token hay credit Flow.
-- `429` dùng Retry-After nếu có; thời điểm probe lại không được trình bày là thời điểm quota reset chắc chắn.
-- `401` sau khi proxy đã xử lý refresh cần đăng nhập lại. `403` loại account khỏi routing cho đến khi người dùng kiểm tra quyền.
-- `quota_scope_key` cấu hình qua API khi biết tài khoản cùng nhóm hạn mức; không mặc định các account có quota riêng.
-- Thiếu telemetry thì giữ trạng thái chưa rõ. Không bật paid fallback/overage tự động.
-- Hết tài khoản → lưu checkpoint, trả job về chờ; không tính thành video attempt mới, không tăng ledger.
-
-## Giao thức managed worker
-
-- Claim: `GET /api/worker/next?mode=managed&types=...` với Bearer WORKER_TOKEN, X-Worker-Id; response có lease_id và lease_epoch.
-- Mọi mutation job thêm X-Job-Lease. Upsert scenes/comments thêm X-Job-Id và phải thuộc phạm vi job.
-- Heartbeat supervisor mỗi 20s, độc lập với inference.
-- Checkpoint: `POST /api/worker/jobs/:id/checkpoint`.
-- Inference và checkpoint nhận tối đa 32 MiB JSON để chứa nhiều ảnh tham chiếu base64; các API ghi thông thường vẫn giữ giới hạn 2 MiB. Giới hạn này áp dụng cho toàn bộ context, không phải từng ảnh.
-- Wait: `POST /api/worker/jobs/:id/wait`, reason `ai_quota|needs_reconciliation|browser_offline`, retry_at là ISO tương lai hoặc NULL để chờ xử lý thủ công.
-- Tool dùng browser-lease và actions API. Intent được ghi trước submit; mất phản hồi không có nghĩa chưa submit. Mỗi job chỉ có **một action sống** (id `media-<job>`, sau đối soát `nothing_created` là `media-<job>-<n>`): ghi `intent` mới khi còn action sống → `409 ACTION_CONFLICT`.
-- Ngữ cảnh job media không còn bị cắt cứng 90 message: khi vượt 60 message, worker giữ system + payload + protocol, ~30 message gần nhất và một bản tóm tắt thao tác đã làm (từ journal và tool đã gọi); mọi `tool_call_id` luôn còn message tool tương ứng (checkpoint resume cũng được vá). Giới hạn 60 lượt inference mỗi lần claim; hết lượt → lỗi rõ ràng và (nếu đã submit) chờ đối soát.
-- Gateway nhận `parallel_tool_calls:false` khi có tools. Nếu model vẫn trả nhiều tool call, chỉ lệnh đầu chạy; các lệnh còn lại nhận message tool lỗi "chỉ một thao tác mỗi lượt".
-- Complete cần Idempotency-Key. Cùng key/body trả kết quả cũ; body/key khác bị từ chối, không ghi asset/ledger lần nữa.
-- Public jobs API không trả lease_id. Lease không đưa vào prompt/model context.
-
-Action journal: intent → submitted → downloaded → committed (`uncertain` khi mất phản hồi lúc bấm; `abandoned` chỉ do đối soát). Nếu crash khi intent chưa có kết quả chắc chắn, job chờ `needs_reconciliation`; worker không bao giờ xóa intent hay tự submit lại.
-
-### Đối soát (`needs_reconciliation`)
-
-Trên web (Hàng đợi, thẻ cảnh, trang chi tiết cảnh) job chờ đối soát hiện huy hiệu **Cần đối soát** và nút **Đối soát**. Mở Flow/ChatGPT bằng profile media, kiểm tra dự án/hội thoại của cảnh, rồi chọn (API `POST /api/jobs/:id/reconcile`, một transaction, idempotent, ghi event):
-
-- **retry_download**: kết quả đã được tạo. Action `intent|uncertain` → `submitted`; worker resume (giữ checkpoint) tìm và tải kết quả, không submit lại.
-- **nothing_created**: không có gì được tạo. Action → `abandoned`, checkpoint bị xóa, job chạy lại từ đầu với action id mới (video có thể tốn thêm credit; nếu thực ra đã có lượt tạo, credit bị trừ hai lần).
-- **charge_and_fail** (video): đã tốn credit nhưng không lấy được kết quả. Job `failed` với `credits_cost = credits_expected`, ledger ghi một lần, tính một lượt.
-
-`POST /api/jobs/:id/cancel` trên job managed đã có action `intent|uncertain|submitted|downloaded` trả `409 RECONCILIATION_REQUIRED` (giao diện chuyển sang đối soát) để không mất ghi sổ credit/lượt. Hàng đợi còn nút **Thử lại ngay** cho job chờ tài khoản AI (`/api/ai/jobs/:id/resume`).
-
-## Trang planner cho người dùng trong mạng LAN
-
-Đồng nghiệp trong cùng mạng (mặc định **không cần mã truy cập**, xem bên dưới) nhập yêu cầu kịch bản + ảnh tham chiếu; managed worker hiện có (`analyze_brief`) chia cảnh; trang hiển thị cho từng cảnh **tin nhắn dán vào ChatGPT** (storyboard), **prompt Google Flow nguyên văn**, ảnh nào đính kèm theo thứ tự nào và cài đặt (9:16, 10 giây, x1, 720p, ước tính `credit_per_video`). Họ tự tạo ảnh/video bằng tài khoản của mình. **Trang LAN không tạo job storyboard/video và không tốn credit Flow của máy này**; job AI duy nhất là `analyze_brief` (chia cảnh) và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh, xem bên dưới), cùng dùng quota AI của account pool như mọi job văn bản/EDL.
-
-Bật (mặc định tắt) trong `.env` rồi restart server:
-
-```dotenv
-LAN_ENABLED=true
-# LAN_PORT=8790          # mặc định 8790, phải khác PORT
-# LAN_REQUIRE_CODE=false # mặc định false: mở ngay, không có màn đăng nhập (22/10/2026). true: đòi mã chung như trước
-# LAN_ACCESS_CODE=       # chỉ dùng khi LAN_REQUIRE_CODE=true; để trống: server tự sinh mã 8 ký tự và ghi vào .env
-```
-
-**Không cần mã truy cập (mặc định, `LAN_REQUIRE_CODE=false`).** Không có màn đăng nhập, không có phiên (nên không có hạn phiên); mọi route LAN dùng được ngay. Server không tự sinh và không đòi `LAN_ACCESS_CODE`. Vẫn giữ nguyên: listener riêng chỉ có route planner, kiểm tra `Host`, `Origin` bắt buộc cho request ghi, chặn `Sec-Fetch-Site: cross-site`, CSP và header an toàn, **toàn bộ giới hạn theo IP và trần hàng đợi LAN (6)**, danh sách file được phép của `/lan/files/*`, app chính không truy cập được từ LAN. Hệ quả cần biết: **bất kỳ máy nào trong cùng mạng đều dùng được** (và thấy kế hoạch của nhau), chỉ bị chặn bởi hạn mức theo IP; tên người tạo do họ tự nhập, không xác thực. Chỉ nên bật trong mạng tin cậy. Muốn quay lại như cũ: `LAN_REQUIRE_CODE=true` (+ `LAN_ACCESS_CODE` hoặc để trống cho server tự sinh) rồi restart; giá trị `LAN_REQUIRE_CODE` lạ/gõ sai được hiểu là `true` (không âm thầm mở trang ra mạng). Cookie client ẩn danh của công cụ Xoá logo (quyền xem việc của chính trình duyệt đó) có `Max-Age` 400 ngày; việc vẫn tự xoá sau 7 ngày.
-
-- Server mở **listener thứ hai** (cùng tiến trình, chung DB) ở `LAN_HOST:LAN_PORT` (mặc định `0.0.0.0:8790`). App chính vẫn chỉ nghe `127.0.0.1:8787`; listener LAN chỉ có trang planner, `/lan/api/*` và `/lan/files/*`, tuyệt đối không có `/api/*`, worker, ai, approve, jobs hay file của dự án thường.
-- Trên web app chính, nút **Chia sẻ LAN** (header) hiện trạng thái, các URL `http://<IP LAN>:8790` để gửi cho đồng nghiệp, số việc LAN trong hàng đợi và số việc render đang chạy/tối đa. Không cần mã: khối hiện "Không cần mã truy cập". Chỉ khi `LAN_REQUIRE_CODE=true` mới hiện mã (ẩn/hiện, sao chép; mã nằm trong `.env`, đổi mã hoặc tắt LAN bằng cách sửa `.env` rồi restart, mọi phiên cũ mất hiệu lực).
-- Khi `LAN_REQUIRE_CODE=true`: đăng nhập bằng mã → cookie phiên 12 giờ (sai mã 10 lần/15 phút). Giới hạn theo IP (luôn áp dụng): sai mã 10 lần/15 phút, 6 lượt phân tích/giờ, 20 kế hoạch/giờ, 60 ảnh/giờ, 30 video tải lên/giờ, 6 lần dựng hoặc render lại bản hoàn chỉnh/giờ, 6 lần xoá logo/giờ; ảnh ≤ 10 MB, tối đa 12 ảnh mỗi kế hoạch. Mọi người thấy kế hoạch của nhau (tên người tạo do họ tự nhập, không xác thực).
-- Không có HTTPS: trang chạy HTTP trong LAN, nên chỉ dùng trong mạng tin cậy; nếu đòi mã thì mã truy cập đi qua mạng không mã hóa. Nút sao chép dùng phương án dự phòng vì trình duyệt không cho `navigator.clipboard` ở HTTP.
-- Kế hoạch LAN là dự án thường (`projects.source='lan'`, nhãn **LAN · tên người tạo** trên web). Chủ máy xem và sản xuất từ đó như dự án khác; cảnh đang có job của chủ máy thì LAN không tải storyboard lên được. Mã cảnh luôn là `C1, C2, …` (server chuẩn hóa `scene_01` → `C1` cho dự án LAN). Dự án LAN không bao giờ tự tạo job storyboard khi phân tích xong, kể cả khi `REQUIRE_PROMPT_APPROVAL=false`.
-- Worker chưa chạy: trang hiện "Máy chủ AI chưa sẵn sàng, yêu cầu đang xếp hàng" và job chờ như mọi job `analyze_brief`. Xem thêm mục **Hàng đợi** bên dưới (vị trí chờ AI và chờ render).
-- Log không ghi mã truy cập (nếu có), cookie hay nội dung ảnh (đăng nhập sai chỉ ghi IP). Lỗi mở cổng LAN (cổng bận) được ghi log và hiện ở nút Chia sẻ LAN; app chính vẫn chạy.
-- Dev: `LAN_ENABLED=true npm run dev` rồi mở `http://localhost:5173/planner.html` (Vite proxy `/lan` → `LAN_PORT`). Kiểm thử thủ công dùng ROOT/DB/cổng tạm (`AUTOVIDEO_ENV_FILE`, `ROOT_DIR`, `DB_PATH`, `PORT`, `LAN_PORT`), không dùng `.env`/`data/` thật.
 ### LAN: video cảnh, bản hoàn chỉnh và công cụ Xoá logo Veo (22/10/2026)
 
 Dùng `FINAL_RENDERER`, `SHOTCUT_MCP_*`, `WATERMARK_REMOVER`, `GWR_CLI`, `RENDER_CONCURRENCY` (xem `server/API.md` mục 2); cần managed worker nhận `edit_plan` (đã có trong `WORKER_TYPES` mặc định).
@@ -209,10 +75,14 @@ Tải video dài (livestream, podcast, review… tiếng Việt) lên mục "C�
 - **Triển khai**: migration `014_clips.sql` thêm `projects.kind/stt_terms`, dựng lại bảng `jobs` (loại `clip_plan`, đúng quy trình 003; đã thử trên bản sao DB thật: `foreign_key_check` rỗng, `integrity_check=ok`, số dòng mọi bảng và `sqlite_sequence` của `jobs` không đổi) và tạo `source_videos`, `clips`, `clip_cuts`. Server tự sao lưu DB trước khi migrate (`data/backup/`). **Rollback**: code cũ không biết loại `clip_plan`/bảng mới nhưng đọc được DB đã lên 014; dự án cắt clip sẽ hiện lẫn trong danh sách dự án (không có `kind`) — restore bản sao lưu DB tương ứng trước khi quay lại. Triển khai khi máy rảnh (không có render/job đang chạy).
 - **Quy ước chung**: thời gian cắt không bao giờ lấy từ giây do AI viết (AI chỉ trả ID câu; server tự bám khoảng lặng: −0.15 s đầu, +0.30 s cuối, không cắt vào từ); phụ đề lấy chữ ASR (chữ thường, số đọc thành chữ) hoặc bản đã khôi phục dấu câu/sửa tay.
 
-## Kiểm chứng và rollback
+## Tự chọn AI và xử lý giới hạn model
 
-`npm test`, `npm run typecheck`, `npm run build`.
+Cài đặt AI chỉ yêu cầu kiểm tra/lưu API key. App tự chọn model phù hợp theo công việc; sửa lời thoại ưu tiên model nhẹ. `AI_MODEL` và `AI_FAST_MODEL` vẫn là ưu tiên dành cho người quản trị, không phải lựa chọn bắt buộc của người dùng.
 
-`npm run ai:smoke -- <id>` chạy một job phân tích inference thật trên API/DB tạm riêng (không tạo ảnh/video). Thêm `--fallback` để giả lập gateway A trả quota rồi chuyển sang account được chọn để inference thật. Lệnh này sử dụng quota AI; không nằm trong bộ test mặc định. Test gateway dùng HTTP local giả lập quota; không sử dụng token/tài khoản thật. Xem `docs/ai/VALIDATION.md` để phân biệt phần đã kiểm tra với phần còn cần chạy thật.
+Router trực tiếp (`server/src/lib/ai-routing.ts`) chỉ dùng model dự phòng có trong `/models` và registry năng lực. Mỗi thao tác thử tối đa 3 model khi nhận 429, 503 báo quota/rate limit hoặc lỗi xác nhận model không tồn tại. Model bị từ chối được tạm bỏ qua theo `Retry-After`, mặc định 60 giây. Cooldown trong bộ nhớ, tách theo URL/key và đặt lại khi đổi key hoặc khởi động lại. Hết model phù hợp thì giữ job và tự thử lại theo `retry_at`; không tạo job thay thế. Nếu toàn bộ dịch vụ hết hạn mức, vẫn cần chờ nhà cung cấp cấp lại hạn mức.
 
-Rollback: `docs/ai/ROLLBACK.md`. Không chạy code baseline trên DB đã migrate mà chưa restore backup tương ứng.
+Không chuyển model ngay khi lỗi kết nối/timeout/phản hồi thiếu, vì không xác định được yêu cầu trước đã xử lý chưa. Sai API key cần nhập lại trong Cài đặt. Không lấy được danh sách model thì chỉ dùng ưu tiên cấu hình. Sửa lời thoại không thành công sẽ giữ bản nhận dạng gốc. `ai_attempts` và kết quả inference ghi model thực tế; snapshot HTML ghi ưu tiên lúc tạo phiên bản. Registry được dùng chung với Video HTML; muốn thêm ID mới cần xác nhận năng lực văn bản/ảnh/code trước.
+
+## Kiểm chứng
+
+`npm test`, `npm run typecheck`, `npm run build`. Đóng gói: `npm run build:app` (cần Rust + Inno Setup 6).

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../api/errors';
 import { Icon } from '../components/Icon';
+import { ActionTag } from '../components/ActionTag';
 import { InlineError } from '../components/States';
 import { fmtRelative } from '../lib/format';
 import { checkImageFiles } from '../lib/refFiles';
@@ -104,7 +105,7 @@ export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { 
   ];
 
   const storyboardButton = (
-    <Btn size="sm" variant={sb ? undefined : 'primary'} icon="upload" loading={upload.pending} disabledReason={upload.reason} onClick={upload.pick}>
+    <Btn size="sm" variant={sb ? undefined : 'primary'} icon="upload" actionKind="local" loading={upload.pending} disabledReason={upload.reason} onClick={upload.pick}>
       {sb ? 'Đổi ảnh' : 'Chọn ảnh storyboard…'}
     </Btn>
   );
@@ -129,7 +130,7 @@ export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { 
         <section className="av-card ws-card now" aria-label="Bước 1: khung hình mở đầu">
           <div className="ws-card-head">
             <h3>Bước 1 · Tạo khung hình mở đầu trên ChatGPT</h3>
-            <LinkBtn href="https://chatgpt.com" target="_blank" rel="noreferrer" icon="link">Mở ChatGPT</LinkBtn>
+            <LinkBtn href="https://chatgpt.com" target="_blank" rel="noreferrer" icon="link">Mở ChatGPT <ActionTag kind="external" /></LinkBtn>
             <CopyBtn text={step1.message} label="Sao chép tin nhắn" primary />
           </div>
           <CodeBlock text={step1.message} label="Tin nhắn cho ChatGPT" />
@@ -150,7 +151,6 @@ export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { 
               {sb && <span style={{ fontSize: 12.5 }}>{sb.file_name} · tải lên {fmtRelative(sb.uploaded_at, now)}</span>}
               {sb?.stale && <span className="ws-warn">Prompt cảnh đã đổi sau khi bạn tải ảnh này, hãy kiểm tra lại.</span>}
               <div>{storyboardButton}</div>
-              {upload.reason && <span className="av-muted" style={{ fontSize: 12 }}>{upload.reason}</span>}
             </div>
           </div>
           {upload.error && <InlineError>{upload.error}</InlineError>}
@@ -180,8 +180,8 @@ export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { 
         <section className="av-card ws-card now" aria-label="Bước 2: video trên Google Flow">
           <div className="ws-card-head">
             <h3>Bước 2 · Tạo video trên Google Flow</h3>
-            <LinkBtn href="https://flow.google.com" target="_blank" rel="noreferrer" icon="link">Mở Google Flow</LinkBtn>
-            <CopyBtn text={step2.prompt} label="Sao chép prompt" primary />
+            <LinkBtn href="https://flow.google.com" target="_blank" rel="noreferrer" icon="link">Mở Google Flow <ActionTag kind="external" /></LinkBtn>
+            <span><CopyBtn text={step2.prompt} label="Sao chép prompt" primary /><p className="plan-locked">App không tự tạo video. Tạo trên Flow, tải video về máy rồi thêm ở Bước 3.</p></span>
           </div>
           <CodeBlock text={step2.prompt} label="Prompt Google Flow" />
           {step2.warnings.map((w) => <p key={w} className="ws-warn">{w}</p>)}

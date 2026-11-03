@@ -29,19 +29,19 @@ export function Modal({ open, onClose, title, children, footer, wide }: ModalPro
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className={`m-auto w-[calc(100vw-24px)] ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[calc(100dvh-24px)] rounded-xl border border-line-strong bg-surface p-0 shadow-2xl`}
+      className={`av-modal m-auto w-[calc(100vw-24px)] ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[calc(100dvh-24px)] rounded-xl border border-line-strong bg-surface p-0 shadow-2xl`}
       aria-label={title}
     >
       {open && (
         <div className="flex max-h-[calc(100dvh-24px)] flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+          <div className="av-modal-head flex items-center justify-between gap-3 border-b border-line px-4 py-3">
             <h2 className="text-base font-semibold">{title}</h2>
             <button type="button" onClick={onClose} aria-label="Đóng" className="rounded p-1 text-muted hover:bg-surface-3 hover:text-fg">
               <Icon name="x" />
             </button>
           </div>
-          <div className="overflow-y-auto px-4 py-4">{children}</div>
-          {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-surface-2 px-4 py-3">{footer}</div>}
+          <div className="av-modal-body overflow-y-auto px-4 py-4">{children}</div>
+          {footer && <div className="av-modal-foot flex flex-wrap items-center justify-end gap-2 border-t border-line bg-surface-2 px-4 py-3">{footer}</div>}
         </div>
       )}
     </dialog>

@@ -280,7 +280,7 @@ describe('tải video nguồn và nhận dạng lời nói (STT giả)', () => {
       expect(src.error).toMatch(/Chưa cấu hình nhận dạng lời nói/);
       const t = await c.post(`/api/sources/${src.id}/transcribe`);
       expect([t.status, t.body.error.code]).toEqual([409, 'STT_NOT_CONFIGURED']);
-      expect((await c.get('/api/clip-status')).body.stt).toEqual({ configured: false });
+      expect((await c.get('/api/clip-status')).body.stt).toMatchObject({ configured: false, ready: false });
     } finally {
       await e2.close();
     }

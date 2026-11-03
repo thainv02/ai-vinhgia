@@ -1,0 +1,13 @@
+{
+  "id": "product",
+  "label": "Giới thiệu sản phẩm",
+  "description": "Hai cảnh: hình sản phẩm + tiêu đề, rồi giá và nút kêu gọi mua hàng. Thay khối hình bằng ảnh sản phẩm của bạn.",
+  "aspects": ["9:16", "16:9", "1:1"],
+  "variables": [
+    { "id": "headline", "type": "text", "label": "Tiêu đề", "value": "Sản phẩm mới, chất lượng đáng tin", "target": "headline", "maxLength": 70 },
+    { "id": "sub", "type": "text", "label": "Phụ đề", "value": "Thiết kế tinh gọn cho mỗi ngày", "target": "sub", "maxLength": 80 },
+    { "id": "price", "type": "text", "label": "Giá", "value": "199.000đ", "target": "price", "maxLength": 24 },
+    { "id": "cta", "type": "text", "label": "Nút kêu gọi", "value": "Mua ngay hôm nay", "target": "cta", "maxLength": 40 },
+    { "id": "brand", "type": "color", "label": "Màu thương hiệu", "value": "#ff5a3c" }
+  ]
+}

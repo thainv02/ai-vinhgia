@@ -4,8 +4,8 @@ import { AppError, notFound } from '../lib/errors.js';
 import { intParam } from '../lib/validate.js';
 import { registerClipEndpoints, type LimitHandle, type LimitKind } from '../services/clips/http.js';
 import { lanClipProject, listLanClipProjects } from '../services/clips/lan.js';
-import { ownsLanPlan } from '../services/lan-plans.js';
-import { deleteProject } from '../services/trash.js';
+import { canDeleteFromPlanner } from '../services/lan-plans.js';
+import { deleteFromPlanner } from '../services/trash.js';
 import { ensureClientHash, peekClientHash } from './client-id.js';
 import { LAN_RATE, beginClipUpload, tooMany, type LanLimiters } from './limits.js';
 import { lanIp } from './security.js';
@@ -49,15 +49,16 @@ export function registerLanClipRoutes(app: FastifyInstance, ctx: AppContext, L: 
   // Danh sách dự án cắt clip của LAN (mọi người trong LAN đều thấy; xoá theo cookie người tạo)
   app.get('/lan/api/clip-projects', async (req) => listLanClipProjects(ctx, { lan: true, clientHash: peekClientHash(req) }));
 
-  // Xoá = chuyển vào thùng rác của chủ máy (30 ngày). CHỈ trình duyệt đã tạo dự án; cùng hạn mức với xoá kế hoạch (10/giờ/IP).
+  // Xoá như kế hoạch (xem DELETE /lan/api/plans/:id): bản desktop xoá vĩnh viễn ngay; trang LAN vào thùng rác của chủ máy, CHỈ trình duyệt đã tạo
+  // dự án, cùng hạn mức với xoá kế hoạch (10/giờ/IP). File đang bị chương trình khác mở → 409 FILE_IN_USE.
   app.delete('/lan/api/clip-projects/:id', async (req, reply) => {
     const ip = lanIp(req);
     const lim = L.deletePlan.check(ip);
     if (!lim.allowed) throw tooMany(reply, `Mỗi người chỉ được xoá tối đa ${LAN_RATE.deletePlan.max} dự án mỗi giờ.`, lim.retryAfterMs);
     const p = lanClipProject(ctx, intParam((req.params as { id: string }).id));
     L.deletePlan.record(ip);
-    if (!ownsLanPlan(p, peekClientHash(req))) throw new AppError('NOT_PLAN_OWNER', 'Chỉ người tạo (trình duyệt đã tạo dự án) mới xoá được; nhờ chủ máy xoá', 403);
-    deleteProject(ctx, p.id, { by: 'lan' });
-    return { ok: true, id: p.id, restorable_days: ctx.config.trashRetentionDays };
+    if (!canDeleteFromPlanner(ctx, p, peekClientHash(req))) throw new AppError('NOT_PLAN_OWNER', 'Chỉ người tạo (trình duyệt đã tạo dự án) mới xoá được; nhờ chủ máy xoá', 403);
+    const r = await deleteFromPlanner(ctx, p.id);
+    return { ok: true, id: p.id, purged: r.purged, restorable_days: r.purged ? 0 : ctx.config.trashRetentionDays };
   });
 }

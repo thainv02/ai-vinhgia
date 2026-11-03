@@ -342,7 +342,7 @@ export function ColorMatchSection({ fc, api, value, onChange, disabled }: { fc: 
         {lutOpen && (
           <div className="mt-1.5 space-y-2">
             <p className="text-xs text-muted">Dùng look có sẵn của thương hiệu: file LUT 3D (.cube, tối đa 5MB, cỡ 2–65). Server đọc lại và lưu bản chuẩn hoá, không dùng file gốc. Cường độ ở trên cũng áp dụng cho LUT.</p>
-            <Button size="sm" icon={<Icon name="upload" size={14} />} disabled={busy} loading={upload.isPending && !!upload.variables && /\.cube$/i.test(upload.variables.name)} onClick={() => lutInputRef.current?.click()}>
+            <Button size="sm" actionKind="local" icon={<Icon name="upload" size={14} />} disabled={busy} loading={upload.isPending && !!upload.variables && /\.cube$/i.test(upload.variables.name)} onClick={() => lutInputRef.current?.click()}>
               Chọn file .cube
             </Button>
             <input

@@ -6,6 +6,7 @@ import { FINAL_STATUS } from '../lib/status';
 import { buttonClass } from './Button';
 import { Icon } from './Icon';
 import { Badge } from './StatusBadge';
+import { ActionTag } from './ActionTag';
 
 /** Một phiên bản có thuộc chuỗi góp ý / chỉnh màu không (có bản cha), hoặc là bản gốc đã có phiên bản con. */
 export const hasRevisions = (list: Pick<FinalCut, 'parent_id'>[]): boolean => list.some((c) => !!c.parent_id);
@@ -98,6 +99,7 @@ export function VersionThread({
               </Badge>
               <span className="text-xs text-muted">{fmtDateTime(fc.created_at)}</span>
               {sel && <span className="rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-semibold text-ink-fg">Đang xem</span>}
+              {fc.outdated && <span className="av-badge av-badge-warn plan-old">Cũ vì đổi video</span>}
             </div>
 
             <div className="space-y-1.5">
@@ -162,12 +164,12 @@ export function VersionThread({
               )}
               {retryGrade && (
                 <button type="button" disabled={regradePending} className={buttonClass('primary', 'sm')} onClick={() => onRegrade!(fc)}>
-                  <Icon name="refresh" size={14} /> Thử chỉnh màu lại
+                  <Icon name="refresh" size={14} /> Thử chỉnh màu lại <ActionTag kind="local" />
                 </button>
               )}
               {retryFeedback && (
                 <button type="button" className={buttonClass('secondary', 'sm')} onClick={() => onFeedbackOn(fc.parent_id!, fc.feedback ?? undefined)}>
-                  <Icon name="refresh" size={14} /> Gửi lại góp ý
+                  <Icon name="refresh" size={14} /> Gửi lại góp ý <ActionTag kind="ai" />
                 </button>
               )}
             </div>

@@ -26,8 +26,10 @@ export function computeWatermarkStatus(config: Pick<Config, 'watermarkRemover' |
   if (!path.isAbsolute(cli)) return Promise.resolve(off('GWR_CLI phải là đường dẫn tuyệt đối'));
   if (!fs.existsSync(cli)) return Promise.resolve(off(`Không thấy tool xoá logo Veo tại ${cli}`));
   return new Promise((resolve) => {
-    execFile(process.execPath, [cli, '--help'], { timeout: 30_000, cwd: toolCwd(cli), maxBuffer: 1024 * 1024 }, (err) => {
-      if (err) resolve(off(`Tool xoá logo Veo không chạy được (${String(err.message).split('\n')[0]!.slice(0, 160)})`));
+    execFile(process.execPath, [cli, '--help'], { timeout: 30_000, cwd: toolCwd(cli), maxBuffer: 1024 * 1024, windowsHide: true }, (err, _stdout, stderr) => {
+      // tools/gwr báo lý do (vd không có Edge/Chrome) ở dòng cuối stderr; không có thì lấy dòng đầu của lỗi
+      const why = String(stderr ?? '').trim().split('\n').pop() || String(err?.message ?? '').split('\n')[0]!;
+      if (err) resolve(off(`Tool xoá logo Veo không chạy được (${why.slice(0, 160)})`));
       else resolve({ mode: 'auto', active: true, reason: 'Tự động: tool xoá logo Veo sẵn sàng', cli });
     });
   });

@@ -19,7 +19,7 @@ export const SCENE_STATUSES = [
 ] as const;
 export type SceneStatus = (typeof SCENE_STATUSES)[number];
 
-export type JobType = 'analyze_brief' | 'storyboard' | 'video' | 'revise_prompt' | 'edit_plan' | 'clip_plan';
+export type JobType = 'analyze_brief' | 'storyboard' | 'video' | 'revise_prompt' | 'edit_plan' | 'clip_plan' | 'html_compose';
 export type JobStatus = 'queued' | 'claimed' | 'running' | 'done' | 'failed' | 'cancelled';
 export type AssetKind = 'storyboard' | 'video' | 'grid';
 export type Verdict = 'pass' | 'fix_in_edit' | 'redo';
@@ -199,7 +199,7 @@ export interface ProjectSummary {
   credit_per_video: number;
   status: ProjectStatus;
   /** 'clips': dự án cắt clip từ video dài (mở ở /clips/:id). Vắng = 'scenes'. */
-  kind?: 'scenes' | 'clips';
+  kind?: 'scenes' | 'clips' | 'html';
   /** 'lan': kế hoạch do người dùng LAN tạo qua trang planner. Vắng = 'app'. */
   source?: 'app' | 'lan';
   /** Tên người tạo do người dùng LAN tự nhập (không xác thực). */
@@ -566,25 +566,4 @@ export interface SseEventMap {
   'project.deleted': { project_id: number; name: string; deleted_by: 'app' | 'lan' };
   'project.restored': { project: ProjectSummary };
   'project.purged': { project_id: number };
-}
-
-/** `GET /api/lan`: trạng thái chia sẻ qua LAN (chỉ app chính). */
-export interface LanInfo {
-  enabled: boolean;
-  listening: boolean;
-  error: string | null;
-  host: string;
-  port: number;
-  urls: string[];
-  /** Trang planner có đòi mã truy cập không (`LAN_REQUIRE_CODE`, mặc định không). Không có ở server cũ (coi là có mã). */
-  require_code?: boolean;
-  /** Chỉ có khi `require_code`. */
-  access_code: string | null;
-  plan_count: number;
-  /** Việc xoá logo (công cụ độc lập của trang planner) tạo trong 24 giờ qua. */
-  tool_jobs_24h: number;
-  /** Việc từ LAN đang trong hàng đợi (bản dựng chờ AI/đang render + việc công cụ) / trần toàn cục. */
-  queue: { cuts: number; tools: number; total: number; cap: number };
-  /** Hàng đợi render chung (bản dựng + xoá logo): đang chạy / đang chờ / số việc chạy cùng lúc (`RENDER_CONCURRENCY`). */
-  render?: { running_count: number; waiting_count: number; concurrency: number } | null;
 }

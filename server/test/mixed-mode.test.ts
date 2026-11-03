@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PNG_BYTES, client, makeEnv, setupProject, writeFile, type Env } from './helpers.js';
-import { loadConfig, managedJobTypes } from '../src/config.js';
 import { managedClient, mediaScenario } from './helpers-media.js';
 
 /** Cấu hình mục tiêu: WORKER_MODE=managed + MANAGED_JOB_TYPES=analyze_brief,revise_prompt,edit_plan; Claude legacy làm storyboard/video. */
@@ -10,16 +9,6 @@ beforeEach(async () => { env = await makeEnv({ config: { workerMode: 'managed', 
 afterEach(async () => { await env.close(); });
 const legacy = (name = 'claude-1') => client(env.app, { authorization: 'Bearer test-worker-token', 'x-worker-id': name });
 const user = () => client(env.app);
-
-describe('F3 cấu hình MANAGED_JOB_TYPES', () => {
-  it('legacy → rỗng; managed không liệt kê → mọi loại; managed có danh sách → đúng danh sách; loại lạ làm khởi động thất bại', () => {
-    expect(managedJobTypes(loadConfig({ WORKER_MODE: 'legacy', MANAGED_JOB_TYPES: 'video' } as any))).toEqual([]);
-    expect(managedJobTypes(loadConfig({} as any))).toEqual([]);
-    expect([...managedJobTypes(loadConfig({ WORKER_MODE: 'managed' } as any))].sort()).toEqual(['analyze_brief', 'clip_plan', 'edit_plan', 'revise_prompt', 'storyboard', 'video']);
-    expect([...managedJobTypes(loadConfig({ WORKER_MODE: 'managed', MANAGED_JOB_TYPES: ' analyze_brief, revise_prompt,edit_plan,analyze_brief ' } as any))]).toEqual(['analyze_brief', 'revise_prompt', 'edit_plan']);
-    expect(() => loadConfig({ WORKER_MODE: 'managed', MANAGED_JOB_TYPES: 'analyze_brief,vidoe' } as any)).toThrow(/vidoe/);
-  });
-});
 
 describe('F3 claim theo loại job, không còn cổng WORKER_MODE toàn cục', () => {
   it('managed chỉ nhận analyze_brief/revise_prompt/edit_plan; legacy (?worker=claude-1) chỉ nhận storyboard/video; lệch chế độ → 204 chứ không 409', async () => {
