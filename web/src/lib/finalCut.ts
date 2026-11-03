@@ -93,7 +93,7 @@ export function aiQueueNote(q: AiQueue | null | undefined, workerOnline?: boolea
   }
   const pos = q.position ?? q.ahead + 1;
   const title = `Đang xếp hàng chờ AI (vị trí ${pos})`;
-  if (q.worker.paused) return { title, detail: 'Hàng đợi AI đang tạm dừng: việc chạy tiếp khi chủ máy mở lại.', warn: true, waiting: true };
+  if (q.worker.paused) return { title, detail: 'Hàng đợi AI đang tạm dừng: việc chạy tiếp khi hàng đợi được mở lại.', warn: true, waiting: true };
   if (!q.worker.online) return { title, detail: 'Máy chủ AI chưa sẵn sàng: việc chạy khi máy chủ mở lại.', warn: true, waiting: true };
   if (q.wait_reason === 'ai_quota') return { title, detail: 'Tài khoản AI đang hết hạn mức: việc tự thử lại sau.', warn: true, waiting: true };
   if (q.running && !q.running.own) {
@@ -116,7 +116,7 @@ export function renderQueueNote(fc: Pick<FinalCut, 'status' | 'stage' | 'queue_s
   if (!isWaitingToRender(fc)) return null;
   return {
     title: renderQueueTitle(fc.stage === 'clean' ? 'xoá logo' : fc.stage === 'grade' ? 'chỉnh màu' : 'render', { position: fc.queue_position, running_count: fc.running_count, concurrency: fc.concurrency }),
-    detail: 'Có chỗ trống là tự bắt đầu, không cần làm gì thêm. Việc của chủ máy được xếp trước việc từ LAN.',
+    detail: 'Có chỗ trống là tự bắt đầu, không cần làm gì thêm.',
     warn: false,
     waiting: true,
   };

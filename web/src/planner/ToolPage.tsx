@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, errorMessage } from '../api/errors';
 import { Icon } from '../components/Icon';
+import { ActionTag, DisabledReason } from '../components/ActionTag';
 import { EmptyState, ErrorState, InlineError, Skeleton } from '../components/States';
 import { fmtSeconds } from '../lib/finalCut';
 import { fmtDateTime } from '../lib/format';
@@ -37,9 +38,9 @@ function JobRow({ job, onChanged, onPreview }: { job: ToolJob; onChanged: () => 
   return (
     <tr>
       <td>
-        <strong title={job.original_name}>{job.original_name}</strong>
-        {dims && <div className="av-muted" style={{ fontSize: 12, marginTop: 3 }}>{dims}</div>}
+        <strong className="av-mono" title={job.original_name}>{job.original_name}</strong>
       </td>
+      <td className="av-muted">{dims || '—'}</td>
       <td>{job.input ? fmtSeconds(job.input.duration_s) : '—'}</td>
       <td>
         {job.status === 'processing' ? (
@@ -66,7 +67,7 @@ function JobRow({ job, onChanged, onPreview }: { job: ToolJob; onChanged: () => 
             <button type="button" className="av-btn av-btn-sm" onClick={() => onPreview(job)}>
               Xem
             </button>{' '}
-            <a href={job.output.url} download={download} className="av-btn av-btn-sm av-btn-primary">
+            <a href={job.output.url} download={download} className="av-btn av-btn-sm">
               Tải về
             </a>
           </>
@@ -81,6 +82,7 @@ function JobRow({ job, onChanged, onPreview }: { job: ToolJob; onChanged: () => 
             Thử lại
           </button>
         )}
+        {job.status === 'expired' && <span className="av-muted text-xs">Đã hết hạn lưu</span>}
       </td>
     </tr>
   );
@@ -151,10 +153,9 @@ function DropCard({ status, onCreated }: { status: ToolStatus; onCreated: () => 
   const pct = up && up.total > 0 ? (up.loaded / up.total) * 100 : 0;
 
   return (
-    <div className="av-card" style={{ padding: 8 }}>
+    <div className="av-card" style={{ padding: 18 }}>
       <div
-        className={`av-drop ${over ? 'over' : ''}`}
-        style={{ padding: '34px 24px', gap: 10 }}
+        className={`av-drop av-tool-drop ${over ? 'over' : ''}`}
         onDragOver={(e) => {
           if (!blocked) {
             e.preventDefault();
@@ -171,15 +172,16 @@ function DropCard({ status, onCreated }: { status: ToolStatus; onCreated: () => 
         <span aria-hidden="true" className="grid size-11 place-items-center rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--muted)' }}>
           <Icon name="upload" size={22} />
         </span>
-        <span className="text-[15px] font-bold">Kéo một hoặc nhiều video vào đây</span>
-        <span className="av-muted text-[12.5px]">
+        <div className="av-tool-drop-copy"><span className="text-[13px] font-bold">Kéo một hoặc nhiều video Veo vào đây</span>
+        <span className="av-muted text-[12px]">
           mp4 hoặc mov, mỗi video {r.min_s}–{r.max_s} giây, tối đa {fmtMB(r.max_bytes)}
-        </span>
-        <button type="button" className="av-btn av-btn-primary" style={{ marginTop: 4 }} disabled={!!blocked} title={blocked ?? undefined} onClick={() => input.current?.click()}>
-          Chọn video…
+          {' · '}kết quả lưu {status.retention_days} ngày
+        </span></div>
+        <button type="button" className="av-btn" disabled={!!blocked} title={blocked ?? undefined} onClick={() => input.current?.click()}>
+          Chọn file…
         </button>
-        {blocked && !up && <span className="text-xs" style={{ color: 'var(--warn-fg)' }}>{blocked}</span>}
       </div>
+      {blocked && !up && <DisabledReason>{blocked}</DisabledReason>}
       <input
         ref={input}
         type="file"
@@ -198,18 +200,19 @@ function DropCard({ status, onCreated }: { status: ToolStatus; onCreated: () => 
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="min-w-0 truncate font-medium">{up.name}</span>
             <span className="av-muted shrink-0">
-              {up.total > 0 && up.loaded >= up.total ? 'Đang kiểm tra video…' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}
+              {up.total > 0 && up.loaded >= up.total ? 'Đang kiểm tra video… chưa hoàn tất' : `${Math.round(pct)}% · ${fmtMB(up.loaded)}/${fmtMB(up.total)}`}
               {up.left > 0 ? ` · còn ${up.left} video` : ''}
             </span>
           </div>
-          <div className="av-bar">
+          <div className={`av-bar ${up.loaded >= up.total ? 'av-upload-checking' : ''}`}>
             <i style={{ width: `${Math.max(2, pct)}%` }} />
           </div>
           <div>
             <button type="button" className="av-btn av-btn-sm" onClick={() => { cancelled.current = true; abortRef.current?.(); }}>
-              Huỷ tải lên
+              Huỷ phần chưa tải
             </button>
           </div>
+          <span className="av-muted text-xs">Huỷ tải lên không huỷ các video đã vào hàng đợi bên dưới — mỗi việc có nút Huỷ riêng.</span>
         </div>
       )}
       {problems.length > 0 && (
@@ -245,11 +248,13 @@ export function ToolPage() {
       <header className="av-header">
         <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1">
           <h1>Xoá logo Veo</h1>
-          <p className="av-muted text-[13px]">Xoá logo khỏi bất kỳ video Veo nào, không cần kế hoạch.</p>
+          <p className="av-page-intro">Công cụ độc lập — không cần kế hoạch hay dự án. Bản hoàn chỉnh có luồng xoá logo riêng, không cần tải lại vào đây.</p>
         </div>
+        <ActionTag kind="local" />
       </header>
 
-      <section className="av-page" style={{ gap: 20 }}>
+      <section className="av-page av-tool-layout">
+        <div className="av-tool-main">
         {status.isLoading ? (
           <Skeleton className="h-40" />
         ) : status.error || !status.data ? (
@@ -259,7 +264,7 @@ export function ToolPage() {
         )}
 
         <div className="flex items-center gap-3">
-          <h2 className="flex-1 text-[15px] font-bold">Việc xoá logo</h2>
+          <div className="flex-1"><h2 className="text-[15px] font-bold">Việc gần đây</h2><span className="av-muted text-xs">30 việc gần nhất</span></div>
           {render && (
             <span className="av-muted text-[12.5px]" aria-live="polite">
               {render.running_count} đang chạy · {render.waiting_count} chờ · tối đa {render.concurrency} việc cùng lúc
@@ -279,11 +284,12 @@ export function ToolPage() {
               <thead>
                 <tr>
                   <th>Video</th>
+                  <th>Kích thước</th>
                   <th>Thời lượng</th>
                   <th>Trạng thái</th>
                   <th>Thời gian</th>
                   <th>
-                    <span className="av-sr">Thao tác</span>
+                    Thao tác
                   </th>
                 </tr>
               </thead>
@@ -296,17 +302,21 @@ export function ToolPage() {
           </div>
         )}
 
-        {preview?.output && (
-          <div className="av-card flex flex-col gap-2 p-3" style={{ alignSelf: 'flex-start' }}>
+        </div>
+        <aside className="av-card av-tool-preview" aria-label="Xem kết quả">
+          <h2 className="text-[15px] font-bold">Kết quả</h2>
+          {preview?.output ? <>
             <div className="flex items-center gap-2">
-              <strong className="min-w-0 flex-1 truncate text-[13px]">{preview.original_name}</strong>
+              <strong className="av-mono min-w-0 flex-1 text-[12px]">{preview.original_name}</strong>
               <button type="button" className="av-btn av-btn-sm av-btn-ghost" aria-label="Đóng xem trước" onClick={() => setPreview(null)}>
                 <Icon name="x" size={14} />
               </button>
             </div>
-            <video src={`${preview.output.url}#t=0.5`} controls autoPlay playsInline aria-label={`Bản đã xoá logo: ${preview.original_name}`} style={{ maxHeight: 420, maxWidth: '100%', background: 'var(--stage)', borderRadius: 8 }} />
-          </div>
-        )}
+            <video src={`${preview.output.url}#t=0.5`} controls autoPlay playsInline aria-label={`Bản đã xoá logo: ${preview.original_name}`} />
+            <a className="av-btn av-btn-primary" href={preview.output.url} download={`${preview.original_name.replace(/\.[^.]+$/, '')}_sach.mp4`}><Icon name="download" />Tải về</a>
+            <span className="av-muted text-xs">Lưu đến {fmtDateTime(preview.expires_at)}</span>
+          </> : <div className="av-tool-empty-preview"><Icon name="play" size={28} /><p>Chọn «Xem» ở một video đã xử lý để kiểm tra kết quả.</p></div>}
+        </aside>
       </section>
     </>
   );

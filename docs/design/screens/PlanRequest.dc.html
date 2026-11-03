@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Sửa yêu cầu và phân tích lại</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app">
+<div class="row">
+<nav class="side" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav on" href="Main.dc.html" title="Kế hoạch video" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" tabindex="-1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="m16 9-3 3 3 3"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Main.dc.html">Kế hoạch video</a><span>/</span><span>Cao gan Actiso – 30 giây</span></nav>
+      <div class="hs"><h1 class="h1">Cao gan Actiso – 30 giây</h1><span class="bd er">Phân tích lỗi</span></div>
+    </div>
+  </header>
+  <nav class="tabs" aria-label="Phần của kế hoạch"><a class="tab" href="#">Cảnh <span class="n">5</span></a><a class="tab" href="#">Bản hoàn chỉnh</a><a class="tab" href="#">Ảnh tham chiếu <span class="n">3</span></a><a class="tab on" href="PlanRequest.dc.html">Yêu cầu</a></nav>
+  <section class="cnt">
+    <div class="note er"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span><b>Lần phân tích lúc 09:12 bị lỗi:</b> hết thời gian chờ dịch vụ AI. Các cảnh đang thấy thuộc <b>lần phân tích trước (29/10 17:40)</b>.</span></div>
+    <div class="card pad vs"><div class="hs"><span class="h2">Yêu cầu kịch bản</span><span class="sp"></span><button class="btn sm">Sao chép</button></div><p class="s" style="line-height: 1.6">Video dọc 30 giây cho Cao gan Actiso…</p></div>
+  </section>
+</main>
+</div>
+<div class="ov">
+  <div class="scrim"></div>
+  <div class="dlg" role="dialog" aria-labelledby="rq" style="width: 760px">
+    <div class="dh"><div class="vs" style="gap: 2px"><h2 class="h2" id="rq">Sửa yêu cầu &amp; phân tích lại</h2><span class="hint">Cao gan Actiso – 30 giây</span></div><span class="sp"></span><button class="btn sm ic g" aria-label="Đóng"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+    <div class="db">
+      <label class="lbl">Yêu cầu kịch bản <span class="req" style="display: inline">*</span>
+        <textarea class="inp" rows="7">Video dọc 30 giây cho Cao gan Actiso, đối tượng nam 35–50 tuổi hay tiếp khách. Thông điệp: thói quen chăm sóc mỗi ngày. 5 cảnh: (1) bữa tiệc công ty, (2) sáng hôm sau ở văn phòng, (3) cận cảnh hộp sản phẩm, (4) pha nước uống, (5) logo + nơi mua.</textarea>
+        <span class="hint">Không được để trống khi phân tích.</span></label>
+      <label class="lbl">Phong cách giữ nhất quán
+        <textarea class="inp" rows="3">Tông xanh lá nhạt và trắng, ánh sáng tự nhiên, nhân vật nam áo vest xám.</textarea></label>
+      <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span>AI sẽ viết lại danh sách cảnh và prompt. <b>Storyboard và video đã tải không tự cập nhật</b> — cảnh nào có nội dung thay đổi sẽ hiện nhãn "Cần kiểm tra lại".</span></div>
+    </div>
+    <div class="df" style="justify-content: space-between">
+      <span class="xs mut">Vào hàng đợi AI · hiện có 1 việc chờ</span>
+      <div class="hs"><button class="btn">Huỷ</button><button class="btn p">Phân tích lại <span class="tag ai">AI</span></button></div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

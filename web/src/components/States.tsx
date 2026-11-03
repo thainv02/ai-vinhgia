@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ApiError, errorMessage } from '../api/errors';
-import { Button, Spinner } from './Button';
+import { Button, Spinner, buttonClass } from './Button';
 import { Icon, type IconName } from './Icon';
 
 export function LoadingBlock({ label = 'Đang tải...' }: { label?: string }) {
@@ -18,7 +18,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
 
 export function EmptyState({ icon = 'film', title, children, action }: { icon?: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-2 px-4 py-14 text-center">
+    <div className="av-empty-state mx-auto flex max-w-md flex-col items-center gap-2 px-4 py-14 text-center">
       <div className="mb-1 grid size-11 place-items-center rounded-full bg-surface-3 text-muted">
         <Icon name={icon} size={20} />
       </div>
@@ -30,18 +30,28 @@ export function EmptyState({ icon = 'film', title, children, action }: { icon?: 
 }
 
 export function ErrorState({ error, onRetry, title = 'Không tải được dữ liệu' }: { error: unknown; onRetry?: () => void; title?: string }) {
+  const localDisconnected = !(error instanceof ApiError) || error.status === 0;
   return (
-    <div role="alert" className="mx-auto flex max-w-md flex-col items-center gap-2 px-4 py-14 text-center">
+    <div role="alert" className="av-error-state mx-auto flex max-w-md flex-col items-center gap-2 px-4 py-14 text-center">
       <div className="mb-1 grid size-11 place-items-center rounded-full bg-danger-bg text-danger-fg">
         <Icon name="alert" size={20} />
       </div>
       <h2 className="text-base font-semibold">{title}</h2>
       <p className="text-muted">{errorMessage(error)}</p>
-      {onRetry && !(error instanceof ApiError && error.status === 404) && (
-        <Button className="mt-2" onClick={onRetry} icon={<Icon name="refresh" />}>
-          Thử lại
-        </Button>
-      )}
+      {localDisconnected && <p className="text-xs text-muted">Mất kết nối với dịch vụ trên máy. Đây không phải AI đang chờ. Nếu thử lại vẫn lỗi, mở thư mục log và gửi cho bộ phận hỗ trợ.</p>}
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
+        {onRetry && !(error instanceof ApiError && error.status === 404) && (
+          <Button onClick={onRetry} icon={<Icon name="refresh" />}>
+            Thử lại
+          </Button>
+        )}
+        {/* autovideo://open-logs: cửa sổ app (Tauri) tự mở thư mục log, không cần server */}
+        {localDisconnected && (
+          <a className={buttonClass('ghost')} href="autovideo://open-logs">
+            <Icon name="folder" /> Mở thư mục log
+          </a>
+        )}
+      </div>
     </div>
   );
 }

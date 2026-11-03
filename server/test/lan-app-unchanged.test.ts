@@ -3,7 +3,7 @@ import { attemptsUsed } from '../src/services/budget.js';
 import { finalCutBlock, maybeAutoFinalCut } from '../src/services/final-cuts.js';
 import { ALLOWED_TRANSITIONS } from '../src/services/transition.js';
 import { FFMPEG, FFPROBE, FakeRenderer } from './final-helpers.js';
-import { claimEditPlan, edlFor, makeEnv, setupAllDone, setupProject, toStoryboardReview, toVideoReview, userClient, workerClient, type Env, type Scenario } from './helpers.js';
+import { claimEditPlan, edlFor, makeEnv, setupAllDone, setupProject, toStoryboardReview, toVideoReview, workerClient, type Env, type Scenario } from './helpers.js';
 import { makeLanEnv, type LanEnv } from './helpers-lan.js';
 import { makeLanPlan } from './helpers-lan-plan.js';
 import { clip } from './helpers-video.js';
@@ -101,17 +101,6 @@ describe('dự án app: điều kiện dựng, tự kích hoạt và đếm lư�
     expect(attemptsUsed(env.ctx, sc.scenes[0].id)).toBe(3);
   });
 
-  it('GET /api/lan: thêm tool_jobs_24h và queue, các trường cũ giữ nguyên', async () => {
-    const r = await userClient(env.app).get('/api/lan');
-    expect(r.status).toBe(200);
-    expect(Object.keys(r.body).sort()).toEqual(['access_code', 'clip_project_count', 'enabled', 'error', 'host', 'listening', 'plan_count', 'port', 'queue', 'render', 'require_code', 'tool_jobs_24h', 'urls']);
-    expect(r.body).toMatchObject({ enabled: false, listening: false, access_code: null, require_code: false, urls: [], plan_count: 0, tool_jobs_24h: 0, queue: { cuts: 0, tools: 0, clips: 0, total: 0, cap: 6 } });
-    const now = env.ctx.now();
-    env.ctx.db.prepare("INSERT INTO lan_tool_jobs (kind, status, original_name, client_id_hash, meta, created_at) VALUES ('remove_logo', 'ready', 'a.mp4', 'h', '{}', ?)").run(now);
-    env.ctx.db.prepare("INSERT INTO lan_tool_jobs (kind, status, original_name, client_id_hash, meta, created_at) VALUES ('remove_logo', 'queued', 'b.mp4', 'h', '{}', ?)").run(now);
-    env.ctx.db.prepare("INSERT INTO lan_tool_jobs (kind, status, original_name, client_id_hash, meta, created_at) VALUES ('remove_logo', 'ready', 'c.mp4', 'h', '{}', '2020-01-01T00:00:00.000Z')").run();
-    expect((await userClient(env.app).get('/api/lan')).body).toMatchObject({ tool_jobs_24h: 2, queue: { tools: 1, total: 1 } });
-  });
 });
 
 run('hàng đợi render: việc của app chạy trước việc LAN; thứ tự giữa các việc app giữ FIFO', () => {
@@ -135,7 +124,6 @@ run('hàng đợi render: việc của app chạy trước việc LAN; thứ t�
     fake = new FakeRenderer();
     L = await makeLanEnv({ app: { finalRenderer: fake, finalRender: { progressThrottleMs: 0 } }, config: { watermarkRemover: 'off', renderConcurrency: 1 } });
     const c = L.client();
-    await c.login();
     fake.hold();
     const x = await appCutRendering(await setupAllDone(L.env, { scenes: 1, project: { name: 'App X' } }));
     await new Promise((r) => setTimeout(r, 50));
@@ -168,7 +156,6 @@ describe('phân tích lại kế hoạch LAN không xoá cảnh đã có video; 
     const L = await makeLanEnv();
     try {
       const c = L.client();
-      await c.login();
       const fx = await makeLanPlan(L, c, 3);
       const withVideo = `/lan/api/plans/${fx.plan.id}/scenes/${fx.scenes[2]!.id}/video`;
       if (FFMPEG && FFPROBE) expect((await c.uploadVideo(withVideo, { name: 'a.mp4', data: clip(2) })).status).toBe(201);

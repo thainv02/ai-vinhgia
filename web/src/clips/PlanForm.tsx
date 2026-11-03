@@ -41,10 +41,10 @@ export function PlanForm({ detail, canPlan }: { detail: ClipProjectDetail; canPl
         {st === 'waiting' && job.queue?.position ? ` (vị trí ${job.queue.position})` : ''}.
         <span className="block text-xs opacity-90">
           {job.wait_reason === 'ai_quota'
-            ? 'Tài khoản AI đang hết hạn mức: việc tự thử lại sau.'
+            ? 'AI đang tạm giới hạn hoặc chưa sẵn sàng. Ứng dụng giữ yêu cầu và tự thử lại.'
             : job.worker && (job.worker.paused || job.worker.online === false)
               ? job.worker.paused
-                ? 'Hàng đợi AI đang tạm dừng: việc chạy tiếp khi chủ máy mở lại.'
+                ? 'Hàng đợi AI đang tạm dừng: việc chạy tiếp khi hàng đợi được mở lại.'
                 : 'Máy chủ AI chưa sẵn sàng: việc chạy khi máy chủ mở lại.'
               : st === 'waiting'
                 ? 'Chỉ có một máy chủ AI, các việc chạy lần lượt.'
@@ -101,7 +101,7 @@ export function PlanForm({ detail, canPlan }: { detail: ClipProjectDetail; canPl
       {status}
       {plan.isError && <InlineError>{errorMessage(plan.error)}</InlineError>}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" icon={<Icon name="star" size={14} />} loading={plan.isPending} disabledReason={reason} onClick={run}>
+        <Button variant="primary" actionKind="ai" icon={<Icon name="star" size={14} />} loading={plan.isPending} disabledReason={reason} onClick={run}>
           {hasClips ? 'Gợi ý thêm clip' : 'AI đề xuất clip'}
         </Button>
         {active && job && cancelJob && (
@@ -111,7 +111,6 @@ export function PlanForm({ detail, canPlan }: { detail: ClipProjectDetail; canPl
         )}
         {scope === 'lan' && quota?.plan !== undefined && quota.plan !== null && <span className="text-xs text-muted">Còn {Math.max(0, quota.plan)} lượt nhờ AI trong giờ này</span>}
       </div>
-      {reason && !active && <p className="-mt-1 text-xs text-warn-fg">{reason}</p>}
     </section>
   );
 }

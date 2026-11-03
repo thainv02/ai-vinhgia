@@ -4,17 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/main.ts",
-    "login": "tsx src/proxy.ts login",
-    "proxy": "tsx src/proxy.ts serve",
-    "setup": "tsx src/setup.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "browser": "tsx src/launch-browser.ts",
-    "smoke": "tsx src/smoke.ts",
-    "pool": "tsx src/pool.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "playwright-core": "^1.56.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

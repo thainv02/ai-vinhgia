@@ -1,0 +1,15 @@
+{
+  "id": "promo",
+  "label": "Khuyến mãi",
+  "description": "Ba nhịp: nhãn ưu đãi và mức giảm lớn, thông điệp chính, rồi nút kêu gọi kèm lưu ý. Hợp video sale, flash sale.",
+  "aspects": ["9:16", "16:9", "1:1"],
+  "variables": [
+    { "id": "tag", "type": "text", "label": "Nhãn ưu đãi", "value": "SIÊU ƯU ĐÃI CUỐI NĂM", "target": "tag", "maxLength": 40 },
+    { "id": "discount", "type": "text", "label": "Mức giảm", "value": "-30%", "target": "discount", "maxLength": 10 },
+    { "id": "headline", "type": "text", "label": "Tiêu đề", "value": "Giảm sâu toàn bộ cửa hàng", "target": "headline", "maxLength": 60 },
+    { "id": "sub", "type": "text", "label": "Phụ đề", "value": "Áp dụng đến hết ngày 30/11", "target": "sub", "maxLength": 60 },
+    { "id": "cta", "type": "text", "label": "Nút kêu gọi", "value": "Mua ngay, số lượng có hạn", "target": "cta", "maxLength": 40 },
+    { "id": "note", "type": "text", "label": "Lưu ý", "value": "Điều kiện áp dụng xem tại cửa hàng", "target": "note", "maxLength": 70 },
+    { "id": "brand", "type": "color", "label": "Màu nhấn", "value": "#ffcc00" }
+  ]
+}

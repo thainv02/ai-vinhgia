@@ -1,0 +1,99 @@
+/* Tab Video HTML (desktop). Dùng biến màu của desktop.css. */
+.hv-page { display: flex; flex-direction: column; min-height: 0; }
+.hv-body { display: flex; flex-direction: column; gap: 16px; padding: 18px 32px 40px; }
+.hv-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.hv-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1000px) { .hv-cols { grid-template-columns: minmax(0, 1fr); } .hv-body { padding: 14px 16px 32px; } }
+
+.hv-create { max-width: 860px; }
+.hv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: start; }
+.hv-hint { font-size: 12px; font-weight: 400; }
+.hv-note { margin: 0; padding: 9px 12px; border-radius: 9px; font-size: 13px; }
+.hv-note a { color: inherit; font-weight: 700; text-decoration: underline; }
+.hv-note-warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+.hv-files, .hv-assets, .hv-versions, .hv-renders, .hv-lint { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.hv-files li, .hv-assets li { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.hv-files li .av-bar { width: 120px; flex: none; }
+.hv-fname { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; color: var(--fg); }
+.hv-assets img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; }
+.hv-asset-ico { width: 36px; text-align: center; font-size: 11px; flex: none; }
+.hv-lint { font-size: 12.5px; gap: 4px; }
+
+.hv-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hv-player { width: min(100%, 360px); max-height: 70vh; background: #000; border-radius: 10px; overflow: hidden; position: relative; }
+.hv-player-err { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; padding: 16px; background: var(--surface-2); }
+.hv-working { display: flex; gap: 14px; align-items: center; padding: 14px; background: var(--surface-2); border-radius: 10px; }
+.hv-working p { margin: 4px 0 0; font-size: 13px; }
+.hv-spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--track); border-top-color: var(--primary); animation: hv-rot 0.9s linear infinite; flex: none; }
+@keyframes hv-rot { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hv-spin { animation: none; } }
+
+.hv-ver { width: 100%; display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--fg); cursor: pointer; font: inherit; }
+.hv-ver:hover { background: var(--surface-2); }
+.hv-ver[aria-current='true'] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.hv-ver-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.hv-ver-time { margin-left: auto; font-size: 12px; }
+.hv-ver-sum { font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.hv-vars { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.hv-color { width: 44px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+
+.hv-render-row { display: flex; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.hv-poster { width: 64px; flex: none; align-self: flex-start; background: var(--surface-2); border-radius: 6px; overflow: hidden; display: grid; place-items: center; font-size: 11px; max-height: 110px; }
+.hv-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hv-render-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.hv-render-main p { margin: 0; }
+.hv-video { width: 100%; max-width: 360px; max-height: 60vh; background: #000; border-radius: 8px; }
+
+/* HTML screens follow the shared desktop palette; only structure and spacing live here. */
+.hv-list-heading { flex: 1 1 auto; min-width: 0; }
+.hv-list-heading h1 { margin: 0; }
+.hv-list-heading p { max-width: 760px; margin: 4px 0 0; font-size: 13px; }
+.hv-list-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .9fr); align-items: start; }
+.hv-list-layout > .hv-create { max-width: none; }
+.hv-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.hv-empty strong { font-size: 15px; }
+.hv-intro { margin: -6px 0 2px; font-size: 13px; }
+.hv-project-table .av-table td:first-child { min-width: 190px; }
+.hv-project-table .av-table tbody tr:hover { background: var(--surface-2); }
+.hv-old-tag { display: inline-flex; align-items: center; border: 1px dashed var(--line); border-radius: 999px; padding: 2px 7px; color: var(--muted); font-size: 11px; }
+@media (max-width: 1050px) { .hv-list-layout { grid-template-columns: minmax(0, 1fr); } .hv-list-layout > .hv-create { grid-row: 1; } }
+
+.hv-tabs { display: flex; gap: 4px; padding: 0 32px; border-bottom: 1px solid var(--line); }
+.hv-tab-panel[hidden] { display: none !important; }
+.hv-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.hv-tabs button span { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); text-align: center; font-size: 11px; }
+.hv-tabs button:hover, .hv-tabs button:focus-visible { color: var(--fg); }
+.hv-tabs button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hv-tabs button.is-active { border-color: var(--primary); color: var(--fg); font-weight: 700; }
+.hv-detail-grid { display: grid; grid-template-columns: minmax(250px, .82fr) minmax(360px, 1.35fr) minmax(280px, .92fr); align-items: start; gap: 16px; }
+.hv-preview-col .av-card { min-width: 0; }
+.hv-edit-col { min-width: 0; }
+.hv-files-grid { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(460px, 1.25fr); align-items: start; gap: 16px; }
+.hv-assets-head, .hv-render-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.hv-assets-head h2, .hv-render-heading h2 { margin: 0; }
+.hv-upload { position: relative; overflow: hidden; flex: none; cursor: pointer; }
+.hv-upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.hv-upload-status { font-size: 12px; }
+.hv-render-version { flex: 1 1 180px; min-width: 160px; }
+.hv-render-version .av-input { width: 100%; }
+.hv-preview-note { margin: 0; font-size: 12.5px; }
+.hv-parent { font-size: 11px; }
+.hv-no-preview { display: flex; flex-direction: column; gap: 8px; }
+.hv-no-vars { margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 9px; font-size: 12.5px; }
+@media (max-width: 1200px) { .hv-detail-grid { grid-template-columns: minmax(230px, .8fr) minmax(360px, 1.2fr); } .hv-detail-grid > section[aria-labelledby='hv-ver-h'] { grid-column: 1 / -1; } }
+@media (max-width: 1180px) { .hv-files-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 850px) { .hv-detail-grid, .hv-files-grid { grid-template-columns: minmax(0, 1fr); } .hv-tabs { padding: 0 16px; } .hv-tabs button { padding: 0 8px; font-size: 12px; } }
+.hv-voice-card { margin-bottom: 20px; display: grid; gap: 12px; }
+.hv-voice-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.hv-voice-player { display: grid; gap: 8px; }
+.hv-voice-player audio { max-width: 100%; }
+.hv-voice-words { display: grid; grid-template-columns: repeat(auto-fill,minmax(110px,1fr)); gap: 8px; max-height: 320px; overflow: auto; margin-top: 12px; }
+.hv-voice-words label { display: grid; gap: 4px; font-size: 12px; }
+.hv-image-description { display: block; color: var(--muted); font-family: 'Be Vietnam Pro',sans-serif; font-size: 12px; white-space: normal; }
+.hv-asset-choice { display: grid; gap: 8px; }
+.hv-asset-choice img { width: 160px; max-width: 100%; height: 90px; object-fit: contain; border: 1px solid var(--line); border-radius: 7px; }
+.hv-image-review { display: grid; gap: 12px; margin-bottom: 20px; }
+.hv-review-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; }
+.hv-review-grid img { width: 100%; height: 160px; object-fit: contain; border: 1px solid var(--line); border-radius: 7px; }

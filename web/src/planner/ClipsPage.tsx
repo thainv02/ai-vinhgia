@@ -1,17 +1,22 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ErrorState, Skeleton } from '../components/States';
 import { fmtRelative } from '../lib/format';
 import { toast } from '../lib/toast';
+import { errorMessage } from '../api/errors';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useNow } from '../lib/useNow';
 import { ClipEnvProvider, type ClipEnv, type ClipQuota } from '../clips/env';
 import { DesktopClipWorkspace } from '../clips/DesktopWorkspace';
-import { useClipProjectList } from '../clips/hooks';
+import { clipKeys, useClipProjectList } from '../clips/hooks';
 import { clock, SOURCE_STATUS_LABEL } from '../clips/lib';
 import { NewClipProjectDialog } from '../clips/NewProjectDialog';
 import type { ClipProjectSummary } from '../clips/types';
 import '../clips/clips-desktop.css';
 import { lanClipApi, lanDeleteClipProject } from './api';
+import { RowMenu } from './RowMenu';
+import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import type { PlannerStatus } from './types';
 import { hrefOf, navigate } from './useHashRoute';
 
@@ -39,13 +44,10 @@ export function toClipQuota(status: PlannerStatus | undefined): ClipQuota | null
   return q;
 }
 
-/** App desktop một người dùng: không có hạn mức theo người, nên không truy vấn/hiển thị số lượt còn lại. */
-const desktopEnv: ClipEnv = {
-  api: lanClipApi,
-  scope: 'lan',
-  quota: null,
-  deleteProject: (id) => lanDeleteClipProject(id),
-};
+/** App desktop một người dùng: không có hạn mức theo người, nên không truy vấn/hiển thị số lượt còn lại. Bản desktop xoá là xoá vĩnh viễn. */
+function useDesktopEnv(): ClipEnv {
+  return useMemo(() => ({ api: lanClipApi, scope: 'lan', quota: null, deleteProject: (id) => lanDeleteClipProject(id) }), []);
+}
 
 const BADGE: Record<string, string> = { transcribed: 'ok', transcribing: 'warn', uploaded: 'warn', failed: 'danger', cancelled: 'neutral' };
 
@@ -53,7 +55,7 @@ const BADGE: Record<string, string> = { transcribed: 'ok', transcribing: 'warn',
 export function ClipsPage() {
   useDocumentTitle('Cắt clip');
   return (
-    <ClipEnvProvider value={desktopEnv}>
+    <ClipEnvProvider value={useDesktopEnv()}>
       <ClipsList />
     </ClipEnvProvider>
   );
@@ -61,6 +63,8 @@ export function ClipsPage() {
 
 function ClipsList() {
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<ClipProjectSummary | null>(null);
+  const qc = useQueryClient();
   const q = useClipProjectList();
   const now = useNow();
   const rows: ClipProjectSummary[] = q.data ?? [];
@@ -68,7 +72,7 @@ function ClipsList() {
     <div className="cd-list-page">
       <div className="av-page-head">
         <h1 style={{ flex: '1 1 auto' }}>Cắt clip</h1>
-        <button type="button" className="av-btn av-btn-primary" onClick={() => setCreating(true)}>
+        <button type="button" className="av-btn av-btn-primary cd-main-action" onClick={() => setCreating(true)}>
           Dự án cắt clip mới
         </button>
       </div>
@@ -78,7 +82,7 @@ function ClipsList() {
         ) : q.error ? (
           <ErrorState error={q.error} onRetry={() => void q.refetch()} />
         ) : rows.length === 0 ? (
-          <div className="av-card cd-empty">Chưa có dự án cắt clip nào.</div>
+          <div className="av-card cd-empty cd-list-empty"><h2>Chưa có dự án cắt clip</h2><p>Tạo dự án rồi tải video nguồn để nhận dạng lời thoại và chọn đoạn clip.</p><button type="button" className="av-btn av-btn-primary" onClick={() => setCreating(true)}>Tạo dự án</button></div>
         ) : (
           <div className="av-card av-table-wrap">
             <table className="av-table">
@@ -111,10 +115,17 @@ function ClipsList() {
                     </td>
                     <td>{p.clip_count ?? 0}</td>
                     <td className="av-muted">{fmtRelative(p.updated_at ?? p.created_at, now)}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <a className="av-btn av-btn-sm" href={hrefOf({ name: 'clip', id: p.id })}>
                         Mở
-                      </a>
+                      </a>{' '}
+                      {p.can_delete && (
+                        <RowMenu
+                          label={`Thao tác với dự án ${p.name}`}
+                          items={[{ label: 'Xoá vĩnh viễn…', danger: true, disabledReason: p.delete_block, onSelect: () => setDeleting(p) }]}
+                        />
+                      )}
+                      {p.delete_block && <div className="cd-inline-why">{p.delete_block}</div>}
                     </td>
                   </tr>
                 ))}
@@ -124,14 +135,40 @@ function ClipsList() {
         )}
       </div>
       <NewClipProjectDialog key={creating ? 'o' : 'c'} open={creating} onClose={() => setCreating(false)} onCreated={(id) => navigate({ name: 'clip', id })} />
+      <ClipDeleteDialog key={deleting?.id ?? 'closed'} target={deleting} onClose={() => setDeleting(null)} onDeleted={(name) => {
+        setDeleting(null);
+        toast.success(`Đã xoá dự án "${name}"`);
+        void qc.invalidateQueries({ queryKey: clipKeys.list('lan') });
+      }} />
     </div>
   );
+}
+
+function ClipDeleteDialog({ target, onClose, onDeleted }: { target: ClipProjectSummary | null; onClose: () => void; onDeleted: (name: string) => void }) {
+  const [confirmation, setConfirmation] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return <Modal open={!!target} onClose={() => { if (!pending) { setConfirmation(''); setError(null); onClose(); } }} title="Xoá dự án cắt clip" footer={<>
+    <Button onClick={() => { setConfirmation(''); setError(null); onClose(); }} disabled={pending}>Huỷ</Button>
+    <Button variant="danger" loading={pending} disabledReason={confirmation !== 'XOA' ? 'Gõ XOA để xác nhận xoá vĩnh viễn' : null} onClick={() => {
+      if (!target || confirmation !== 'XOA') return;
+      setPending(true); setError(null);
+      lanDeleteClipProject(target.id).then(() => onDeleted(target.name), (e: unknown) => setError(errorMessage(e))).finally(() => setPending(false));
+    }}>Xoá vĩnh viễn</Button>
+  </>}>
+    <div className="space-y-3 text-sm">
+      <p>Xoá vĩnh viễn dự án <strong>{target?.name}</strong>, video nguồn, lời thoại và các clip khỏi máy. Không thể khôi phục.</p>
+      <label className="block text-xs font-semibold" htmlFor="clip-delete-confirm">Gõ <span className="font-mono">XOA</span> để xác nhận</label>
+      <input id="clip-delete-confirm" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off" />
+      {error && <p className="text-danger-fg" role="alert">{error}</p>}
+    </div>
+  </Modal>;
 }
 
 /** Trang một dự án cắt clip. */
 export function ClipProjectPage({ id }: { id: number }) {
   return (
-    <ClipEnvProvider value={desktopEnv}>
+    <ClipEnvProvider value={useDesktopEnv()}>
       <DesktopClipWorkspace
         projectId={id}
         crumb={<a href={hrefOf({ name: 'clips' })}>Cắt clip</a>}

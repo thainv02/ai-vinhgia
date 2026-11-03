@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Cài đặt và khởi động</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #cfd6dc; padding: 32px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 28px; box-sizing: border-box">
+
+  <section class="card" style="display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 32px rgba(16,24,32,.18)" aria-label="Bộ cài Windows">
+    <div class="hs" style="background: #f1f4f7; padding: 8px 14px; border-bottom: 1px solid #d5dce2; font-size: 12px"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="" style="width: 18px; height: 18px; object-fit: contain">Cài đặt AI Vinh Gia<span class="sp"></span><span class="xs mut">SYS-01</span></div>
+    <div style="display: flex; flex: 1; min-height: 0">
+      <div style="width: 160px; background: #153f86; display: flex; align-items: flex-start; justify-content: center; padding-top: 28px"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia" style="width: 92px; height: 92px; object-fit: contain; background: #fff; border-radius: 12px; padding: 8px"></div>
+      <div class="vs" style="padding: 22px 24px; flex: 1; gap: 12px">
+        <h2 class="h2" style="font-size: 17px">Cài đặt hoàn tất</h2>
+        <div class="note ok"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg><span><b>Ứng dụng đã cài thành công.</b> WebView2 đã có sẵn trên máy.</span></div>
+        <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span><b>Thành phần tuỳ chọn chưa tải xong:</b> model nhận dạng lời nói (~74 MB) — máy chủ tạm giới hạn lượt tải. Bạn vẫn dùng app bình thường; tải lại ở <b>Cài đặt › Nhận dạng lời nói</b> khi cần Cắt clip.</span></div>
+        <label class="ck"><input type="checkbox" checked="">Mở AI Vinh Gia ngay</label>
+        <div class="sp"></div>
+        <div class="hs" style="justify-content: flex-end"><button class="btn p">Hoàn tất</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 32px rgba(16,24,32,.18)" aria-label="Màn khởi động">
+    <div class="hs" style="background: #f1f4f7; padding: 8px 14px; border-bottom: 1px solid #d5dce2; font-size: 12px">AI Vinh Gia<span class="sp"></span><span class="xs mut">SYS-02 · đang khởi động</span></div>
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #fff">
+      <img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia" style="width: 104px; height: 104px; object-fit: contain">
+      <div style="font-size: 20px; font-weight: 700">AI Vinh Gia</div>
+      <div style="width: 260px" class="bar b"><i style="width: 55%"></i></div>
+      <div class="s mut">Đang khởi động dịch vụ trên máy… (bước 2/3)</div>
+      <div class="xs mut">Thư mục dữ liệu: D:\AutoVideo</div>
+    </div>
+  </section>
+
+  <section class="card" style="display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 32px rgba(16,24,32,.18)" aria-label="Chọn thư mục dữ liệu">
+    <div class="hs" style="background: #f1f4f7; padding: 8px 14px; border-bottom: 1px solid #d5dce2; font-size: 12px">AI Vinh Gia · Lần đầu sử dụng<span class="sp"></span><span class="xs mut">SYS-03</span></div>
+    <div class="vs" style="padding: 22px 24px; flex: 1; gap: 14px; background: #fff">
+      <h2 class="h2" style="font-size: 17px">Chọn nơi lưu dữ liệu</h2>
+      <p class="s mut" style="line-height: 1.55">Kế hoạch, ảnh, video và các bản dựng được lưu tại thư mục này trên máy — khác với thư mục cài ứng dụng. Nên chọn ổ còn nhiều dung lượng.</p>
+      <label class="ck" style="border: 1px solid #9bbbe6; background: #eef4fc; border-radius: 9px; padding: 12px"><input type="radio" name="f" checked=""><span><b>Dùng mặc định</b><br><span class="mono">D:\AutoVideo</span> <span class="xs mut">· còn trống 412 GB</span></span></label>
+      <label class="ck" style="border: 1px solid #d5dce2; border-radius: 9px; padding: 12px"><input type="radio" name="f"><span><b>Chọn thư mục khác…</b><br><span class="xs mut">Mở hộp thoại chọn thư mục của Windows</span></span></label>
+      <div class="sp"></div>
+      <div class="hs" style="justify-content: flex-end"><button class="btn p">Tiếp tục</button></div>
+    </div>
+  </section>
+
+  <section class="card" style="display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 32px rgba(16,24,32,.18)" aria-label="Lỗi khởi động">
+    <div class="hs" style="background: #f1f4f7; padding: 8px 14px; border-bottom: 1px solid #d5dce2; font-size: 12px">AI Vinh Gia<span class="sp"></span><span class="xs mut">SYS-02 · lỗi khởi động</span></div>
+    <div class="vs" style="padding: 22px 24px; flex: 1; gap: 12px; background: #fff">
+      <div class="hs"><span style="width: 40px; height: 40px; border-radius: 50%; background: #fde9e3; color: #a82a0c; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg></span><div><h2 class="h2" style="font-size: 17px">Không khởi động được dịch vụ trên máy</h2><p class="s mut">Dữ liệu của bạn không bị ảnh hưởng.</p></div></div>
+      <p class="s">Thử lại; nếu vẫn lỗi, mở thư mục log và gửi file log cho bộ phận hỗ trợ.</p>
+      <details open="" style="font-size: 12.5px"><summary class="b6" style="cursor: pointer">Chi tiết kỹ thuật</summary><div class="mono code" style="margin-top: 8px; font-size: 11.5px">[ERR] server: listen EADDRINUSE 127.0.0.1:[cổng]
+data_dir=D:\AutoVideo · log=…\logs\app.log</div></details>
+      <div class="sp"></div>
+      <div class="hs" style="justify-content: flex-end"><button class="btn">Mở thư mục log</button><button class="btn">Thoát</button><button class="btn p">Thử lại</button></div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+/* AI Vinh Gia — giao diện tối: nạp sau app.css */
+body,.app{background:#0e1620;color:#e6edf3}
+a{color:#9cc2f5}a:hover{color:#c3dafa}
+.side{background:#0b1f45}
+.nav{color:#c9d6ee}.nav:hover,.rec:hover{background:#163063;color:#fff}
+.nav.on{background:#1f3d75;color:#fff}
+.top,.stb,.card,.tabs,.menu,.dlg{background:#16212d;border-color:#2a3846;color:#e6edf3}
+.stb{color:#c5d1dc}
+.mut,.hint,.crumb,.crumb a{color:#9fb0c0}
+.h1,.h2,.h3{color:#e6edf3}
+th{background:#1b2836;color:#c5d1dc;border-color:#2a3846}
+td{border-color:#223040}
+tr.hl td{background:#172a40}
+.inp{background:#0f1a25;border-color:#34475a;color:#e6edf3}
+.btn{background:#1b2836;border-color:#34475a;color:#e6edf3}
+.btn:hover{background:#223244;color:#fff}
+.btn.g{background:transparent;border-color:transparent}
+.btn.p{background:#2a9a94;border-color:#2a9a94;color:#04201e}
+.btn.p:hover{background:#33aea7;color:#04201e}
+.btn[disabled],.btn.dis{background:#1b2633;border-color:#2a3846;color:#6c7c8b}
+.chip{background:#16212d;border-color:#34475a;color:#c5d1dc}
+.chip.on{background:#6ea0ec;border-color:#6ea0ec;color:#0b1f45}
+.chip.on .n{background:rgba(11,31,69,.18);color:#0b1f45}
+.n{background:#2a3846;color:#c5d1dc}
+.ok{background:#123a2a;color:#7fd3a5}.wa{background:#3d2c0c;color:#f2c46b}.er{background:#40170d;color:#ff9e85}.in{background:#14294a;color:#9cc2f5}.ne{background:#253241;color:#c5d1dc}.ai{background:#2a2350;color:#c4b8ff}
+.mi{color:#e6edf3}.mi:hover{background:#223244}.mi.dis{color:#7f8f9e}
+.why{color:#f2c46b}
+.hr{background:#2a3846}
+.sel{outline-color:#6ea0ec}

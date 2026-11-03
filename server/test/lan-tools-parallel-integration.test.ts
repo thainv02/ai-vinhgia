@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { REPO_ROOT } from '../src/config.js';
-import { FFMPEG, FFPROBE, ffprobeJson } from './final-helpers.js';
+import { FFMPEG, ffprobeJson } from './final-helpers.js';
+import { GWR_CLI, VEO_SAMPLE, gwrAvailable } from './helpers-gwr.js';
 import { makeLanEnv, type LanEnv } from './helpers-lan.js';
 
 /**
@@ -13,11 +13,9 @@ import { makeLanEnv, type LanEnv } from './helpers-lan.js';
  * - cả hai xong `ready`, đúng thời lượng, còn âm thanh, vùng logo thực sự bị đổi, không có file lẫn nhau/file tạm sót.
  * Mọi file nằm trong ROOT tạm; clip cắt từ video mẫu Veo CÓ SẴN trong repo của tool. Chỉ chạy khi có tool thật, video mẫu và Chromium của Playwright.
  */
-const CLI = process.env.GWR_CLI || path.join(REPO_ROOT, 'gemini-watermark-remover', 'bin', 'gwr.mjs');
-const SAMPLE = path.join(path.dirname(CLI), '..', 'src', 'assets', 'video-samples', '20260619.mp4'); // 720x1280, có âm thanh, có logo Veo
-const HOME = process.env.HOME ?? '';
-const hasChromium = fs.existsSync(path.join(HOME, 'Library', 'Caches', 'ms-playwright')) || fs.existsSync(path.join(HOME, '.cache', 'ms-playwright'));
-const available = fs.existsSync(CLI) && fs.existsSync(path.join(path.dirname(CLI), '..', 'node_modules')) && hasChromium && fs.existsSync(SAMPLE) && !!FFMPEG && !!FFPROBE;
+const CLI = GWR_CLI;
+const SAMPLE = VEO_SAMPLE;
+const available = gwrAvailable;
 
 let L: LanEnv;
 afterEach(async () => {
@@ -50,8 +48,6 @@ function regionDiff(a: string, b: string, t: number, crop: string): number {
     expect(wm, JSON.stringify(wm)).toMatchObject({ mode: 'auto', active: true });
     const c1 = L.client({ ip: '192.168.1.21' });
     const c2 = L.client({ ip: '192.168.1.22' });
-    await c1.login();
-    await c2.login();
 
     // hai clip KHÁC NHAU (đoạn 0–2,5 giây và 3–5,5 giây của video mẫu), cắt vào thư mục tạm
     const cut = (name: string, ss: number) => {

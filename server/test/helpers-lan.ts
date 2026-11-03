@@ -8,17 +8,15 @@ import { Readable } from 'node:stream';
 import { makeEnv, multipart, type Env, type Res } from './helpers.js';
 import type { BuildAppOptions } from '../src/app.js';
 
-export const LAN_CODE = 'K7M2QX9P';
-export const LAN_HOST = '192.168.1.50:8790';
+export const LAN_HOST = '127.0.0.1:8790';
 export const LAN_ORIGIN = `http://${LAN_HOST}`;
 
 export interface LanEnv {
   env: Env;
   lan: FastifyInstance;
   distDir: string;
-  /** Client LAN: giữ cookie phiên, mặc định Host = IP LAN và Origin khớp cho request ghi. */
+  /** Client của trang planner: giữ cookie, mặc định Host = 127.0.0.1 và Origin khớp cho request ghi. */
   client(opts?: { ip?: string; host?: string; origin?: string | null; cookie?: string | null }): LanClient;
-  login(ip?: string): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -33,7 +31,6 @@ export interface LanClient {
   upload(url: string, files: { name: string; data: Buffer; label?: string }[]): Promise<Res>;
   /** Tải video (multipart, một file; `fields` đứng trước file). `data` là Buffer hoặc Readable (giả lập file lớn bằng luồng, kèm `size` để đặt Content-Length). */
   uploadVideo(url: string, file: { name: string; data: Buffer | Readable; size?: number; type?: string }, fields?: Record<string, string>): Promise<Res>;
-  login(code?: string): Promise<Res>;
 }
 
 export async function makeLanEnv(opts: { config?: Partial<Config>; app?: Partial<BuildAppOptions> } = {}): Promise<LanEnv> {
@@ -43,11 +40,11 @@ export async function makeLanEnv(opts: { config?: Partial<Config>; app?: Partial
   fs.writeFileSync(path.join(distDir, 'index.html'), '<!doctype html><title>ADMIN</title>');
   fs.writeFileSync(path.join(distDir, 'assets', 'planner-abc123.js'), 'console.log(1)');
   fs.writeFileSync(path.join(distDir, 'secret.txt'), 'không được phục vụ');
-  const env = await makeEnv({ ...opts.app, config: { lanEnabled: true, lanRequireCode: true, lanAccessCode: LAN_CODE, lanDistDir: distDir, ...opts.config } });
+  const env = await makeEnv({ ...opts.app, config: { lanDistDir: distDir, ...opts.config } });
   const lan = await buildLanApp(env.ctx, { logger: false });
 
   const client: LanEnv['client'] = (o = {}) => {
-    // Hũ cookie: phiên (`autovideo_lan`) và cookie client (`autovideo_lan_client`, chỉ có sau khi gọi route công cụ) cùng tồn tại.
+    // Hũ cookie: cookie client (`autovideo_lan_client`, chỉ có sau khi gọi route công cụ).
     const jar = new Map<string, string>();
     const load = (line: string | null | undefined) => {
       jar.clear();
@@ -90,7 +87,7 @@ export async function makeLanEnv(opts: { config?: Partial<Config>; app?: Partial
     };
     const inject = (method: string, url: string, payload?: unknown, headers: Record<string, string> = {}) =>
       lan
-        .inject({ method: method as 'GET', url, payload: payload as object | undefined, headers: base(method, headers), remoteAddress: o.ip ?? '192.168.1.77' })
+        .inject({ method: method as 'GET', url, payload: payload as object | undefined, headers: base(method, headers), remoteAddress: o.ip ?? '127.0.0.1' })
         .then(wrap);
     const c: LanClient = {
       get cookie() {
@@ -133,7 +130,6 @@ export async function makeLanEnv(opts: { config?: Partial<Config>; app?: Partial
         if (file.size !== undefined) headers['content-length'] = String(head.length + file.size + tail.length);
         return inject('POST', url, body, headers);
       },
-      login: (code = LAN_CODE) => inject('POST', '/lan/api/login', { code }),
     };
     return c;
   };
@@ -143,12 +139,6 @@ export async function makeLanEnv(opts: { config?: Partial<Config>; app?: Partial
     lan,
     distDir,
     client,
-    async login(ip) {
-      const c = client({ ip });
-      const r = await c.login();
-      if (r.status !== 200) throw new Error('đăng nhập LAN lỗi: ' + r.raw);
-      return c.cookie!;
-    },
     async close() {
       await lan.close();
       await env.close();

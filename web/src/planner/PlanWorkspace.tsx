@@ -60,7 +60,7 @@ export function PlanWorkspace({ detail: d, onZoom, onFinal }: { detail: PlanDeta
           );
         })}
         <div className="ws-rail-foot">
-          <Btn size="sm" variant={complete === d.scenes.length ? 'primary' : undefined} icon={complete === d.scenes.length ? 'play' : 'film'} onClick={onFinal}>
+          <Btn size="sm" variant={complete === d.scenes.length ? 'primary' : undefined} icon={complete === d.scenes.length ? 'play' : 'film'} disabledReason={complete !== d.scenes.length ? `Cần video cho ${d.scenes.length - complete} cảnh còn lại.` : null} onClick={onFinal}>
             {d.final.latest?.status === 'ready' ? 'Xem bản hoàn chỉnh' : `Bản hoàn chỉnh (${complete}/${d.scenes.length})`}
           </Btn>
         </div>
@@ -69,6 +69,8 @@ export function PlanWorkspace({ detail: d, onZoom, onFinal }: { detail: PlanDeta
       <section className="ws-detail" aria-label="Chi tiết cảnh">
         <div className="ws-detail-head">
           <h2>{current.code} · {current.title || `Cảnh ${current.code}`}</h2>
+          <span className="av-badge av-badge-neutral">Cảnh {index + 1}/{d.scenes.length}</span>
+          <span className="av-badge av-badge-neutral">{complete}/{d.scenes.length} video đã chọn</span>
           <Btn size="sm" aria-label="Cảnh trước" disabled={!prev} onClick={() => prev && setPicked(prev.id)}>‹ {prev?.code ?? ''}</Btn>
           <Btn size="sm" aria-label="Cảnh sau" disabled={!next} onClick={() => next && setPicked(next.id)}>{next?.code ?? ''} ›</Btn>
         </div>

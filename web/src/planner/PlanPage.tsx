@@ -17,6 +17,7 @@ import { Btn, LinkBtn } from './ws-ui';
 import './workspace.css';
 import type { PlanDetail } from './types';
 import { hrefOf, navigate } from './useHashRoute';
+import './plan-design.css';
 
 function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
@@ -47,13 +48,14 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
           <Button onClick={onClose} disabled={m.isPending}>
             Hủy
           </Button>
-          <Button variant="primary" loading={m.isPending} disabledReason={reason} icon={<Icon name="refresh" />} onClick={() => m.mutate()}>
+          <Button variant="primary" actionKind="ai" loading={m.isPending} disabledReason={reason} icon={<Icon name="refresh" />} onClick={() => m.mutate()}>
             Phân tích lại
           </Button>
         </>
       }
     >
       <div className="space-y-3">
+        <p className="text-sm font-semibold">{detail.plan.name}</p>
         <div>
           <label htmlFor="re-brief" className="mb-1 block text-[13px] font-semibold">
             Yêu cầu kịch bản
@@ -66,6 +68,7 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
           </label>
           <textarea id="re-style" rows={3} value={styleLock} onChange={(e) => setStyleLock(e.target.value)} disabled={m.isPending} />
         </div>
+        <div className="ws-note warn"><span>AI sẽ viết lại danh sách cảnh và prompt. <strong>Storyboard và video đã tải không tự cập nhật</strong> — hãy kiểm tra lại nội dung đã tạo sau khi phân tích.</span></div>
         {m.isError && <InlineError>{errorMessage(m.error)}</InlineError>}
       </div>
     </Modal>
@@ -74,6 +77,7 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
 
 function DeleteDialog({ detail, onClose }: { detail: PlanDetail; onClose: () => void }) {
   const qc = useQueryClient();
+  const [confirmation, setConfirmation] = useState('');
   const m = useMutation({
     mutationFn: () => planner.deletePlan(detail.plan.id),
     meta: { silent: true },
@@ -95,16 +99,18 @@ function DeleteDialog({ detail, onClose }: { detail: PlanDetail; onClose: () => 
           <Button onClick={onClose} disabled={m.isPending}>
             Giữ lại
           </Button>
-          <Button variant="danger" icon={<Icon name="trash" size={15} />} loading={m.isPending} onClick={() => m.mutate()}>
-            Xoá kế hoạch
+          <Button variant="danger" icon={<Icon name="trash" size={15} />} loading={m.isPending} disabledReason={confirmation !== 'XOA' ? 'Gõ XOA để xác nhận xoá vĩnh viễn' : null} onClick={() => m.mutate()}>
+            Xoá vĩnh viễn
           </Button>
         </>
       }
     >
       <div className="space-y-3 text-sm">
         <p>
-          Kế hoạch <strong>{detail.plan.name}</strong>, các video bạn đã tải lên và bản hoàn chỉnh sẽ <strong>biến mất khỏi trang này</strong>.
+          Kế hoạch <strong>{detail.plan.name}</strong>, các video bạn đã tải lên và bản hoàn chỉnh sẽ{' '}
+          <strong>bị xoá vĩnh viễn khỏi máy</strong>. Không khôi phục được.
         </p>
+        <label className="av-label">Gõ XOA để xác nhận<input className="av-input av-mono" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="off" spellCheck={false} disabled={m.isPending} /></label>
         {m.isError && <InlineError>{errorMessage(m.error)}</InlineError>}
       </div>
     </Modal>

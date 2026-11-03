@@ -7,6 +7,7 @@ import type { AppContext } from '../../context.js';
 import type { ClipCutRow, ClipRow, JobRow, ProjectRow, SourceVideoRow } from '../../db/types.js';
 import { aiQueueInfo } from '../job-queue.js';
 import { lanFileUrl, scrubForLan } from '../lan-common.js';
+import { canDeleteFromPlanner } from '../lan-plans.js';
 import { fileUrl, parseJson } from '../repo.js';
 import { projectDeleteBlocks } from '../trash.js';
 import { abs, getClipRow, getCutRow, getSourceRow, latestCut, posterRel, previewRel, projectClips, projectSource, readTranscript, thumbRel } from './repo.js';
@@ -31,7 +32,7 @@ const slugOf = (ctx: AppContext, projectId: number): string => (ctx.db.prepare('
 export function sourceJson(ctx: AppContext, row: SourceVideoRow, o: ViewOpts) {
   const slug = slugOf(ctx, row.project_id);
   const u = urlOf(o);
-  const meta = parseJson<{ word_count?: number; speech_ratio?: number } | null>(row.stt_meta, null);
+  const meta = parseJson<{ word_count?: number; speech_ratio?: number; ai_fix?: { model: string | null; changed_words: number; accepted: number; sentences: number; error: string | null; at?: string; retry_error?: string | null } | null } | null>(row.stt_meta, null);
   const q = ctx.stt?.queueInfo(row.id) ?? null;
   const deleted = !!row.deleted_at;
   let videoUrl: string | null = null;
@@ -52,6 +53,10 @@ export function sourceJson(ctx: AppContext, row: SourceVideoRow, o: ViewOpts) {
     error: err(o, row.error),
     error_code: row.error_code,
     queue: { state: q?.state ?? null, position: q?.position ?? null },
+    /** Đang chạy: `asr` nhận dạng, `ai_fix` AI đang chuẩn hoá chính tả (chưa hiển thị lời thoại). */
+    stt_phase: q?.phase ?? null,
+    /** Bước AI chuẩn hoá chính tả của lần nhận dạng gần nhất; null = không chạy. */
+    ai_fix: meta?.ai_fix ? { model: meta.ai_fix.model, changed_words: meta.ai_fix.changed_words, accepted: meta.ai_fix.accepted, sentences: meta.ai_fix.sentences, error: meta.ai_fix.error, at: meta.ai_fix.at ?? null, retry_error: meta.ai_fix.retry_error ?? null } : null,
     video_url: videoUrl,
     poster_url: fileExists(ctx, posterRel(slug)) ? u(posterRel(slug)) : null,
     word_count: meta?.word_count ?? null,
@@ -220,7 +225,7 @@ export function clipProjectDetail(ctx: AppContext, p: ProjectRow, o: ViewOpts) {
     plan_job: plan ? planJobJson(ctx, plan, o) : null,
   };
   if (!o.lan) return { ...base, delete_block: blocks.length ? { code: blocks[0]!.code, message: blocks.map((b) => b.message).join(' '), reasons: blocks } : null };
-  const owns = !!p.lan_client_hash && !!o.clientHash && p.lan_client_hash === o.clientHash;
+  const owns = canDeleteFromPlanner(ctx, p, o.clientHash ?? null);
   return { ...base, can_delete: owns, delete_block: owns ? (blocks[0]?.message ?? null) : null };
 }
 
@@ -242,6 +247,6 @@ export function clipProjectSummary(ctx: AppContext, p: ProjectRow, o: ViewOpts) 
     source_video: source ? { duration_s: source.duration_s, status: source.status } : null,
   };
   if (!o.lan) return base;
-  const owns = !!p.lan_client_hash && !!o.clientHash && p.lan_client_hash === o.clientHash;
+  const owns = canDeleteFromPlanner(ctx, p, o.clientHash ?? null);
   return { ...base, can_delete: owns, delete_block: owns ? (projectDeleteBlocks(ctx, p.id)[0]?.message ?? null) : null };
 }

@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { finalPaths } from '../src/services/final-cuts.js';
 import { scrubForLan } from '../src/services/lan-common.js';
-import { LAN_RATE } from '../src/lan/routes.js';
 import { FFMPEG, FFPROBE, FakeRenderer } from './final-helpers.js';
 import { setupAllDone, userClient, workerClient } from './helpers.js';
 import { makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
@@ -31,7 +30,6 @@ async function mk(o: { gwr?: boolean; renderer?: FakeRenderer; scenes?: number }
     config: o.gwr ? { gwrCli: FAKE_CLI, watermarkRemover: 'auto', gwrTimeoutMs: 60_000 } : { watermarkRemover: 'off' },
   });
   c = L.client();
-  await c.login();
   fx = await makeLanPlan(L, c, o.scenes ?? 2);
 }
 
@@ -323,50 +321,6 @@ run('render lại, hủy, file bản dựng', () => {
   });
 });
 
-run('hạn mức, trần hàng đợi và ưu tiên', () => {
-  beforeEach(() => mk());
-
-  it(`dựng + render lại: tối đa ${LAN_RATE.createFinal.max} lần mỗi giờ theo IP (lỗi nghiệp vụ không tính); hết giờ dựng lại được`, async () => {
-    await uploadAll();
-    expect((await c.post(`/lan/api/plans/${fx.plan.id}/final-cuts/99999/rerender`, { edl: {} })).status).toBe(404); // lỗi nghiệp vụ không tính
-    for (let i = 0; i < LAN_RATE.createFinal.max; i++) {
-      const r = await c.post(cutsUrl(), {});
-      expect(r.status, `lượt ${i + 1}: ${r.raw}`).toBe(201);
-      expect((await c.post(cutsUrl(`/${r.body.final_cut.id}/cancel`), {})).status).toBe(200);
-    }
-    const over = await c.post(cutsUrl(), {});
-    expect([over.status, over.body.error.code]).toEqual([429, 'RATE_LIMITED']);
-    expect(Number(over.headers['retry-after'])).toBeGreaterThan(0);
-    expect((await c.get('/lan/api/status')).body.remaining.create_final).toBe(0);
-    L.env.clock.advance(61 * 60_000);
-    expect((await c.post(cutsUrl(), {})).status).toBe(201);
-  });
-
-  it('việc LAN chạm trần toàn cục 6 → 429 "Hàng đợi đang đầy, thử lại sau"; việc của app chính không bị chặn', async () => {
-    const app = await setupAllDone(L.env, { scenes: 1 }); // dự án app trước (claim job theo thứ tự id): có bản dựng planning của chủ máy
-    const now = L.env.ctx.now();
-    // 6 việc công cụ đang chờ (giả lập trực tiếp trong DB): đúng trần
-    for (let i = 0; i < 6; i++) {
-      db().prepare("INSERT INTO lan_tool_jobs (kind, status, original_name, client_id_hash, meta, created_at) VALUES ('remove_logo', 'queued', 'x.mp4', 'h', '{}', ?)").run(now);
-    }
-    await uploadAll();
-    const r = await c.post(cutsUrl(), {});
-    expect([r.status, r.body.error.code, r.body.error.message]).toEqual([429, 'QUEUE_FULL', 'Hàng đợi đang đầy, thử lại sau']);
-    expect((db().prepare('SELECT COUNT(*) AS n FROM final_cuts WHERE project_id = ?').get(fx.plan.id) as { n: number }).n).toBe(0);
-    expect((await c.get('/lan/api/status')).body.queue).toEqual({ cuts: 0, tools: 6, clips: 0, total: 6, cap: 6 });
-    // bớt một việc → dựng được
-    db().prepare("UPDATE lan_tool_jobs SET status = 'ready' WHERE id = 1").run();
-    expect((await c.post(cutsUrl(), {})).status).toBe(201);
-    expect((await c.get('/lan/api/status')).body.queue).toMatchObject({ cuts: 1, tools: 5, total: 6 });
-    // việc của app chính không tính vào trần và vẫn tạo được bản dựng mới
-    const appCuts = (await userClient(L.env.app).get(`/api/projects/${app.project.id}/final-cuts`)).body;
-    expect(appCuts).toHaveLength(1);
-    const appCancel = await userClient(L.env.app).post(`/api/final-cuts/${appCuts[0].id}/cancel`, {});
-    expect(appCancel.status).toBe(200);
-    expect((await userClient(L.env.app).post(`/api/projects/${app.project.id}/final-cuts`, {})).status).toBe(201);
-    expect((await userClient(L.env.app).get('/api/lan')).body.queue).toMatchObject({ cuts: 1, tools: 5, total: 6, cap: 6 });
-  });
-});
 
 describe('hàm thuần', () => {
   it('scrubForLan che đường dẫn tuyệt đối trong lỗi, giữ thông báo thường', () => {

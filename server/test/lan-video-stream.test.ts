@@ -23,7 +23,6 @@ const host = () => `127.0.0.1:${port}`;
 beforeEach(async () => {
   L = await makeLanEnv();
   c = L.client();
-  await c.login();
   fx = await makeLanPlan(L, c, 1);
   await L.lan.listen({ port: 0, host: '127.0.0.1' });
   port = (L.lan.server.address() as AddressInfo).port;

@@ -103,7 +103,7 @@ describe('worker: runner xử lý job góp ý (API giả, không gọi AI thật
       }
       return {};
     });
-    const d: RunnerDeps = { api: api as any, root, sleep: async () => undefined, stopping: () => false, makeBrowser: () => ({ guard: async () => undefined, run: async () => ({}) as any, close: async () => undefined, uploads: [] }) as any };
+    const d: RunnerDeps = { api: api as any, root, sleep: async () => undefined, stopping: () => false };
     return { d, calls, inferred };
   }
   const job = (payload: any) => ({ id: 31, type: 'edit_plan', payload, lease_id: 'L1', checkpoint: null }) as any;

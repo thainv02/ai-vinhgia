@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LAN_RATE } from '../src/lan/routes.js';
 import { expireToolJobs, recoverToolJobs } from '../src/services/lan-tools.js';
 import { FFMPEG, FFPROBE, FakeRenderer, ffprobeJson } from './final-helpers.js';
 import { claimEditPlan, edlFor, setupAllDone, type Scenario } from './helpers.js';
@@ -48,8 +47,6 @@ async function mk(o: { gwr?: boolean | 'off'; concurrency?: number } = {}) {
   });
   c1 = L.client({ ip: '192.168.1.11' });
   c2 = L.client({ ip: '192.168.1.12' });
-  await c1.login();
-  await c2.login();
 }
 
 beforeEach(() => {
@@ -90,10 +87,8 @@ async function blockQueue(): Promise<Scenario> {
 run('công cụ Xoá logo Veo: quyền theo cookie client', () => {
   beforeEach(() => mk());
 
-  it('cookie client ẩn danh: HttpOnly, SameSite=Strict, Path=/lan, 400 ngày, giá trị ngẫu nhiên; DB chỉ lưu băm; KHÔNG cấp khi đăng nhập', async () => {
+  it('cookie client ẩn danh: HttpOnly, SameSite=Strict, Path=/lan, 400 ngày, giá trị ngẫu nhiên; DB chỉ lưu băm', async () => {
     const fresh = L.client({ ip: '192.168.1.13' });
-    const login = await fresh.login();
-    expect(String(login.headers['set-cookie'])).not.toContain('autovideo_lan_client'); // hợp đồng cookie phiên không đổi
     const first = await fresh.get('/lan/api/tools/jobs');
     expect(first.status).toBe(200);
     expect(first.body).toEqual([]);
@@ -120,7 +115,7 @@ run('công cụ Xoá logo Veo: quyền theo cookie client', () => {
     expect(String(r.headers['set-cookie'])).toContain('autovideo_lan_client=');
   });
 
-  it('chỉ chủ của việc thấy, tải và hủy: người khác (cùng mã truy cập, khác trình duyệt) nhận 404; không cookie client → danh sách rỗng', async () => {
+  it('chỉ chủ của việc thấy, tải và hủy: trình duyệt khác (cookie client khác) nhận 404; không cookie client → danh sách rỗng', async () => {
     const up = await post(c1);
     expect(up.status, up.raw).toBe(201);
     const id = up.body.job.id as number;
@@ -133,16 +128,11 @@ run('công cụ Xoá logo Veo: quyền theo cookie client', () => {
       const r = m === 'get' ? await c2.get(u) : await c2.post(u, {});
       expect([m, u, r.status, r.body.error.code]).toEqual([m, u, 404, 'NOT_FOUND']);
     }
-    // cùng IP nhưng khác cookie client vẫn 404 (quyền theo cookie, không theo IP)
-    const sameIp = L.client({ ip: '192.168.1.11', cookie: c1.cookie!.split('; ')[0] });
-    expect((await sameIp.get(`/lan/api/tools/jobs/${id}`)).status).toBe(404);
     // tải bản sạch qua /lan/files: chủ 200, người khác/không cookie 404
     const out = (await get(c1, id)).output.url as string;
     expect(out).toBe(`/lan/files/output/lan-tools/${id}/clean.mp4`);
     expect((await c1.get(out)).status).toBe(200);
     expect((await c2.get(out)).status).toBe(404);
-    expect((await sameIp.get(out)).status).toBe(404);
-    expect((await L.client({ cookie: c1.cookie!.split('; ')[0] }).get(out)).status).toBe(404);
     // input của việc không bao giờ được phục vụ (kể cả cho chủ)
     expect((await c1.get(`/lan/files/output/lan-tools/${id}/input.mp4`)).status).toBe(404);
     // việc không tồn tại / id lạ
@@ -150,21 +140,6 @@ run('công cụ Xoá logo Veo: quyền theo cookie client', () => {
     expect((await c1.get('/lan/files/output/lan-tools/9999/clean.mp4')).status).toBe(404);
   });
 
-  it('mọi endpoint công cụ cần phiên LAN, Host/Origin đúng và không từ trang web khác; app chính không có các route này', async () => {
-    const anon = L.client();
-    for (const u of ['/lan/api/tools/status', '/lan/api/tools/jobs', '/lan/api/tools/jobs/1']) expect([u, (await anon.get(u)).status]).toEqual([u, 401]);
-    for (const u of ['/lan/api/tools/jobs', '/lan/api/tools/jobs/1/cancel', '/lan/api/tools/jobs/1/retry']) expect([u, (await anon.post(u, {})).status]).toEqual([u, 401]);
-    expect((await c1.get('/lan/api/tools/jobs', { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
-    const noOrigin = L.client({ ip: '192.168.1.11', cookie: c1.cookie, origin: null });
-    expect((await noOrigin.post('/lan/api/tools/jobs/1/cancel', {})).status).toBe(403);
-    expect((await L.client({ ip: '192.168.1.11', cookie: c1.cookie, origin: 'http://evil.example' }).uploadVideo('/lan/api/tools/jobs', { name: 'a.mp4', data: clip(2) })).status).toBe(403);
-    expect((await L.client({ ip: '192.168.1.11', cookie: c1.cookie, host: 'evil.example.com' }).get('/lan/api/tools/jobs')).status).toBe(403);
-    for (const [m, u] of [['GET', '/lan/api/tools/status'], ['GET', '/lan/api/tools/jobs'], ['POST', '/lan/api/tools/jobs']] as const) {
-      expect(L.env.app.hasRoute({ method: m, url: u })).toBe(false);
-      expect((await L.env.app.inject({ method: m, url: u, headers: { host: 'localhost:8787' } })).statusCode).toBe(404);
-    }
-    expect(L.lan.hasRoute({ method: 'GET', url: '/api/lan' })).toBe(false);
-  });
 });
 
 run('công cụ Xoá logo Veo: tải lên, xử lý, hàng đợi', () => {
@@ -333,64 +308,17 @@ run('công cụ Xoá logo Veo: tải lên, xử lý, hàng đợi', () => {
     expect(removeCalls()).toHaveLength(2);
   });
 
-  it(`trần hàng đợi toàn cục 6 (cả việc công cụ lẫn bản dựng LAN) → 429 "Hàng đợi đang đầy, thử lại sau"; không nhận file khi đầy`, async () => {
-    await blockQueue();
-    const ids: number[] = [];
-    const clients: LanClient[] = [];
-    for (let i = 0; i < 6; i++) {
-      const cl = L.client({ ip: `192.168.2.${i + 1}`, cookie: c1.cookie!.split('; ')[0] });
-      clients.push(cl);
-      const r = await post(cl);
-      expect(r.status, `việc ${i + 1}: ${r.raw}`).toBe(201);
-      ids.push(r.body.job.id);
-    }
-    const seventh = L.client({ ip: '192.168.2.99', cookie: c1.cookie!.split('; ')[0] });
-    const r = await post(seventh);
-    expect([r.status, r.body.error.code, r.body.error.message]).toEqual([429, 'QUEUE_FULL', 'Hàng đợi đang đầy, thử lại sau']);
-    expect((db().prepare('SELECT COUNT(*) AS n FROM lan_tool_jobs').get() as { n: number }).n).toBe(6);
-    const incoming = path.join(L.env.root, 'output', 'lan-tools', '.incoming');
-    expect(fs.existsSync(incoming) ? fs.readdirSync(incoming) : []).toEqual([]);
-    // thử lại việc lỗi cũng chịu trần: hủy một việc rồi nạp lại cho đủ 6
-    const cl0 = clients[0]!;
-    expect((await cl0.post(`/lan/api/tools/jobs/${ids[0]}/cancel`, {})).status).toBe(200);
-    expect((await post(seventh)).status).toBe(201); // còn chỗ
-    expect((await cl0.post(`/lan/api/tools/jobs/${ids[0]}/retry`, {})).body.error.code).toBe('QUEUE_FULL');
-    expect((await c1.get('/lan/api/tools/status')).body.queue).toMatchObject({ tools: 6, total: 6, cap: 6 });
-    fake.release();
-    await idle();
-  });
 
-  it(`giới hạn ${LAN_RATE.removeLogo.max} lần mỗi giờ theo IP cho xoá logo (việc mới + thử lại); IP khác không bị ảnh hưởng; hết giờ dùng lại được`, async () => {
-    await blockQueue(); // giữ việc ở queued để hủy gọn
-    for (let i = 0; i < LAN_RATE.removeLogo.max; i++) {
-      const r = await post(c1);
-      expect(r.status, `lượt ${i + 1}: ${r.raw}`).toBe(201);
-      expect((await c1.post(`/lan/api/tools/jobs/${r.body.job.id}/cancel`, {})).status).toBe(200);
-    }
-    const over = await post(c1);
-    expect([over.status, over.body.error.code]).toEqual([429, 'RATE_LIMITED']);
-    expect(Number(over.headers['retry-after'])).toBeGreaterThan(0);
-    const first = db().prepare('SELECT id FROM lan_tool_jobs ORDER BY id LIMIT 1').get() as { id: number };
-    expect((await c1.post(`/lan/api/tools/jobs/${first.id}/retry`, {})).body.error.code).toBe('RATE_LIMITED'); // thử lại cũng tính
-    expect((await c1.get('/lan/api/tools/status')).body.remove_logo.remaining).toBe(0);
-    expect((await post(c2)).status).toBe(201); // IP khác
-    L.env.clock.advance(61 * 60_000);
-    expect((await post(c1)).status).toBe(201);
-    fake.release();
-    await idle();
-  });
 
   it('dọn 7 ngày: xoá file và đánh dấu expired; việc mới hơn và việc đang chạy giữ nguyên; file tải dở bị bỏ quên được dọn', async () => {
     const a = await post(c1);
     await idle();
     const idA = a.body.job.id as number;
     L.env.clock.advance(4 * 86400_000);
-    await c1.login(); // phiên 12 giờ đã hết hạn theo đồng hồ giả; cookie client (400 ngày) vẫn còn
     const b = await post(c1);
     await idle();
     const idB = b.body.job.id as number;
     await blockQueue();
-    await c2.login();
     const running = await post(c2); // đang chờ (queued) — không bị dọn dù cũ
     const idQ = running.body.job.id as number;
     // file tải dở bị bỏ quên trong .incoming
@@ -412,7 +340,6 @@ run('công cụ Xoá logo Veo: tải lên, xử lý, hàng đợi', () => {
     expect(toolRow(idB).status).toBe('ready');
     expect(fs.existsSync(path.join(toolDir(idB), 'clean.mp4'))).toBe(true);
     expect(toolRow(idQ).status).toBe('queued');
-    await c1.login(); // đồng hồ giả đã nhảy thêm 4 ngày
     const j = await get(c1, idA);
     expect(j).toMatchObject({ status: 'expired', output: null, can_retry: false });
     expect((await c1.get(`/lan/files/output/lan-tools/${idA}/clean.mp4`)).status).toBe(404);
@@ -467,6 +394,6 @@ run('công cụ Xoá logo Veo: khởi động lại và tool tắt', () => {
 
     await mk();
     s = (await c1.get('/lan/api/tools/status')).body;
-    expect(s).toMatchObject({ remove_logo: { available: true, reason: null, remaining: 6 }, queue: { total: 0, cap: 6 }, retention_days: 7 });
+    expect(s).toMatchObject({ remove_logo: { available: true, reason: null }, retention_days: 7 });
   });
 });

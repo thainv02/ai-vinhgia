@@ -8,6 +8,7 @@ import { intParam, parse } from '../lib/validate.js';
 import { COMMENT_ACTIONS } from '../db/types.js';
 import { createComment } from '../services/comments.js';
 import { warmPlanningCuts } from '../services/final-cuts.js';
+import { stageHtmlComposeCompletion } from '../services/html/compose-lifecycle.js';
 import { claimNext, completeBody, completeJob, failBody, failJob, heartbeat } from '../services/jobs.js';
 import { commentJson, getComment, getJobJson, getJobRow, getScene } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
@@ -15,6 +16,10 @@ import { upsertScenes, upsertScenesBody } from '../services/scenes.js';
 import { touchWorker, workerStatus } from '../services/worker.js';
 import { assertLease, assertManagedLease, saveCheckpoint, waitJob, actionJournal, actions, browserLease, completionHash, stampProvenance } from '../services/managed.js';
 import { infer } from '../services/ai/router.js';
+import { composeRateLimited } from '../services/html/compose-parallel.js';
+import { modelForJob } from '../services/ai/models.js';
+import { runHtmlCheck } from '../services/html/compose-check.js';
+import { imageForAnalysis, saveImageDescription, markImageScanFailure } from '../services/html/asset-analysis.js';
 import { JOB_TYPES, type JobRow, type JobType } from '../db/types.js';
 
 function tokenOk(expected: string, header: string | undefined): boolean {
@@ -94,6 +99,12 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       const id = intParam((req.params as { id: string }).id);
       const body = parse(completeBody, req.body ?? {});
       await warmPlanningCuts(ctx); // validate EDL cần thời lượng video nguồn
+      // html_compose: ghi staging + kiểm tra bất đồng bộ TRƯỚC; công bố nguyên tử nằm trong completeJob (cùng transaction với việc đóng job)
+      const pre = ctx.db.prepare('SELECT type, status FROM jobs WHERE id = ?').get(id) as { type: string; status: string } | undefined;
+      if (pre?.type === 'html_compose' && (pre.status === 'claimed' || pre.status === 'running')) {
+        ctx.tx(() => assertLease(ctx, id, ownerOf(req), true));
+        await stageHtmlComposeCompletion(ctx, id, body.result);
+      }
       return ctx.tx(() => {
         const job = assertLease(ctx, id, ownerOf(req), true);
         const key = typeof req.headers['idempotency-key'] === 'string' ? req.headers['idempotency-key'] : null;
@@ -175,7 +186,11 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
     w.post('/api/worker/jobs/:id/checkpoint', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => saveCheckpoint(ctx, intParam((req.params as { id: string }).id), ownerOf(req),
       parse(z.record(z.string(), z.unknown()), req.body)));
     w.post('/api/worker/jobs/:id/wait', async (req) => {
-      const b = parse(z.object({ reason: z.enum(['ai_quota', 'needs_reconciliation', 'browser_offline']), retry_at: z.string().datetime().nullable() }), req.body);
+      const b = parse(z.object({ reason: z.enum(['ai_quota', 'needs_reconciliation', 'browser_offline', 'image_labels']), retry_at: z.string().datetime().nullable() }), req.body);
+      if (b.reason === 'image_labels') {
+        const job = assertManagedLease(ctx, intParam((req.params as { id: string }).id), ownerOf(req));
+        if (job.type !== 'html_compose' || b.retry_at !== null) throw new AppError('INVALID_WAIT', 'Chờ nhãn ảnh chỉ áp dụng cho Video HTML', 400);
+      }
       if (b.reason === 'ai_quota' && (!b.retry_at || Date.parse(b.retry_at) <= ctx.clock.now())) throw new AppError('INVALID_WAIT', 'Quota wait cần thời điểm thử lại trong tương lai');
       return waitJob(ctx, intParam((req.params as { id: string }).id), ownerOf(req), b.reason, b.retry_at);
     });
@@ -185,11 +200,45 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
       state: z.enum(['intent', 'submitted', 'uncertain', 'downloaded', 'committed']), evidence: z.record(z.string(), z.unknown()),
     }), req.body)));
     w.post('/api/worker/jobs/:id/browser-lease', async (req) => browserLease(ctx, intParam((req.params as { id: string }).id), ownerOf(req), parse(z.object({ profile: z.string().min(1).max(100) }), req.body).profile));
+    // Kiểm tra giữa chừng của vòng compose html_compose: lint (+ chụp khung nếu capture). Cần managed lease; dừng khi job bị hủy/mất lease.
+    w.post('/api/worker/jobs/:id/html-check', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+      const id = intParam((req.params as { id: string }).id);
+      const job = assertManagedLease(ctx, id, ownerOf(req));
+      if (job.type !== 'html_compose') throw conflict('JOB_SCOPE', 'html-check chỉ dành cho job html_compose');
+      const abort = new AbortController();
+      const onClose = () => { if (!reply.sent) abort.abort(); };
+      req.raw.on('close', onClose);
+      try {
+        const out = await runHtmlCheck(ctx, job, req.body, { signal: abort.signal });
+        assertLease(ctx, id, ownerOf(req)); // mất lease trong lúc chạy → bỏ kết quả
+        return out;
+      } finally {
+        req.raw.off('close', onClose);
+      }
+    });
+    w.get('/api/worker/jobs/:id/html-assets/:assetId', async (req) => {
+      const params = req.params as { id: string; assetId: string };
+      const job = assertManagedLease(ctx, intParam(params.id), ownerOf(req));
+      return imageForAnalysis(ctx, job, intParam(params.assetId));
+    });
+    w.post('/api/worker/jobs/:id/html-assets/:assetId', async (req) => {
+      const params = req.params as { id: string; assetId: string };
+      const job = assertManagedLease(ctx, intParam(params.id), ownerOf(req));
+      return saveImageDescription(ctx, job, intParam(params.assetId), req.body);
+    });
+    w.post('/api/worker/jobs/:id/html-assets/:assetId/failure', async (req) => {
+      const params = req.params as { id: string; assetId: string };
+      const job = assertManagedLease(ctx, intParam(params.id), ownerOf(req));
+      const b = parse(z.object({ error_code: z.enum(['SCAN_UNAVAILABLE', 'SCAN_INVALID_RESULT', 'SCAN_FAILED', 'SCAN_LIMIT']) }), req.body);
+      return markImageScanFailure(ctx, job, intParam(params.assetId), b.error_code);
+    });
     w.post('/api/worker/jobs/:id/infer', { bodyLimit: CONTEXT_BODY_LIMIT }, async (req) => {
       const id = intParam((req.params as { id: string }).id);
       const job = assertManagedLease(ctx, id, ownerOf(req));
-      const body = parse(z.object({ messages: z.array(z.record(z.string(), z.unknown())).min(1).max(100), tools: z.array(z.record(z.string(), z.unknown())).max(20).default([]), capabilities: z.array(z.enum(['text', 'vision', 'tools'])).min(1).default(['text']) }), req.body);
-      const response = await infer(ctx, id, job.project_id, body.messages, body.tools, body.capabilities);
+      const body = parse(z.object({ messages: z.array(z.record(z.string(), z.unknown())).min(1).max(100), tools: z.array(z.record(z.string(), z.unknown())).max(20).default([]), capabilities: z.array(z.enum(['text', 'vision', 'tools'])).min(1).default(['text']), purpose: z.enum(['compose', 'vision', 'asset_vision']).optional() }), req.body);
+      // model theo mục đích do SERVER chọn từ snapshot policy của job (chỉ html_compose); worker không gửi/chọn được ID model
+      const model = modelForJob(job, body.purpose);
+      const response = await infer(ctx, id, job.project_id, body.messages, body.tools, body.capabilities, { model, task: job.type === 'html_compose' ? body.purpose === 'vision' || body.purpose === 'asset_vision' ? 'vision' : 'compose' : 'planning' }).catch(e=>{if(job.type==='html_compose')composeRateLimited(ctx,e);throw e;});
       assertLease(ctx, id, ownerOf(req));
       return response;
     });

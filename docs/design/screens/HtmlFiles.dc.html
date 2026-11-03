@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Tệp và xuất MP4</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav" href="Main.dc.html" title="Kế hoạch video"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav on" href="Html.dc.html" title="Video đồ hoạ" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Html.dc.html">Video đồ hoạ</a><span>/</span><span>Teaser khuyến mãi 11.11</span></nav>
+      <div class="hs"><h1 class="h1">Teaser khuyến mãi 11.11</h1><span class="xs mut">9:16 · 1080×1920 · 15 s · 30 fps</span></div>
+    </div>
+  </header>
+  <nav class="tabs" aria-label="Phần của dự án"><a class="tab" href="HtmlDetail.dc.html">Xem trước &amp; phiên bản <span class="n">3</span></a><a class="tab on" href="HtmlFiles.dc.html" aria-current="page">Tệp &amp; xuất MP4 <span class="n">3</span></a></nav>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start">
+    <div class="card" style="flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column">
+      <div class="pad hs" style="padding-bottom: 10px"><span class="h2">Tệp dự án</span><span class="xs mut">312 MB / 1 GB</span><span class="sp"></span><button class="btn sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Thêm tệp…</button></div>
+      <div class="tw"><table>
+        <thead><tr><th>Tệp</th><th>Loại</th><th>Dung lượng</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><div class="hs" style="flex-wrap: nowrap"><span class="ph" style="width: 36px; height: 36px">Ảnh</span><span class="mono" style="font-size: 12px">hop_cacao_tet.png</span></div></td><td>Ảnh</td><td>3,2 MB</td><td style="text-align: right"><button class="btn sm ic g" aria-label="Xoá tệp" disabled=""><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button><div class="why" style="justify-content: flex-end">Đang dùng ở v1–v3</div></td></tr>
+          <tr><td><div class="hs" style="flex-wrap: nowrap"><span class="ph" style="width: 36px; height: 36px">Nhạc</span><span class="mono" style="font-size: 12px">nhac_sale_15s.mp3</span></div></td><td>Nhạc</td><td>1,1 MB</td><td style="text-align: right"><button class="btn sm ic g" aria-label="Xoá tệp" disabled=""><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></td></tr>
+          <tr><td><div class="hs" style="flex-wrap: nowrap"><span class="ph" style="width: 36px; height: 36px">Video</span><span class="mono" style="font-size: 12px">canh_nha_thuoc.mp4</span></div></td><td>Video</td><td>307 MB</td><td style="text-align: right"><button class="btn sm ic g" aria-label="Xoá tệp"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button></td></tr>
+        </tbody>
+      </table></div>
+      <div class="pad" style="padding-top: 10px"><span class="xs mut">Tệp thêm sau chỉ dùng cho lần AI tạo/sửa tiếp theo, không tự chèn vào phiên bản cũ. Ảnh PNG/JPG/WebP/GIF ≤ 20 MB · video MP4/MOV/WebM ≤ 200 MB · nhạc MP3/WAV/M4A/AAC/OGG ≤ 200 MB.</span></div>
+    </div>
+    <div class="vs" style="flex: 1 1 520px; min-width: 0; gap: 16px">
+      <div class="card pad vs" style="gap: 12px">
+        <div class="hs"><span class="h2">Dựng MP4</span><span class="tag lo">TRÊN MÁY</span></div>
+        <div class="hs" style="align-items: flex-end">
+          <label class="lbl" style="flex: 1 1 200px">Phiên bản<select class="inp"><option>v3 · sẵn sàng (AI · góp ý)</option></select></label>
+          <div class="lbl">Chất lượng<div class="seg" role="group" aria-label="Chất lượng"><button>720p</button><button class="on">1080p</button></div></div>
+          <button class="btn p" disabled="">Dựng MP4</button>
+        </div>
+        <span class="why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>v3 · 1080p đang chờ trong hàng đợi — không gửi trùng. Chọn 720p hoặc phiên bản khác.</span>
+      </div>
+      <div class="card" style="display: flex; flex-direction: column">
+        <div class="pad" style="padding-bottom: 8px"><span class="h2">Lượt dựng</span></div>
+        <div class="vs" style="gap: 0">
+          <div class="hs" style="padding: 12px 18px; border-top: 1px solid #e9edf1; flex-wrap: nowrap; align-items: flex-start">
+            <span class="ph" style="width: 44px; height: 78px">Bìa</span>
+            <div class="vs" style="gap: 4px; flex: 1"><div class="hs"><b class="s">v3 · 1080p</b><span class="bd in">Chờ dựng · vị trí 1</span></div><span class="xs mut">Gửi lúc 10:41 · hàng đợi render 2/2 đang chạy</span></div>
+            <button class="btn sm d">Huỷ</button>
+          </div>
+          <div class="hs" style="padding: 12px 18px; border-top: 1px solid #e9edf1; flex-wrap: nowrap; align-items: flex-start">
+            <span class="ph" style="width: 44px; height: 78px">Bìa</span>
+            <div class="vs" style="gap: 4px; flex: 1"><div class="hs"><b class="s">v3 · 720p</b><span class="bd ok">Sẵn sàng</span></div><span class="xs mut">10:30 · 0:15 · 8,4 MB</span><div class="hs" style="gap: 6px"><button class="btn sm">Xem</button><button class="btn sm">Tải về</button><button class="btn sm g">Mở thư mục</button></div></div>
+          </div>
+          <div class="hs" style="padding: 12px 18px; border-top: 1px solid #e9edf1; flex-wrap: nowrap; align-items: flex-start">
+            <span class="ph" style="width: 44px; height: 78px">Bìa</span>
+            <div class="vs" style="gap: 4px; flex: 1"><div class="hs"><b class="s">v1 · 1080p</b><span class="bd er">Lỗi dựng</span></div><span class="xs mut">Hôm qua · Hết dung lượng tạm khi dựng</span></div>
+            <button class="btn sm">Thử lại</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Bộ dựng MP4: đã cài</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mini = !!(this.state && this.state.mini);
+    return {
+      sideCls: mini ? 'mini' : '',
+      sideOpen: mini ? 'false' : 'true',
+      tgLabel: mini ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: mini ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !mini })
+    };
+  }
+}
+</script>
+</body>
+</html>

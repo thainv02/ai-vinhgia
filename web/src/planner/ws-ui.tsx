@@ -1,25 +1,30 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { ActionTag, DisabledReason, type ActionKind } from '../components/ActionTag';
 import { Icon, type IconName } from '../components/Icon';
 import { Spinner } from '../components/Button';
 import { copyText } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import './workspace.css';
 
-/** Nút kiểu desktop (.av-btn): hỗ trợ loading và lý do vô hiệu hoá (hiện ở tooltip). */
-export function Btn({ variant, size, loading, disabledReason, icon, className = '', children, disabled, title, ...rest }: {
+/** Nút desktop với lý do khoá hiển thị tại chỗ và nhãn loại hành động. */
+export function Btn({ variant, size, loading, disabledReason, icon, actionKind, className = '', children, disabled, title, ...rest }: {
   variant?: 'primary' | 'danger' | 'ghost';
   size?: 'sm';
   loading?: boolean;
   disabledReason?: string | null;
   icon?: IconName;
+  actionKind?: ActionKind;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const cls = ['av-btn', variant ? `av-btn-${variant}` : '', size ? 'av-btn-sm' : '', className].filter(Boolean).join(' ');
-  return (
-    <button type="button" {...rest} disabled={disabled || loading || !!disabledReason} title={disabledReason ?? title} aria-busy={loading || undefined} className={cls}>
+  const reasonId = useId();
+  const button = (
+    <button type="button" {...rest} disabled={disabled || loading || !!disabledReason} title={disabledReason ?? title} aria-describedby={disabledReason ? [rest['aria-describedby'], reasonId].filter(Boolean).join(' ') : rest['aria-describedby']} aria-busy={loading || undefined} className={cls}>
       {loading ? <Spinner /> : icon && <Icon name={icon} size={14} />}
       {children}
+      {actionKind && <ActionTag kind={actionKind} />}
     </button>
   );
+  return disabledReason ? <span className="av-action-control">{button}<DisabledReason id={reasonId}>{disabledReason}</DisabledReason></span> : button;
 }
 
 /** Link tải/mở dạng nút. */

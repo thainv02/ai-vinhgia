@@ -1,13 +1,12 @@
 # Autovideo
 
-Ứng dụng local Fastify + SQLite + React; worker giao tiếp qua API. Dùng hướng dẫn này cho Codex, Claude Code và Antigravity.
+App desktop Windows: Fastify + SQLite + React. Dùng hướng dẫn này cho Codex, Claude Code và Antigravity.
 
+- Sản phẩm chỉ là app desktop: vỏ Tauri (`src-tauri/`) chạy server Node làm sidecar ở 127.0.0.1 và hiển thị trang planner (`web/planner.html`). Không có bản web, không mở cổng ra mạng LAN, không có mã truy cập. Build: `npm run build:app`. Xem `PLAN-windows-exe.md` mục 13.
+- Job AI (`analyze_brief`, `edit_plan`, `clip_plan`, `html_compose`, `revise_prompt`) do worker văn bản nhúng (`worker/src/text-main.ts`) xử lý; server tự chạy nó. Không còn worker legacy (Claude Code gọi API theo curl) hay worker điều khiển Chrome (ChatGPT/Flow).
+- Giao diện app làm theo thiết kế trong `docs/design/` (đọc `docs/design/README.md` trước khi sửa `web/`): bố cục, chữ, trạng thái lấy từ thiết kế; màu lấy từ token trong `web/src/planner/desktop.css`.
 - Quy tắc viết prompt/video dùng chung: `video-production-rules.md`.
-- Chỉ chạy worker nhận job khi người dùng yêu cầu sản xuất video. Việc sửa mã không đồng nghĩa được phép bấm Generate.
-- `WORKER.md` mô tả nghiệp vụ. `docs/ai/OPERATIONS.md` mô tả managed worker, account pool và lease. Lệnh curl legacy không dùng được cho job managed.
-- Mọi thao tác tốn credit cần job đã được duyệt. Không tự tạo lại khi kết quả submit chưa rõ.
 - Không đọc/in token đăng nhập vào chat; không đưa secret vào Git, checkpoint, log hoặc asset metadata.
 - Không sửa migration đã chạy. Thêm migration mới và kiểm tra với DB cũ, foreign key check, integrity check.
-- Sau thay đổi runtime: `npm test`, `npm run typecheck`, `npm run build`. Dùng DB/profile tạm khi kiểm thử, không gọi inference hay Flow thật từ test.
-- Mốc trước account pool: tag `before-account-pool-20261021`, nhánh `main`. Xem `docs/ai/ROLLBACK.md` trước khi quay về vì schema mới cần DB backup tương ứng.
-- Trang planner LAN (`LAN_ENABLED`, `server/src/lan/`) là listener riêng chỉ có route planner: không đăng ký/import route của app chính vào đó, không để nó tạo job storyboard/video (chỉ `analyze_brief` và `edit_plan`). Bước 3 (video tải lên), bản hoàn chỉnh LAN và công cụ Xoá logo Veo cũng nằm trong `server/src/lan/` + `services/lan-*.ts`; mọi việc render/xoá logo đi qua hàng đợi render chung (chạy song song tối đa `RENDER_CONCURRENCY`, mặc định 2; việc của app trước việc LAN, không ngắt việc đang chạy). Mặc định trang LAN không cần mã truy cập (`LAN_REQUIRE_CODE=false`); Host/Origin/CSP, rate limit theo IP, trần hàng đợi và danh sách file vẫn giữ. Mọi chỗ giả định "một việc đang chạy" (hủy, khởi động lại, đếm hàng đợi, idle, ưu tiên) phải đúng với N việc. Xem `docs/ai/OPERATIONS.md` (mục LAN) và `server/API.md` mục 13.
+- Sau thay đổi runtime: `npm test`, `npm run typecheck`, `npm run build`. Dùng DB tạm khi kiểm thử, không gọi inference thật từ test.
+- Giao diện và API của app nằm ở listener planner (`server/src/lan/`, route `/lan/api/*`, chỉ nghe 127.0.0.1): không đăng ký/import route của API chính vào đó. Mọi việc render/xoá logo đi qua hàng đợi render chung (chạy song song tối đa `RENDER_CONCURRENCY`, mặc định 2); mọi chỗ giả định "một việc đang chạy" (hủy, khởi động lại, đếm hàng đợi, idle, ưu tiên) phải đúng với N việc. Host/Origin/CSP vẫn giữ để chống DNS rebinding.

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clampRenderConcurrency, defaultConfig, loadConfig, parseRenderConcurrency } from '../src/config.js';
+import { autoRenderConcurrency, clampRenderConcurrency, defaultConfig, loadConfig, parseRenderConcurrency } from '../src/config.js';
 import { FakeRenderer } from './final-helpers.js';
 import { claimEditPlan, edlFor, makeEnv, setupAllDone, userClient, type Env, type Scenario } from './helpers.js';
 
@@ -72,13 +72,14 @@ function toolGate() {
 
 describe('cấu hình RENDER_CONCURRENCY', () => {
   it('mặc định 2; số nguyên kẹp 1–4; giá trị rác → 2', () => {
-    expect(defaultConfig('/r', '/r/db').renderConcurrency).toBe(2);
-    expect(loadConfig({}).renderConcurrency).toBe(2);
-    const cases: [string | undefined, number][] = [
-      [undefined, 2],
-      ['', 2],
-      ['  ', 2],
-      ['abc', 2],
+    expect(defaultConfig('/r', '/r/db').renderConcurrency).toBe('auto');
+    expect(loadConfig({}).renderConcurrency).toBe('auto');
+    const cases: [string | undefined, number | 'auto'][] = [
+      [undefined, 'auto'],
+      ['', 'auto'],
+      ['  ', 'auto'],
+      ['abc', 'auto'],
+      ['auto', 'auto'],
       ['1', 1],
       ['3', 3],
       ['4', 4],
@@ -87,7 +88,7 @@ describe('cấu hình RENDER_CONCURRENCY', () => {
       ['9', 4],
       ['3.9', 3],
       [' 4 ', 4],
-      ['Infinity', 2],
+      ['Infinity', 'auto'],
     ];
     for (const [v, want] of cases) expect(parseRenderConcurrency(v), String(v)).toBe(want);
     expect(loadConfig({ RENDER_CONCURRENCY: '3' }).renderConcurrency).toBe(3);
@@ -437,3 +438,5 @@ describe('khởi động lại khi đang có hai việc chạy', () => {
     expect(fake2.calls).toHaveLength(1);
   });
 });
+
+it.each([[4,8,1],[8,16,2],[16,32,4],[2,8,1]])('auto %i cores / %i GB => %i',(cores,gb,n)=>{expect(autoRenderConcurrency({cores,freeMemBytes:gb*1024**3})).toBe(n);});

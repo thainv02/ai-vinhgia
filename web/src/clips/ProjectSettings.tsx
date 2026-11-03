@@ -9,7 +9,7 @@ import { useClipEnv } from './env';
 import { useClipActions } from './hooks';
 import type { ClipProjectDetail } from './types';
 
-/** Cài đặt dự án cắt clip: tên, thuật ngữ cho nhận dạng lời nói, chuyển vào thùng rác. */
+/** Cài đặt dự án cắt clip: tên, thuật ngữ cho nhận dạng lời nói, xoá dự án (xoá vĩnh viễn). */
 export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscribe }: { open: boolean; detail: ClipProjectDetail; onClose: () => void; onDeleted: () => void; onRetranscribe: () => void }) {
   const { deleteProject, scope } = useClipEnv();
   const p = detail.project;
@@ -60,7 +60,7 @@ export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscri
           <label htmlFor="cp-terms" className="mb-1 block text-[13px] font-semibold">
             Tên riêng / thuật ngữ hay xuất hiện
           </label>
-          <textarea id="cp-terms" rows={2} value={terms} maxLength={500} onChange={(e) => setTerms(e.target.value)} placeholder="Vd: Cacao, Actiso, Autovideo" />
+          <textarea id="cp-terms" rows={2} value={terms} maxLength={500} onChange={(e) => setTerms(e.target.value)} placeholder="Vd: Cacao, Actiso, Vinh Gia" />
           <p className="mt-1 text-xs text-muted">Cách nhau bằng dấu phẩy. Giúp nhận dạng đúng tên sản phẩm, tên người. Chỉ có tác dụng ở lần nhận dạng tiếp theo.</p>
         </div>
         {patchProject.isSuccess && detail.source && canRetranscribe && !detail.source.source_deleted && detail.clips.length === 0 && (detail.project.stt_terms ?? '').trim() === terms.trim() && (
@@ -75,7 +75,9 @@ export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscri
               <p className="mt-1 text-xs text-muted">{block}</p>
             ) : !deleting ? (
               <>
-                <p className="mt-1 text-xs text-muted">Chuyển cả video nguồn, lời thoại và các clip vào thùng rác của chủ máy (khôi phục được trong 30 ngày).</p>
+                <p className="mt-1 text-xs text-muted">
+                  Xoá vĩnh viễn video nguồn, lời thoại và các clip khỏi máy. Không khôi phục được.
+                </p>
                 <Button className="mt-2" variant="danger" size="sm" icon={<Icon name="trash" size={14} />} onClick={() => setDeleting(true)}>
                   Xoá dự án...
                 </Button>
@@ -83,9 +85,9 @@ export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscri
             ) : (
               <div className="mt-1 space-y-2">
                 <label htmlFor="cp-confirm" className="block text-xs text-muted">
-                  {scope === 'app' ? <>Gõ lại tên dự án <strong className="text-fg">{p.name}</strong> để xác nhận</> : 'Bấm xác nhận để xoá dự án này'}
+                  <>Gõ <strong className="font-mono text-fg">XOA</strong> để xác nhận xoá vĩnh viễn</>
                 </label>
-                {scope === 'app' && <input id="cp-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
+                <input id="cp-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
                 {delError && <InlineError>{delError}</InlineError>}
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => setDeleting(false)}>
@@ -94,13 +96,13 @@ export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscri
                   <Button
                     size="sm"
                     variant="danger"
-                    disabledReason={scope === 'app' && confirm !== p.name ? 'Tên chưa khớp' : null}
+                    disabledReason={confirm !== 'XOA' ? 'Gõ XOA để xác nhận xoá vĩnh viễn' : null}
                     onClick={() => {
                       setDelError(null);
                       deleteProject!(p.id, confirm).then(onDeleted, (e: unknown) => setDelError(errorMessage(e)));
                     }}
                   >
-                    Xoá dự án
+                    Xoá vĩnh viễn
                   </Button>
                 </div>
               </div>

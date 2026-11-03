@@ -1,0 +1,13 @@
+{
+  "id": "compare",
+  "label": "So sánh",
+  "description": "Hai thẻ so sánh (thông thường và sản phẩm của bạn) với ba tiêu chí xuất hiện lần lượt, kết thúc bằng nút kêu gọi.",
+  "aspects": ["9:16", "16:9", "1:1"],
+  "variables": [
+    { "id": "title", "type": "text", "label": "Tiêu đề", "value": "So sánh nhanh", "target": "title", "maxLength": 50 },
+    { "id": "label_a", "type": "text", "label": "Tên thẻ trái", "value": "Cách thông thường", "target": "label_a", "maxLength": 30 },
+    { "id": "label_b", "type": "text", "label": "Tên thẻ phải", "value": "Sản phẩm của chúng tôi", "target": "label_b", "maxLength": 30 },
+    { "id": "cta", "type": "text", "label": "Nút kêu gọi", "value": "Trải nghiệm ngay", "target": "cta", "maxLength": 40 },
+    { "id": "brand", "type": "color", "label": "Màu thương hiệu", "value": "#22c58b" }
+  ]
+}

@@ -1,14 +1,13 @@
 import crypto from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { parseCookies } from './session.js';
 
 /**
- * Cookie client ẩn danh, DÀI HẠN, tách khỏi phiên đăng nhập (nếu LAN_REQUIRE_CODE=true; mặc định không có phiên): xác định "trình duyệt này"
+ * Cookie client ẩn danh, DÀI HẠN: xác định "trình duyệt này"
  * để chỉ chủ của một việc công cụ (xoá logo Veo) mới thấy/tải/hủy được việc đó. Không phải danh tính: ai xoá cookie thì mất quyền xem
  * việc cũ (việc tự hết hạn sau 7 ngày dù cookie còn).
  * Giá trị là 256 bit ngẫu nhiên; DB chỉ lưu SHA-256 (`lan_tool_jobs.client_id_hash`). HttpOnly + SameSite=Strict + Path=/lan,
  * 400 ngày (mức tối đa trình duyệt chấp nhận: không có phiên nên cookie này là thứ duy nhất giữ quyền xem việc cũ).
- * Được cấp lười (lần đầu gọi route công cụ), KHÔNG cấp lúc đăng nhập để giữ nguyên hợp đồng cookie phiên.
+ * Được cấp lười (lần đầu gọi route công cụ).
  */
 export const CLIENT_COOKIE = 'autovideo_lan_client';
 export const CLIENT_COOKIE_MAX_AGE_S = 400 * 24 * 60 * 60;
@@ -30,4 +29,16 @@ export function ensureClientHash(req: FastifyRequest, reply: FastifyReply): stri
   const value = crypto.randomBytes(32).toString('base64url');
   reply.header('Set-Cookie', clientCookieLine(value));
   return hashClientId(value);
+}
+
+/** Đọc header Cookie thành map tên → giá trị (giữ giá trị đầu tiên nếu trùng tên). */
+export function parseCookies(header: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of (header ?? '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 1) continue;
+    const name = part.slice(0, eq).trim();
+    if (!(name in out)) out[name] = part.slice(eq + 1).trim();
+  }
+  return out;
 }

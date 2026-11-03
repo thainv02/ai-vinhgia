@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
+    <title>AI Vinh Gia</title>
+    <style>
+      :root { --bg: #edf3fc; --ink: #0d2549; --muted: #4c6488; --err: #b3261e; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #0a0a0a; --ink: #f2f2f2; --muted: #a3a3a3; --err: #ff8a80; } }
+      html, body { height: 100%; margin: 0; }
+      body { display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+      main { width: min(560px, calc(100% - 64px)); padding: 36px 28px; text-align: center; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 14px; }
+      h1 { margin: 16px 0 0; font-size: 20px; font-weight: 700; }
+      .logo { width: 104px; height: 104px; object-fit: contain; background: #fff; border-radius: 12px; }
+      .spin { width: 22px; height: 22px; margin: 20px auto 0; border: 3px solid color-mix(in srgb, var(--ink) 15%, transparent); border-top-color: var(--ink); border-radius: 50%; animation: s 0.9s linear infinite; }
+      @keyframes s { to { transform: rotate(360deg); } }
+      #msg { color: var(--muted); margin-top: 12px; }
+      #err { display: none; text-align: left; margin-top: 16px; }
+      #err h2 { color: var(--err); font-size: 16px; margin: 0 0 8px; }
+      #err pre { white-space: pre-wrap; word-break: break-all; font: 12px/1.45 Consolas, monospace; color: var(--muted); }
+      #err p { color: var(--muted); font-size: 13px; }
+      details { margin-top: 16px; padding: 12px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 5%, transparent); }
+      summary { cursor: pointer; font-size: 12.5px; font-weight: 600; }
+      summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+      @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="logo" src="logo-vinh-gia.jpg" alt="Logo Vinh Gia" width="104" height="104" />
+      <h1>AI Vinh Gia</h1>
+      <div id="spin" class="spin"></div>
+      <div id="msg" role="status">Đang khởi động dịch vụ trên máy…</div>
+      <div id="err" role="alert">
+        <h2>Không khởi động được dịch vụ trên máy</h2>
+        <p>Đóng rồi mở lại AI Vinh Gia. Nếu vẫn lỗi, mở thư mục log từ menu cửa sổ và gửi bộ phận hỗ trợ.</p>
+        <details open><summary>Chi tiết kỹ thuật</summary><pre id="detail"></pre></details>
+      </div>
+    </main>
+    <script>
+      // Vỏ app (Rust) gọi hàm này qua eval khi server không chạy được.
+      window.__avError = function (detail) {
+        document.getElementById('spin').style.display = 'none';
+        document.getElementById('msg').style.display = 'none';
+        document.getElementById('err').style.display = 'block';
+        document.getElementById('detail').textContent = detail;
+      };
+    </script>
+  </body>
+</html>

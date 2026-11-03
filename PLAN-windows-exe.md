@@ -1,6 +1,6 @@
 # Plan: đóng gói AutoVideo thành app .exe chạy trên Windows (máy cấu hình yếu)
 
-Ngày lập: 29/10/2026. Trạng thái: giai đoạn 0–2 đã làm xong và đã kiểm chứng; đã bỏ Shotcut; phần probe bất đồng bộ và sao lưu trước migration của giai đoạn 5 cũng đã làm. Kết quả thực tế ở **mục 9**. Ngày 30/10/2026 đã gộp code mới nhất (`feat/desktop-ui`) vào nhánh này, xem mục 10.
+Ngày lập: 29/10/2026. Trạng thái: đã bỏ app quản trị web, vỏ Tauri đã chạy (mục 13); nhận dạng lời nói chạy trên máy (mục 15); giai đoạn 0–2 đã làm xong và đã kiểm chứng; đã bỏ Shotcut; phần probe bất đồng bộ và sao lưu trước migration của giai đoạn 5 cũng đã làm. Kết quả thực tế ở **mục 9**. Ngày 30/10/2026 đã gộp code mới nhất (`feat/desktop-ui`) vào nhánh này, xem mục 10.
 
 > Các con số ở mục 4, 6, 7 ban đầu là giả thuyết. Số đo thật của server đóng gói (chưa có vỏ Tauri) nằm ở mục 9. Mục tiêu dung lượng đã nới theo quyết định "dung lượng không phải vấn đề lớn".
 
@@ -304,9 +304,9 @@ Tổng tạm tính: khoảng **12–16 ngày** công, cộng thêm phần của 
 
 Không cần trả lời hết mới bắt đầu. Bản thử ở giai đoạn 0–2 (mốc kiểm chứng cách đóng gói) không phụ thuộc vào các câu hỏi này. Chỉ cần chốt câu 1 trước khi bắt đầu phần tính năng, và câu 2–4 trước giai đoạn 5–7.
 
-1. Chọn A, B hay C ở mục 2?
+1. ~~Chọn A, B hay C ở mục 2?~~ **Đã chốt 30/10/2026 (mục 11):** không chọn A/B/C. Bản .exe dùng giao diện và chức năng của trang planner LAN, chỉ chạy trên máy; AI văn bản gọi API AI nội bộ qua worker nhúng; không tự điều khiển Chrome; giữ cắt clip + nhận dạng giọng nói.
 2. Máy đích là Win10 hay Win11, 64-bit? Bao nhiêu RAM, ổ HDD hay SSD? Nếu có máy Win7/8 hoặc 32-bit thì WebView2 không dùng được.
-3. Có cần xoá logo (gwr) trên máy đích không? Shotcut đã bỏ. Thư mục `gemini-watermark-remover/` không có trên máy dev, nên chưa kiểm chứng được gwr trên Windows.
+3. ~~Có cần xoá logo (gwr) trên máy đích không?~~ **Có, đã tích hợp 30/10/2026 (mục 12).** Còn phải chạy thử với Edge trên Windows.
 4. Máy đích có internet lúc cài không? (Quyết định cách đóng gói WebView2.)
 
 ## 9. Kết quả triển khai (cập nhật 29/10/2026)
@@ -397,3 +397,100 @@ Kiểm chứng trên macOS: typecheck server/web/worker đạt; `npm test` 876 �
 **Chưa kiểm chứng sau khi gộp**: `npm test` và `npm run build:win` trên Windows; cắt clip có phụ đề bằng ffmpeg đóng gói (libass, font Windows); phạm vi bản .exe (có mang LAN, managed worker, cắt clip/STT hay không) vẫn là câu hỏi mở ở mục 8.
 
 Phụ đề ở mục 9: chức năng **cắt video dài thành clip** của desktop-ui đã có kéo/đổi cỡ khung phụ đề trên khung 9:16 (`clips.captions.layout`, migration 015), nay đã nằm trong nhánh này.
+
+## 11. Chế độ desktop và API AI nội bộ (30/10/2026)
+
+**Quyết định của người dùng:**
+
+- Bản .exe **không mang theo LAN** (không mở ra mạng, không máy khác truy cập), nhưng giao diện và chức năng **giống trang planner LAN hiện tại**: kế hoạch prompt, AI chia cảnh, tải video cảnh, bản hoàn chỉnh (AI chọn điểm cắt, góp ý, chỉnh màu, xoá logo), công cụ xoá logo, cắt clip có nhận dạng giọng nói và phụ đề.
+- **Bỏ tự điều khiển Chrome** (job storyboard/video) — chỉ trong bản .exe, code worker vẫn giữ trong repo cho bản Mac.
+- **AI văn bản gọi API AI nội bộ** `https://ai.int.syntra.vn/v1` (chuẩn OpenAI, có vision và tool call). Key cá nhân, **không commit**; người dùng nhập trong Cài đặt của app.
+
+**Đã làm:**
+
+- `--desktop` / `AUTOVIDEO_DESKTOP=1`: listener planner ở `127.0.0.1:<--lan-port>`, không mã, không hạn mức theo giờ và trần hàng đợi LAN, không tự xoá video nguồn clip, giới hạn video nguồn như app chính; `WORKER_MODE=managed` cho `analyze_brief,revise_prompt,edit_plan,clip_plan`.
+- `AI_API_URL`/`AI_API_KEY`/`AI_MODEL`: server gọi thẳng API (bỏ account pool), **luôn stream** vì proxy nội bộ trả 504 sau 50 giây với phản hồi không stream (đo được: chia cảnh mất 26–69 giây/lượt). Thiếu/sai key → job chờ, nhập key xong tự chạy tiếp.
+- Worker văn bản nhúng: `worker/src/text-main.ts` (không nạp playwright-core), server chạy làm tiến trình con, tự chạy lại, dừng theo server; bản build là `worker/worker.mjs`. Quy tắc `video-production-rules.md` đọc từ thư mục cài đặt.
+- Trang Cài đặt: nhập API key → Kiểm tra (lấy danh sách model) → chọn model → Lưu (ghi `config.env`, áp dụng ngay). Thanh trạng thái báo "chưa có API key".
+- `build:win`: thêm `worker/worker.mjs` (dừng nếu kéo theo playwright), `video-production-rules.md`; `start.cmd` chạy `--desktop`, giao diện ở cổng 8790, tự mở trình duyệt sau 3 giây.
+
+**Đã kiểm chứng (macOS):** `npm test` 890 đạt / 0 lỗi; typecheck server/web/worker; build web. Chạy thật với API nội bộ: tạo kế hoạch → AI chia cảnh ra 2 cảnh có prompt, cả từ mã nguồn lẫn từ bản đã gom bằng esbuild (`server.mjs` + `worker.mjs`, đặt ngoài repo); lưu key qua Cài đặt; tắt server thì worker thoát.
+
+**Chưa kiểm chứng:** `npm run build:win` và `start.cmd` trên Windows (lệnh mở trình duyệt trong `start.cmd` chưa chạy thử); máy Windows có vào được `ai.int.syntra.vn` và STT `10.0.3.214` không; các luồng AI khác ngoài chia cảnh (chọn điểm cắt, góp ý, chọn đoạn clip) với API nội bộ; vỏ Tauri (giai đoạn 4) vẫn chưa làm — hiện mở bằng trình duyệt.
+
+## 12. Tích hợp tool xoá logo Veo (30/10/2026)
+
+Trước đây app gọi bản clone đầy đủ `gemini-watermark-remover/` (1,2 GB, nằm ngoài git) và cần Chromium của Playwright tải riêng. Nay:
+
+- Workspace `tools/gwr` (`@autovideo/gwr`): phụ thuộc `@pilio/gemini-watermark-remover@1.0.45` (npm, ghim trong lockfile, cùng phiên bản đã dùng) và `playwright-core`. Chỉ dùng API công khai `/video` của gói (2 file JS) + trang xử lý `dist/video-preview.html`, `dist/video-app.js`, 3 model ONNX, onnxruntime WASM.
+- `tools/gwr/gwr.mjs`: dòng lệnh tương thích cũ (`--help`, `remove <video> --output <file> --json --video-bitrate-mbps --video-timeout-ms`), chỉ nhận video. `--help` thoát mã 4 khi máy không có trình duyệt, status hiện lý do.
+- Không kèm Chromium: hook nạp module chuyển `import('playwright')` của gói sang `playwright-shim.mjs`, chạy **Edge (luôn có trên Win10/11) hoặc Chrome có sẵn** ở chế độ ẩn; `GWR_BROWSER_PATH` ghi đè. Không sửa code của gói.
+- `scripts/pack-gwr.mjs` (gọi trong `build:win`): chép đúng các file cần vào `dist-win/tools/gwr`, đối chiếu phiên bản với lockfile, kiểm tra bản đóng gói nạp được module bằng `node.exe` đóng gói. Khoảng 57 MB (onnxruntime 36 MB, playwright-core 13 MB, model 9 MB). Giữ cả hai biến thể WASM: bỏ `asyncify` (23 MB) vẫn chạy được với Chrome trên Mac nhưng chưa thử với Edge trên Windows.
+- Video mẫu `tools/gwr/test/veo-sample.mp4` (2,8 MB, MIT): 3 test tích hợp xoá logo bằng tool thật nay luôn chạy (trước đây bị bỏ qua).
+
+**Đã kiểm chứng (macOS):** điểm logo còn sót trên video mẫu 10 giây như bản clone cũ (0,0892 / 0,0871–0,0892, giảm ~90%), nhanh hơn (14,5 s so với 29 s nhờ Chrome thật); chạy từ bản đã đóng gói ngoài repo; `npm test` 897 đạt / 0 lỗi, 71/71 file test chạy.
+
+**Chưa kiểm chứng:** Edge ẩn trên Windows (WebCodecs H.264, WASM nhiều luồng) — cần chạy thử khi có máy Windows.
+
+## 13. Bỏ app quản trị web, vỏ Tauri (30/10/2026)
+
+**Quyết định của người dùng:** không cần bản web; dự án là app .exe desktop. Xoá hẳn app quản trị (`web/index.html`, `pages/`, các component/hook chỉ app đó dùng). Vỏ dùng Tauri.
+
+**Đã làm:**
+
+- `web/` chỉ còn trang planner (`planner.html`, entry `src/planner/main.tsx`); bỏ `react-router-dom`, `diff`. Server giữ nguyên API (worker vẫn dùng); listener chính không còn phục vụ giao diện (không có `index.html` → 404), `resolveWebDist` dò `planner.html`.
+- Server: cờ `--exit-on-stdin-close` — vỏ app giữ pipe stdin, đóng pipe là tắt gọn (Windows không gửi được SIGTERM cho tiến trình con). `shutdown` chỉ chạy một lần.
+- `src-tauri/` (Tauri 2.12):
+  - Job Object `KILL_ON_JOB_CLOSE` gán chính `AutoVideo.exe` đầu `main()` (`job.rs`).
+  - Sidecar `runtime/node.exe runtime/server/server.mjs --desktop --exit-on-stdin-close`, cổng ưu tiên 8787 (API) / 8790 (giao diện), bận thì lấy cổng trống; `CREATE_NO_WINDOW`; stderr ra `<data>/logs/sidecar-stderr.log`.
+  - **Xoá biến môi trường cấu hình của server** (`ROOT_DIR`, `PORT`, `DB_PATH`, `AUTOVIDEO_*`, …) trước khi spawn: VS Code server đặt `ROOT_DIR` cho mọi tiến trình con, làm DB rơi vào thư mục của VS Code. Cấu hình chỉ lấy từ `<data>/config.env`.
+  - Bỏ tiền tố `\\?\` của `resource_dir()` (node không nạp được script chính từ đường dẫn đó).
+  - Splash HTML tĩnh; lỗi khởi động hiện trên cửa sổ kèm đuôi log.
+  - Thư mục dữ liệu: hỏi ở lần chạy đầu (mặc định `D:\AutoVideo` hoặc `%USERPROFILE%\AutoVideo`), lưu `%APPDATA%\AutoVideo\settings.json`; `AUTOVIDEO_DATA_DIR` ghi đè (chạy thử).
+  - Chặn mở 2 lần (`tauri-plugin-single-instance`). Menu: Mở thư mục dữ liệu, Mở thư mục log, Tải lại trang, Thoát.
+  - Link ra ngoài/cửa sổ mới mở bằng trình duyệt mặc định; tải file vào Downloads rồi mở Explorer chọn sẵn file.
+  - Thoát: xử lý ở `ExitRequested` (đóng stdin, chờ tối đa 5 s, rồi kill) và `process::exit` — `RunEvent::Exit` có lúc không tới vì vòng lặp kẹt khi dọn WebView2.
+  - Installer: Inno Setup (mục 16), thay NSIS của Tauri.
+- Lệnh: `npm run build:app` (= `build:win` + `tauri build --no-bundle` + `build:installer`), `npm run app:dev`.
+
+**Đã kiểm chứng (Windows Server 2022, bản debug):** mở app → server sẵn sàng sau 1,6–2,8 s; DB nằm đúng thư mục dữ liệu; đóng cửa sổ (WM_CLOSE) → app thoát 3,2 s, server + worker tắt gọn; kill `AutoVideo.exe` → server + worker chết ngay (Job Object), WebView2 tự thoát vài giây sau; mở lần 2 → thoát ngay, chỉ một server.
+
+**Chưa kiểm chứng:** hộp thoại chọn thư mục lần đầu, tải file và mở link ngoài (phiên kiểm thử không có desktop tương tác); cài installer trên máy sạch.
+
+## 14. Đổi máy chủ AI sang `ai.duocvinhgia.com` (30/10/2026)
+
+- Mặc định bản desktop: `AI_API_URL=http://ai.duocvinhgia.com/v1` (thay `https://ai.int.syntra.vn/v1`). Đây là CLIProxyAPI tự host (`C:\Users\thainv\code\CLIProxyAPI-src`, cổng 8317) sau IIS site `ai.duocvinhgia.vn`. Key vẫn nhập trong Cài đặt; model mặc định `claude-sonnet-4-6` có trên proxy.
+- **Tạm dùng HTTP** (người dùng chọn): IIS chỉ có binding HTTP cho tên miền này; HTTPS trả nhầm chứng chỉ mặc định `n8n.duocvinhgia.com` (đã hết hạn 07/09/2026) nên Node báo `CERT_HAS_EXPIRED`. Key và nội dung prompt đi trên internet không mã hoá. Có chứng chỉ cho `ai.duocvinhgia.com` thì đổi hằng `DESKTOP_AI_API_URL` sang `https://` (hoặc đặt `AI_API_URL` trong `config.env`).
+- Đã chạy thật: stream + tool call ghép đúng; chia cảnh một kế hoạch có kịch bản rõ ra 2 cảnh trong 105 s.
+
+## 15. Nhận dạng lời nói chạy trên máy (gipformer, 30/10/2026)
+
+**Quyết định:** bỏ dịch vụ STT nội bộ (`10.0.3.214`) ở bản desktop; nhận dạng bằng CPU của từng máy với [gipformer](https://github.com/ggroup-ai-lab/gipformer) (Zipformer transducer tiếng Việt, 68M, MIT). Model không đóng gói: installer tải khi cài.
+
+**Đã làm:**
+
+- `STT_PROVIDER=local` (mặc định bản desktop). `stt-runner` là tiến trình con của server: ffmpeg → PCM f32 16 kHz qua pipe (không nạp cả file vào RAM) → VAD silero (đoạn ≤ 20 s) → gipformer 1.5 INT8 qua `sherpa-onnx-node@2.0.1` (N-API, bản dựng sẵn win-x64, onnxruntime 1.28) → ghép token thành từ có mốc thời gian (`local-stt-words.ts`; chữ thường, viết hoa đầu câu vì model trả CHỮ HOA không dấu câu) → `buildTranscript` như cũ. Tiến độ thật theo số giây đã xử lý. Hủy = kill cây tiến trình.
+- Model ghim commit HuggingFace `dd9227d…` + SHA256 từng file (`stt-model.ts`): encoder/decoder/joiner INT8 + tokens + `silero_vad.onnx`, tổng ~73 MB. Tải vào `.part`, sai hash thì bỏ; đủ thì ghi `model.json`.
+- Vị trí model: `%LOCALAPPDATA%\vn.syntra.autovideo\models` (vỏ Tauri truyền `--stt-models-dir`). Ngoài thư mục cài nên cập nhật app không tải lại; gỡ app chỉ xoá khi người dùng đồng ý (mục 16).
+- Installer: sau khi chép file chạy `runtime\node.exe runtime\server\stt-model-cli.mjs --dir …` (task "Tải model", mặc định bật; output không dấu). Lỗi/không mạng không làm hỏng cài đặt.
+- Cài đặt > Nhận dạng lời nói: trạng thái, tải bù có tiến độ, hủy. Chưa có model → tải video nguồn bị khoá kèm lý do; `POST transcribe` → `409 STT_MODEL_MISSING`.
+- `build:win`: gom `stt-runner.mjs`, `stt-model-cli.mjs`; chép `sherpa-onnx-node` + `sherpa-onnx-win-x64` (khớp lockfile), nạp thử bằng `node.exe` đóng gói. Installer 82 → 88 MB.
+
+**Đã kiểm chứng (Windows Server 2022, 8 luồng):** 2 mẫu của repo nhận đúng; 354 s âm thanh → 11 s giải mã (~30× thời gian thực), cả VAD + ffmpeg ~20 s, RAM đỉnh ~300 MB, nạp model 4 s. Cài im lặng: installer tải model trong lúc cài (tổng 32 s); trên app đã cài, video 6 phút tải lên → nhận dạng xong sau 40 s, 1.020 từ, tiến độ tăng đều. Hủy giữa chừng không để lại tiến trình.
+
+**Hạn chế:** không dấu câu, số đọc thành chữ ("hai phẩy năm phần trăm"); tốc độ trên máy yếu (2 nhân) chưa đo. Brief quá sơ sài (không ảnh, không kịch bản) thì model trả `scenes: []` và job lỗi "cần ít nhất một cảnh" — do nội dung, không phải kết nối.
+
+## 16. Bộ cài Inno Setup (30/10/2026)
+
+**Quyết định:** thay NSIS của Tauri bằng Inno Setup 6.5+ để tự kiểm soát các bước cài/cập nhật/gỡ. Tauri chỉ build exe (`bundle.active: false`, `tauri build --no-bundle`).
+
+- `installer/autovideo.iss` (UTF-8 có BOM) + `installer/Vietnamese.isl` (bản dịch không chính thức của jrsoftware/issrc, cho 6.5+). `npm run build:installer` (`scripts/build-installer.mjs`): lấy version từ `tauri.conf.json`, tìm `ISCC.exe` (biến `ISCC` / chỗ cài mặc định / PATH) → `src-tauri/target/release/bundle/inno/AutoVideo_<ver>_x64-setup.exe`.
+- Cài theo user, không cần admin: `%LOCALAPPDATA%\Programs\AutoVideo\AutoVideo.exe` + `runtime\` (= `dist-win/`). AppId cố định `{1758C619-…}`; shortcut Start Menu (Desktop tuỳ chọn) có AppUserModelID `vn.syntra.autovideo`. Yêu cầu Windows 10 1809+ x64.
+- Trước khi chép file: đóng AutoVideo đang chạy từ thư mục cài (tìm qua WMI theo đường dẫn exe: `AutoVideo.exe` + mọi thứ trong `runtime\`; hỏi trước, cài im lặng thì đóng luôn). Gửi WM_CLOSE để app tắt server gọn, sau 10 s mới `taskkill /F /T`. Gỡ bản NSIS cũ nếu có (`HKCU\…\Uninstall\AutoVideo`, chạy `uninstall.exe /S _?=<dir>`). Thiếu WebView2 thì tải bootstrapper của Microsoft và cài theo user; không được thì dừng, báo lỗi.
+- Cập nhật: xoá sạch `runtime\` cũ rồi chép mới (không sót file thừa). Model, settings, thư mục dữ liệu giữ nguyên.
+- Gỡ cài đặt: đóng app như trên; xoá `{app}\runtime` (cả file sinh lúc chạy), exe, shortcut, khoá registry. **Không bao giờ xoá thư mục dữ liệu**, chỉ báo đường dẫn (đọc `settings.json`). Hỏi thêm (mặc định Không) có xoá `%LOCALAPPDATA%\vn.syntra.autovideo` (model + WebView2), `%APPDATA%\vn.syntra.autovideo`, `%APPDATA%\AutoVideo` không. Gỡ im lặng giữ tất cả.
+
+**Đã kiểm chứng (máy dev Win11, cài im lặng):** cài → đủ file, shortcut, mục Apps 0.1.0; cài đè khi app đang chạy → app + 2 node.exe được đóng, xong sau 13 s; gỡ khi app đang chạy → đóng app, thư mục cài/shortcut/registry sạch sau 7 s, thư mục dữ liệu còn nguyên.
+
+**Chưa kiểm chứng:** giao diện wizard tiếng Việt và các hộp thoại hỏi (chỉ chạy im lặng); tải model có hiện tiến độ; máy thiếu WebView2; gỡ bản NSIS cũ trên máy thật.
+

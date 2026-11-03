@@ -4,10 +4,12 @@ import { Button, buttonClass } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { Alert, InlineError } from '../components/States';
 import { Badge } from '../components/StatusBadge';
+import { ActionTag } from '../components/ActionTag';
 import { ProgressBar } from '../planner/parts';
 import { toast } from '../lib/toast';
 import { clipLimits, useClipEnv } from './env';
 import { useClipActions, useClipStatus } from './hooks';
+import { useAppStatus } from '../planner/useAppStatus';
 import { clock, fmtBytes, pct100, spokenDuration } from './lib';
 import type { SourceVideo } from './types';
 
@@ -37,7 +39,9 @@ function probeDuration(file: File): Promise<number | null> {
 export function UploadCard({ projectId, disabledReason, onUploaded }: { projectId: number; disabledReason?: string | null; onUploaded: () => void }) {
   const { api, scope } = useClipEnv();
   const server = useClipStatus().data;
-  const fallback = clipLimits(scope);
+  // Desktop clip sources use the app's 4 GiB default. Prefer the server status
+  // limits whenever available so custom machine settings remain authoritative.
+  const fallback = scope === 'lan' ? { bytes: 4 * 1024 ** 3, seconds: 3 * 60 * 60, label: '4 GiB và 3 giờ' } : clipLimits(scope);
   const limits = server ? { bytes: server.max_bytes, seconds: server.max_s, label: `${fmtBytes(server.max_bytes)} và ${spokenDuration(server.max_s)}` } : fallback;
   const input = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -46,7 +50,13 @@ export function UploadCard({ projectId, disabledReason, onUploaded }: { projectI
   const [dragging, setDragging] = useState(false);
   useEffect(() => () => abortRef.current?.(), []);
 
-  const reason = up ? 'Đang tải lên' : server && !server.stt.configured ? 'Máy chủ chưa cấu hình dịch vụ nhận dạng lời nói, hãy báo chủ máy' : (disabledReason ?? null);
+  const reason = up
+    ? 'Đang tải lên'
+    : server && !server.stt.configured
+      ? 'Chưa có dịch vụ nhận dạng lời nói: kiểm tra mục Nhận dạng lời nói trong Cài đặt'
+      : server && server.stt.ready === false
+        ? (server.stt.reason ?? 'Chưa nhận dạng lời nói được')
+        : (disabledReason ?? null);
 
   const start = async (file: File) => {
     const bad = !VIDEO_EXT.test(file.name) && !file.type.startsWith('video/') ? `"${file.name}" không phải file video (mp4, mov, mkv, webm).` : file.size === 0 ? `"${file.name}" là file rỗng.` : file.size > limits.bytes ? `"${file.name}" nặng ${fmtBytes(file.size)}, vượt giới hạn ${fmtBytes(limits.bytes)}.` : null;
@@ -110,7 +120,6 @@ export function UploadCard({ projectId, disabledReason, onUploaded }: { projectI
             Chọn video
           </Button>
         </div>
-        {reason && !up && <p className="mt-2 text-xs text-warn-fg">{reason}</p>}
       </div>
       <input
         ref={input}
@@ -127,10 +136,10 @@ export function UploadCard({ projectId, disabledReason, onUploaded }: { projectI
       {up && (
         <div className="mt-3 space-y-1.5 rounded-md border border-line bg-surface-2 p-2.5" role="status">
           <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="min-w-0 truncate font-medium" title={up.name}>
+            <span className="cd-filename min-w-0 font-medium">
               {up.name}
             </span>
-            <span className="shrink-0 text-muted">{verifying ? 'Đang kiểm tra video...' : up.loaded === 0 ? 'Đang chuẩn bị...' : `${Math.round(pct)}% · ${fmtBytes(up.loaded)}/${fmtBytes(up.total)}`}</span>
+            <span className="shrink-0 text-muted">{verifying ? 'Đang kiểm tra video… chưa hoàn tất' : up.loaded === 0 ? 'Đang chuẩn bị...' : `${Math.round(pct)}% · ${fmtBytes(up.loaded)}/${fmtBytes(up.total)}`}</span>
           </div>
           <ProgressBar value={verifying || up.loaded === 0 ? null : pct} label="Tiến độ tải video lên" />
           <Button size="sm" onClick={() => abortRef.current?.()}>
@@ -150,16 +159,25 @@ export function UploadCard({ projectId, disabledReason, onUploaded }: { projectI
 /** Thông tin video nguồn và trạng thái nhận dạng lời nói. */
 export function SourceInfo({ projectId, source, hasClips }: { projectId: number; source: SourceVideo; hasClips: boolean }) {
   const { api } = useClipEnv();
-  const { transcribe, cancelSource } = useClipActions(projectId);
+  const { transcribe, aiFix, cancelSource } = useClipActions(projectId);
+  const { status } = useAppStatus();
   const running = source.status === 'transcribing' || source.status === 'uploaded';
   const p = pct100(source.progress);
   const waiting = source.queue?.state === 'waiting';
+  const fixing = source.stt_phase === 'ai_fix';
+  // chạy lại riêng bước AI chuẩn hoá trên lời thoại đã có (video vẫn ở trạng thái đã nhận dạng)
+  const refixing = source.status === 'transcribed' && fixing;
+  const refixBlock = hasClips
+    ? 'Đã có clip nên không chuẩn hoá lại được (điểm cắt gắn với lời thoại hiện tại).'
+    : !status.data?.ai?.key_set
+      ? 'Chưa có API key của máy chủ AI: nhập trong Cài đặt.'
+      : null;
   const redo = () => transcribe.mutate(source.id);
 
   return (
     <section aria-label="Video nguồn" className="space-y-2 rounded-lg border border-line bg-surface p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h2 className="min-w-0 max-w-full truncate text-[13px] font-semibold" title={source.original_name}>
+        <h2 className="cd-filename min-w-0 max-w-full text-[13px] font-semibold">
           {source.original_name}
         </h2>
         <span className="text-xs text-muted">
@@ -172,14 +190,24 @@ export function SourceInfo({ projectId, source, hasClips }: { projectId: number;
         <div className="space-y-1.5" role="status">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info" live>
-              {waiting ? `Chờ nhận dạng${source.queue.position ? ` (vị trí ${source.queue.position})` : ''}` : `Đang nhận dạng lời nói${p !== null ? ` ~${Math.round(p)}%` : ''}`}
+              {waiting
+                ? `Chờ nhận dạng${source.queue.position ? ` (vị trí ${source.queue.position})` : ''}`
+                : fixing
+                  ? 'AI đang chuẩn hoá chính tả'
+                  : `Đang nhận dạng lời nói${p !== null ? ` ~${Math.round(p)}%` : ''}`}
             </Badge>
+            <ActionTag kind={fixing ? 'ai' : 'local'} />
             <Button size="sm" variant="danger" loading={cancelSource.isPending} onClick={() => cancelSource.mutate(source.id)}>
               Hủy
             </Button>
           </div>
           {waiting ? (
             <p className="text-xs text-muted">Dịch vụ nhận dạng xử lý lần lượt từng video. Tới lượt là tự chạy, có thể rời trang.</p>
+          ) : fixing ? (
+            <>
+              <ProgressBar value={null} label="AI đang chuẩn hoá chính tả" />
+              <p className="text-xs text-muted">Đã nhận dạng xong. AI đang sửa lỗi chính tả, tên riêng và dấu câu trước khi hiện lời thoại (khoảng 1 phút cho mỗi 30 phút video). Có thể rời trang.</p>
+            </>
           ) : (
             <>
               <ProgressBar value={p} label="Tiến độ nhận dạng lời nói (ước tính)" />
@@ -201,7 +229,35 @@ export function SourceInfo({ projectId, source, hasClips }: { projectId: number;
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="ok">Đã có lời thoại</Badge>
             {source.speech_ratio !== null && <span className="text-xs text-muted">Lời nói chiếm {Math.round(source.speech_ratio * 100)}% thời lượng</span>}
+            {source.ai_fix && !source.ai_fix.error && (
+              <span className="text-xs text-muted" title={source.ai_fix.model ? `Model: ${source.ai_fix.model}` : undefined}>
+                · AI đã chuẩn hoá chính tả{source.ai_fix.changed_words ? ` (sửa ${source.ai_fix.changed_words.toLocaleString('vi-VN')} từ)` : ''}
+              </span>
+            )}
           </div>
+          {source.ai_fix?.error && (
+            <Alert tone="warn">
+              <strong>Chưa chuẩn hoá chính tả bằng AI</strong> ({source.ai_fix.error}). Lời thoại đang là bản nhận dạng gốc; bấm Chuẩn hoá lại bằng AI để thử lại.
+            </Alert>
+          )}
+          {source.ai_fix?.retry_error && !source.ai_fix.error && !refixing && (
+            <Alert tone="warn">Lần chuẩn hoá lại gần nhất không thành công ({source.ai_fix.retry_error}). Lời thoại vẫn là bản đã chuẩn hoá trước đó.</Alert>
+          )}
+          {refixing && (
+            <div className="space-y-1.5" role="status">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="info" live>
+                  {source.queue?.state === 'waiting' ? 'Chờ chuẩn hoá lại' : 'AI đang chuẩn hoá lại lời thoại'}
+                </Badge>
+                <ActionTag kind="ai" />
+                <Button size="sm" variant="danger" loading={cancelSource.isPending} onClick={() => cancelSource.mutate(source.id)}>
+                  Hủy
+                </Button>
+              </div>
+              <ProgressBar value={null} label="AI đang chuẩn hoá lại lời thoại" />
+              <p className="text-xs text-muted">Vẫn xem được lời thoại hiện tại; xong sẽ tự thay bằng bản đã chuẩn hoá. Chưa tạo clip được trong lúc này.</p>
+            </div>
+          )}
           {source.speech_ratio !== null && source.speech_ratio < 0.3 && (
             <Alert tone="warn">
               <strong>Video ít lời.</strong> Chỉ có khoảng {Math.round(source.speech_ratio * 100)}% là tiếng nói nên AI chọn đoạn theo lời thoại sẽ cho kết quả kém. Chế độ chọn theo hình ảnh chưa có ở phiên bản này.
@@ -219,12 +275,18 @@ export function SourceInfo({ projectId, source, hasClips }: { projectId: number;
             <a href={api.transcriptUrl(source.id, 'txt')} download className={buttonClass('secondary', 'sm')}>
               <Icon name="download" size={13} /> Lời thoại .txt
             </a>
-            {!source.source_deleted && !hasClips && (
+            {!refixing && (
+              <Button size="sm" actionKind="ai" icon={<Icon name="refresh" size={13} />} onClick={() => aiFix.mutate(source.id)} loading={aiFix.isPending} disabledReason={refixBlock}>
+                Chuẩn hoá lại bằng AI
+              </Button>
+            )}
+            {!source.source_deleted && !hasClips && !refixing && (
               <Button size="sm" icon={<Icon name="refresh" size={13} />} onClick={redo} loading={transcribe.isPending} title="Chỉ chạy lại khi đã đổi tên riêng/thuật ngữ trong Cài đặt">
                 Nhận dạng lại
               </Button>
             )}
           </div>
+          {aiFix.isError && <InlineError>{errorMessage(aiFix.error)}</InlineError>}
           {hasClips && <p className="text-xs text-muted">Đã có clip nên không nhận dạng lại được (điểm cắt gắn với lời thoại hiện tại). Muốn nhận dạng lại, hãy tạo dự án mới.</p>}
         </div>
       )}

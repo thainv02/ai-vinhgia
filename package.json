@@ -2,11 +2,12 @@
   "name": "autovideo",
   "version": "0.1.0",
   "private": true,
-  "description": "Web qu\u1ea3n l\u00fd s\u1ea3n xu\u1ea5t video theo c\u1ea3nh (local)",
+  "description": "App desktop sản xuất video theo cảnh (Windows, Tauri)",
   "workspaces": [
     "server",
     "web",
-    "worker"
+    "worker",
+    "tools/gwr"
   ],
   "engines": {
     "node": ">=20"
@@ -15,21 +16,15 @@
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web && npm run build -w server && npm run typecheck -w worker",
     "build:win": "node scripts/build-win.mjs",
-    "start": "npm run start -w server",
+    "build:app": "node scripts/build-win.mjs && tauri build --no-bundle && node scripts/build-installer.mjs",
+    "build:installer": "node scripts/build-installer.mjs",
+    "app:dev": "tauri dev",
     "test": "npm run test -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w worker",
-    "sim:worker": "npm run sim:worker -w server --",
-    "import:legacy": "npm run import:legacy -w server --",
-    "worker:start": "npm run start -w worker --",
-    "ai:login": "npm run login -w worker --",
-    "ai:proxy": "npm run proxy -w worker --",
-    "ai:setup": "npm run setup -w worker",
-    "rollback:check": "node scripts/rollback-check.mjs",
-    "ai:browser": "npm run browser -w worker",
-    "ai:smoke": "npm run smoke -w worker --",
-    "ai:pool": "npm run pool -w worker"
+    "import:legacy": "npm run import:legacy -w server --"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "concurrently": "^9.2.5",
     "esbuild": "^0.28.2"
   }

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>AI đề xuất clip</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app">
+<div class="row">
+<nav class="side" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav" href="Main.dc.html" title="Kế hoạch video"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav on" href="Clips.dc.html" title="Cắt clip" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" tabindex="-1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="m16 9-3 3 3 3"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top"><div class="vs" style="gap: 3px"><nav class="crumb" aria-label="Đường dẫn"><a href="Clips.dc.html">Cắt clip</a><span>/</span><span>Livestream 28/10 – Cacao Actiso</span></nav><h1 class="h1">Livestream 28/10 – Cacao Actiso</h1></div></header>
+  <section class="cnt"><div class="card" style="height: 600px"></div></section>
+</main>
+</div>
+<div class="ov">
+  <div class="scrim"></div>
+  <div class="dlg" role="dialog" aria-labelledby="ai1" style="width: 560px">
+    <div class="dh"><h2 class="h2" id="ai1">AI chọn thêm đoạn</h2><span class="tag ai">AI</span><span class="sp"></span><button class="btn sm ic g" aria-label="Đóng"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+    <div class="db">
+      <label class="lbl">Số clip mong muốn<span class="hs" style="flex-wrap: nowrap"><button class="btn ic" type="button" aria-label="Giảm">−</button><input class="inp" style="width: 72px; text-align: center" value="5" aria-label="Số clip"><button class="btn ic" type="button" aria-label="Tăng">+</button><span class="hint">1–15 · là mục tiêu, AI có thể trả ít hơn</span></span></label>
+      <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px"><legend class="lbl" style="margin-bottom: 6px">Độ dài mỗi clip</legend><div class="seg" role="group"><button>15–30 s</button><button class="on">30–60 s</button><button>60–90 s</button><button>90–180 s</button></div></fieldset>
+      <label class="lbl">Muốn tập trung vào… <span class="hint" style="display: inline">(không bắt buộc)</span><textarea class="inp" rows="3">Các đoạn khách hỏi đáp về cách dùng sản phẩm</textarea><span class="hint">47/300 ký tự</span></label>
+      <label class="ck"><input type="checkbox" checked=""><span>Loại trừ đoạn đã có <span class="hint">(8 clip hiện tại)</span></span></label>
+      <div class="note ne"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg><span>AI đọc lời thoại và chỉ tạo <b>đề xuất</b> — chưa xuất video. Bạn duyệt, sửa rồi mới dựng.</span></div>
+    </div>
+    <div class="df"><button class="btn">Huỷ</button><button class="btn p">Đề xuất clip <span class="tag ai">AI</span></button></div>
+  </div>
+  <div class="dlg" role="dialog" aria-labelledby="ai2" style="width: 440px">
+    <div class="dh"><h2 class="h2" id="ai2">Kết quả: chưa tìm được đoạn phù hợp</h2></div>
+    <div class="db">
+      <p class="s" style="line-height: 1.6">AI đã đọc toàn bộ lời thoại nhưng không thấy đoạn <b>30–60 giây</b> nào về "hỏi đáp cách dùng" có thể đứng độc lập, ngoài các clip đã có.</p>
+      <p class="xs mut">Đây là kết quả hợp lệ, không phải lỗi hệ thống.</p>
+      <div class="vs" style="gap: 8px">
+        <button class="btn" style="justify-content: flex-start">Thử độ dài 60–90 giây</button>
+        <button class="btn" style="justify-content: flex-start">Đổi hướng tập trung</button>
+        <a class="btn" href="ClipWorkspace.dc.html" style="justify-content: flex-start">Tự chọn đoạn trên lời thoại</a>
+      </div>
+    </div>
+    <div class="df"><button class="btn">Đóng</button></div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

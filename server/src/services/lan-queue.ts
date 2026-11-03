@@ -42,5 +42,6 @@ export const queueFull = (): AppError => new AppError('QUEUE_FULL', 'Hàng đợ
 
 /** Ném 429 nếu hàng đợi LAN đã đủ LAN_QUEUE_CAP việc. Gọi trong cùng transaction với lúc tạo việc để không vượt trần khi chạy song song. */
 export function assertLanQueueRoom(ctx: AppContext): void {
-  if (lanQueueLoad(ctx).total >= LAN_QUEUE_CAP) throw queueFull();
+  // một người dùng trên chính máy mình: không cần trần chống chiếm hàng đợi
+  void ctx;
 }

@@ -17,12 +17,14 @@ export interface AnalysisInfo {
 export interface PlanSummary {
   id: number;
   /** 'clips': dự án cắt clip (hiện ở tab Cắt clip, không phải ở danh sách kế hoạch). */
-  kind?: 'scenes' | 'clips';
+  kind?: 'scenes' | 'clips' | 'html';
   name: string;
   created_by_name: string | null;
   status: PlanStatus;
   scene_count: number;
   ref_count: number;
+  /** Số cảnh đã chọn video (server cũ không có). */
+  video_scene_count?: number;
   created_at: string;
   updated_at: string;
   analysis: AnalysisInfo;
@@ -174,10 +176,35 @@ export interface QueueLoad {
   cap: number;
 }
 
+/** API AI của bản desktop (không bao giờ có key; `key_hint` = 4 ký tự cuối). */
+export interface AiSettings {
+  url: string | null;
+  model: string;
+  key_set: boolean;
+  key_hint: string | null;
+}
+
+/** Nhận dạng lời nói của bản desktop (`GET /lan/api/settings/stt`): model chạy trên máy, installer tải; thiếu thì tải bù ở đây. */
+export interface SttSettings {
+  provider: 'local' | 'omnix' | 'none';
+  model: { id: string; label: string; total_bytes: number };
+  installed: boolean;
+  dir: string;
+  threads: number;
+  download: { state: 'downloading' | 'done' | 'failed' | 'cancelled'; received: number; total: number; error: string | null } | null;
+  /** AI nhẹ chuẩn hoá chính tả kết quả nhận dạng (server cũ không có). */
+  ai_fix?: { enabled: boolean; key_set: boolean; model: string | null };
+}
+
 export interface PlannerStatus {
   worker: { online: boolean; queue_paused: boolean };
-  /** Trang có đòi mã truy cập không (LAN_REQUIRE_CODE). Không có ở server cũ (coi là có). */
-  code_required?: boolean;
+  /** Hàng đợi AI của worker nhúng: đang chạy / đang chờ. */
+  ai_queue?: { running: number; waiting: number };
+  /** Thư mục dữ liệu trên máy. */
+  data_dir?: string;
+  /** Bản desktop (một máy): có thêm `ai` và trang Cài đặt cho nhập API key. Không có ở chế độ LAN. */
+  desktop?: boolean;
+  ai?: AiSettings;
   /** Hàng đợi render chung: đang chạy / đang chờ / số việc chạy cùng lúc. */
   render?: RenderLoad | null;
   limits: PlanDetail['limits'];

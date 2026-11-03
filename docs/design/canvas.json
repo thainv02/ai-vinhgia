@@ -1,0 +1,333 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "ClipAI.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "CLIP-03 · AI đề xuất clip",
+      "w": 1440,
+      "x": 4560,
+      "y": 4760
+    },
+    "ClipCaptions.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "CLIP-06 · Sửa chữ phụ đề",
+      "w": 1440,
+      "x": 6080,
+      "y": 4760
+    },
+    "ClipSettings.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "CLIP-07 · Cài đặt / xoá dự án clip",
+      "w": 1440,
+      "x": 7600,
+      "y": 4760
+    },
+    "ClipSource.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "CLIP-02 · Video nguồn & nhận dạng",
+      "w": 1440,
+      "x": 1520,
+      "y": 4760
+    },
+    "ClipWorkspace.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "CLIP-04/05 · Không gian cắt clip",
+      "w": 1440,
+      "x": 3040,
+      "y": 4760
+    },
+    "Clips.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "CLIP-01 · Danh sách & tạo dự án clip",
+      "w": 1440,
+      "x": 0,
+      "y": 4760
+    },
+    "Common.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "title": "COMMON-01 · Xác nhận, toast, rỗng, lỗi",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Final.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "FINAL-01 · Bản hoàn chỉnh, tiến trình, phiên bản",
+      "w": 1440,
+      "x": 0,
+      "y": 3340
+    },
+    "FinalColor.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "FINAL-04 · Chỉnh màu, ảnh mẫu/LUT",
+      "w": 1440,
+      "x": 4560,
+      "y": 3340
+    },
+    "FinalCuts.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "FINAL-02 · Chỉnh điểm cắt",
+      "w": 1440,
+      "x": 1520,
+      "y": 3340
+    },
+    "FinalFeedback.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "FINAL-03 · Góp ý AI & lịch sử",
+      "w": 1440,
+      "x": 3040,
+      "y": 3340
+    },
+    "Foundations.dc.html": {
+      "expand": "fill",
+      "h": 1500,
+      "title": "Nền tảng & bộ thành phần",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Html.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "HTML-01 · Danh sách & tạo video đồ hoạ",
+      "w": 1440,
+      "x": 0,
+      "y": 6140
+    },
+    "HtmlDetail.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "HTML-02/03 · Xem trước, chỉnh nhanh, góp ý",
+      "w": 1440,
+      "x": 1520,
+      "y": 6140
+    },
+    "HtmlFiles.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "HTML-04 · Tệp dự án & dựng MP4",
+      "w": 1440,
+      "x": 3040,
+      "y": 6140
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "PLAN-01 · Danh sách kế hoạch (APP-01 khung app)",
+      "w": 1440,
+      "x": 0,
+      "y": 1920
+    },
+    "MainDark.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Giao diện tối · Danh sách kế hoạch",
+      "w": 1440,
+      "x": 3040,
+      "y": 7520
+    },
+    "PlanNew.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "PLAN-02 · Tạo kế hoạch",
+      "w": 1440,
+      "x": 1520,
+      "y": 1920
+    },
+    "PlanPicker.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "PLAN-05 · Chọn ảnh từ thư viện",
+      "w": 1440,
+      "x": 3040,
+      "y": 1920
+    },
+    "PlanRequest.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "PLAN-04 · Sửa yêu cầu / phân tích lại",
+      "w": 1440,
+      "x": 9120,
+      "y": 1920
+    },
+    "PlanScene1.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "PLAN-03 + PLAN-06 · Chi tiết kế hoạch, Bước 1",
+      "w": 1440,
+      "x": 4560,
+      "y": 1920
+    },
+    "PlanScene2.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "PLAN-07 · Bước 2: video Google Flow",
+      "w": 1440,
+      "x": 6080,
+      "y": 1920
+    },
+    "PlanScene3.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "PLAN-08 · Bước 3: tải và chọn video",
+      "w": 1440,
+      "x": 7600,
+      "y": 1920
+    },
+    "Settings.dc.html": {
+      "expand": "fill",
+      "h": 1400,
+      "is_interactive": true,
+      "title": "SET-01 · Cài đặt",
+      "w": 1440,
+      "x": 1520,
+      "y": 7520
+    },
+    "Sitemap.dc.html": {
+      "expand": "fill",
+      "h": 1500,
+      "title": "Kiến trúc thông tin & bảng ánh xạ",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "System.dc.html": {
+      "h": 900,
+      "title": "SYS-01/02/03 · Cài đặt, khởi động, thư mục dữ liệu",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Tool.dc.html": {
+      "expand": "fill",
+      "h": 960,
+      "is_interactive": true,
+      "title": "TOOL-01 · Xoá logo Veo",
+      "w": 1440,
+      "x": 0,
+      "y": 7520
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-31T09:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "rowA": {
+      "kind": "title1",
+      "maxW": 6000,
+      "text": "Nền tảng · Kiến trúc thông tin · Hệ thống",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowB": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "Kế hoạch video theo cảnh",
+      "w": 240,
+      "x": 0,
+      "y": 1620
+    },
+    "rowC": {
+      "kind": "title1",
+      "maxW": 6000,
+      "text": "Bản hoàn chỉnh & hậu kỳ",
+      "w": 240,
+      "x": 0,
+      "y": 3040
+    },
+    "rowD": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "Cắt clip từ video dài",
+      "w": 240,
+      "x": 0,
+      "y": 4460
+    },
+    "rowE": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Video đồ hoạ (HTML)",
+      "w": 240,
+      "x": 0,
+      "y": 5840
+    },
+    "rowF": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Công cụ · Cài đặt · Giao diện tối",
+      "w": 240,
+      "x": 0,
+      "y": 7220
+    }
+  },
+  "order": [
+    "Foundations.dc.html",
+    "Sitemap.dc.html",
+    "System.dc.html",
+    "Common.dc.html",
+    "Main.dc.html",
+    "PlanNew.dc.html",
+    "PlanPicker.dc.html",
+    "PlanScene1.dc.html",
+    "PlanScene2.dc.html",
+    "PlanScene3.dc.html",
+    "PlanRequest.dc.html",
+    "Final.dc.html",
+    "FinalCuts.dc.html",
+    "FinalFeedback.dc.html",
+    "FinalColor.dc.html",
+    "Clips.dc.html",
+    "ClipSource.dc.html",
+    "ClipWorkspace.dc.html",
+    "ClipAI.dc.html",
+    "ClipCaptions.dc.html",
+    "ClipSettings.dc.html",
+    "Html.dc.html",
+    "HtmlDetail.dc.html",
+    "HtmlFiles.dc.html",
+    "Tool.dc.html",
+    "Settings.dc.html",
+    "MainDark.dc.html"
+  ],
+  "pages": [],
+  "title": "AI Vinh Gia — Thiết kế app desktop"
+}

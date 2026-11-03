@@ -259,7 +259,6 @@ describe('dự án đã xoá biến mất ở mọi nơi', () => {
     const lib = (await u.get('/api/ref-library')).body;
     expect(lib.map((r: any) => r.label)).toEqual(['Khác']);
     expect(lib.flatMap((r: any) => r.projects.map((p: any) => p.id))).not.toContain(P);
-    expect((await u.get('/api/lan')).body.plan_count).toBe(0);
 
     // worker: job (kể cả job queued còn sót) không được giao; API job theo id → 404
     db().prepare("INSERT INTO jobs (project_id, scene_id, type, status, requires_approval, approved_at, created_at) VALUES (?, ?, 'storyboard', 'queued', 1, ?, ?)").run(P, sceneId, env.ctx.now(), env.ctx.now());
@@ -460,9 +459,9 @@ describe('migration 011 trên DB cũ', () => {
       const counts = () => Object.fromEntries(tables.map((t) => [t, (d.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get() as { n: number }).n]));
       const before = counts();
       const proj0 = d.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
-      expect(runMigrations(d)).toEqual(['011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions']);
+      expect(runMigrations(d)).toEqual(['011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_captions', '016_html_video', '017_html_voice', '018_html_asset_review', '019_html_long_video', '020_html_segments']);
       expect(runMigrations(d)).toEqual([]);
-      expect(counts()).toEqual({ ...before, schema_migrations: 15 });
+      expect(counts()).toEqual({ ...before, schema_migrations: 20 });
       expect(d.prepare('SELECT * FROM projects').all()).toEqual([{ ...proj0[0], deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null }]);
       expect(() => d.prepare("UPDATE projects SET deleted_by = 'web' WHERE id = 1").run()).toThrow(/CHECK/);
       expect((d.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_projects_deleted'").all() as unknown[]).length).toBe(1);

@@ -118,10 +118,11 @@ export function useClipActions(projectId: number) {
       refresh();
     },
   });
+  const aiFix = useMutation({ mutationFn: (sourceId: number) => api.aiFix(sourceId), onSuccess: refresh });
   const cancelSource = useMutation({ mutationFn: (sourceId: number) => api.cancelSource(sourceId), onSuccess: refresh });
   const patchProject = useMutation({ mutationFn: (v: { name?: string; stt_terms?: string }) => api.patchProject(projectId, v), onSuccess: refresh });
 
-  return { patchClip, createClip, putCaptions, render, cancelCut, plan, transcribe, cancelSource, patchProject, refresh };
+  return { patchClip, createClip, putCaptions, render, cancelCut, plan, transcribe, aiFix, cancelSource, patchProject, refresh };
 }
 
 // ---- transcript ----
@@ -150,7 +151,8 @@ export function useTranscript(source: SourceVideo | null | undefined): Transcrip
   const { api, scope } = useClipEnv();
   const ready = !!source && source.status === 'transcribed';
   const sid = source?.id ?? 0;
-  const cacheKey = `${scope}:${sid}:${source?.word_count ?? 0}`;
+  // đổi khi nhận dạng lại (số từ) hoặc AI chuẩn hoá lại (mốc ai_fix.at: có thể chỉ sửa chữ, không đổi số từ)
+  const cacheKey = `${scope}:${sid}:${source?.word_count ?? 0}:${source?.ai_fix?.at ?? ''}`;
   const [state, setState] = useState<{ key: string; sentences: TranscriptSentence[]; total: number; loading: boolean; error: Error | null }>(() => {
     const c = transcriptCache.get(cacheKey);
     return { key: cacheKey, sentences: c?.sentences ?? [], total: c?.total ?? 0, loading: false, error: null };

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Kiến trúc thông tin</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="background: #e8ecef; min-height: 1500px">
+<div style="max-width: 1360px; margin: 0 auto; padding: 40px 32px 56px; display: flex; flex-direction: column; gap: 20px">
+  <div class="vs" style="gap: 6px">
+    <h1 style="font-size: 30px; font-weight: 700">Kiến trúc thông tin &amp; bảng ánh xạ</h1>
+    <p class="mut" style="max-width: 860px; line-height: 1.6">Giữ bốn nhóm công việc độc lập + một công cụ. Mọi màn luôn trả lời: đang ở dự án nào · cảnh/clip/phiên bản nào · việc nào đang chạy · bước tiếp theo là gì. Các mục đánh dấu <span class="bd wa">Đề xuất</span> là thay đổi cần chủ sản phẩm duyệt.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px">
+    <div class="card pad vs" style="gap: 8px; border-top: 4px solid #153f86">
+      <a class="h3" href="Main.dc.html">Kế hoạch video</a>
+      <a class="s" href="Main.dc.html">Danh sách · PLAN-01</a>
+      <a class="s" href="PlanNew.dc.html">Tạo kế hoạch · PLAN-02</a>
+      <a class="s" href="PlanPicker.dc.html">Thư viện ảnh · PLAN-05</a>
+      <span class="s b6" style="margin-top: 6px">Chi tiết kế hoạch · PLAN-03</span>
+      <a class="s" href="PlanScene1.dc.html" style="padding-left: 12px">Cảnh → Bước 1 · PLAN-06</a>
+      <a class="s" href="PlanScene2.dc.html" style="padding-left: 12px">Bước 2 Flow · PLAN-07</a>
+      <a class="s" href="PlanScene3.dc.html" style="padding-left: 12px">Bước 3 Video · PLAN-08</a>
+      <a class="s" href="Final.dc.html" style="padding-left: 12px">Bản hoàn chỉnh · FINAL-01…04</a>
+      <span class="s mut" style="padding-left: 12px">Ảnh tham chiếu</span>
+      <a class="s" href="PlanRequest.dc.html" style="padding-left: 12px">Yêu cầu · PLAN-04</a>
+    </div>
+    <div class="card pad vs" style="gap: 8px; border-top: 4px solid #153f86">
+      <a class="h3" href="Clips.dc.html">Cắt clip</a>
+      <a class="s" href="Clips.dc.html">Danh sách + tạo · CLIP-01</a>
+      <a class="s" href="ClipSource.dc.html">Nguồn &amp; nhận dạng · CLIP-02</a>
+      <a class="s" href="ClipWorkspace.dc.html">Không gian cắt · CLIP-04/05</a>
+      <a class="s" href="ClipAI.dc.html" style="padding-left: 12px">AI đề xuất · CLIP-03</a>
+      <a class="s" href="ClipCaptions.dc.html" style="padding-left: 12px">Sửa chữ phụ đề · CLIP-06</a>
+      <a class="s" href="ClipSettings.dc.html" style="padding-left: 12px">Cài đặt dự án · CLIP-07</a>
+    </div>
+    <div class="card pad vs" style="gap: 8px; border-top: 4px solid #153f86">
+      <a class="h3" href="Html.dc.html">Video đồ hoạ</a>
+      <span class="xs mut">tên cũ: Video HTML</span>
+      <a class="s" href="Html.dc.html">Danh sách + tạo · HTML-01</a>
+      <a class="s" href="HtmlDetail.dc.html">Xem trước &amp; phiên bản · HTML-02/03</a>
+      <a class="s" href="HtmlFiles.dc.html">Tệp &amp; dựng MP4 · HTML-04</a>
+    </div>
+    <div class="card pad vs" style="gap: 8px; border-top: 4px solid #153f86">
+      <a class="h3" href="Tool.dc.html">Xoá logo Veo</a>
+      <a class="s" href="Tool.dc.html">Tải nhiều video, hàng đợi, kết quả · TOOL-01</a>
+    </div>
+    <div class="card pad vs" style="gap: 8px; border-top: 4px solid #153f86">
+      <a class="h3" href="Settings.dc.html">Cài đặt</a>
+      <span class="s">AI · Nhận dạng lời nói · Bộ dựng video đồ hoạ · Xoá logo &amp; hàng đợi · Giao diện · Dữ liệu &amp; log</span>
+      <span class="h3" style="margin-top: 10px">Dùng chung</span>
+      <a class="s" href="System.dc.html">SYS-01/02/03</a>
+      <a class="s" href="Common.dc.html">COMMON-01</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="pad" style="padding-bottom: 8px"><h2 class="h2">Bảng ánh xạ chức năng: hiện tại → thiết kế mới</h2></div>
+    <div class="tw"><table>
+      <thead><tr><th>Chức năng hiện tại</th><th>Vị trí cũ</th><th>Vị trí mới</th><th>Ghi chú</th></tr></thead>
+      <tbody>
+        <tr><td>Mở thư mục dữ liệu / log</td><td>Menu cửa sổ Windows</td><td>Giữ menu Windows + Cài đặt › Dữ liệu &amp; log</td><td><span class="bd wa">Đề xuất</span> nhân đôi lối vào, không bỏ menu</td></tr>
+        <tr><td>Trạng thái AI, xoá logo, số việc render</td><td>Thanh trạng thái</td><td>Thanh trạng thái cuối app (giữ), tách hàng đợi AI và Render</td><td>Màu luôn đi cùng chữ</td></tr>
+        <tr><td>Gần đây (kế hoạch + clip)</td><td>Sidebar</td><td>Sidebar, tối đa 3 mục</td><td><span class="bd wa">Đề xuất</span> thêm dự án Video đồ hoạ — cần bổ sung logic</td></tr>
+        <tr><td>Tải kế hoạch .md, ảnh .zip, Phân tích lại, Xoá</td><td>Đầu trang chi tiết</td><td>Đầu trang chi tiết + menu "…" trong danh sách</td><td>Xoá có lý do khi bị khoá</td></tr>
+        <tr><td>Ô "Tên của bạn" trong form clip</td><td>Form tạo clip (thành phần LAN)</td><td>Bỏ trên desktop</td><td><span class="bd wa">Đề xuất</span> desktop không có tài khoản</td></tr>
+        <tr><td>Tải transcript SRT/TXT, cảnh báo ít lời, nhận dạng lại</td><td>SourceInfo (chỉ khi chưa nhận dạng xong)</td><td>Menu "Lời thoại" trong không gian cắt clip</td><td><span class="bd wa">Đề xuất</span> thay đổi UX cần triển khai</td></tr>
+        <tr><td>Huỷ AI chọn đoạn</td><td>Chưa nối trên desktop</td><td>Nút Huỷ trong thẻ tiến trình AI</td><td><span class="bd wa">Đề xuất</span> cần nối API</td></tr>
+        <tr><td>Lý do khoá chức năng</td><td>Tooltip/title</td><td>Dòng lý do ngay dưới nút</td><td>Áp dụng toàn app</td></tr>
+        <tr><td>Video HTML</td><td>Mục điều hướng "Video HTML"</td><td>"Video đồ hoạ"</td><td><span class="bd wa">Đề xuất</span> đổi tên hiển thị, giữ luồng riêng</td></tr>
+        <tr><td>Giới hạn video nguồn clip</td><td>UI 2 GiB (scope LAN)</td><td>Hiển thị theo giá trị server (mặc định 4 GiB · 3 giờ)</td><td>Một nguồn giới hạn thống nhất</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <div class="card pad vs">
+      <h2 class="h2">Khi nào làm gì — chú thích hành vi</h2>
+      <div class="tw"><table>
+        <thead><tr><th>Hành động</th><th>Gọi AI</th><th>Tạo phiên bản</th></tr></thead>
+        <tbody>
+          <tr><td>Phân tích / phân tích lại kế hoạch</td><td><span class="tag ai">AI</span></td><td class="mut">Ghi đè danh sách cảnh</td></tr>
+          <tr><td>Edit tự động / Edit lại tự động</td><td><span class="tag ai">AI</span></td><td>Có, giữ bản cũ</td></tr>
+          <tr><td>Chỉnh điểm cắt → Render</td><td><span class="tag lo">TRÊN MÁY</span></td><td>Có</td></tr>
+          <tr><td>Góp ý bản hoàn chỉnh / Video đồ hoạ</td><td><span class="tag ai">AI</span></td><td>Có, từ bản đang xem</td></tr>
+          <tr><td>Chỉnh màu tay, ảnh mẫu, LUT</td><td><span class="tag lo">TRÊN MÁY</span></td><td>Có (Xem trước thì không)</td></tr>
+          <tr><td>Chỉnh nhanh Video đồ hoạ</td><td><span class="tag lo">TRÊN MÁY</span></td><td>Có</td></tr>
+          <tr><td>Kéo/đổi kiểu phụ đề, sửa chữ</td><td><span class="tag lo">TRÊN MÁY</span></td><td>Tự lưu; MP4 cũ thành "Cần dựng lại"</td></tr>
+          <tr><td>AI đề xuất clip</td><td><span class="tag ai">AI</span></td><td class="mut">Chỉ tạo đề xuất, chưa có MP4</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Danh sách mở rộng (chưa có, tách khỏi phạm vi)</h2>
+      <ul class="s" style="margin: 0; padding-left: 18px; line-height: 1.9">
+        <li>Hộp thoại cảnh báo khi rời trang / đóng app lúc đang tải lên hoặc xử lý</li>
+        <li>Form sửa tên/mô tả dự án Video đồ hoạ (API đã có)</li>
+        <li>Bộ chọn khung fit / nền mờ / center cho clip (backend đã có)</li>
+        <li>Slider màu riêng từng cảnh (hiện chỉ do AI tạo qua góp ý)</li>
+        <li>Tìm / lọc trong danh sách Video đồ hoạ</li>
+        <li>Trang quản lý thư viện ảnh độc lập</li>
+      </ul>
+      <p class="xs mut">Không đưa vào: account pool, ledger, worker console, timeline nhiều track, TTS, mua credit, đăng mạng xã hội.</p>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

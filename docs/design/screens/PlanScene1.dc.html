@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chi tiết kế hoạch · Bước 1</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" style="min-height: 1000px">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav on" href="Main.dc.html" title="Kế hoạch video" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Main.dc.html">Kế hoạch video</a><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span>Quảng cáo Cacao Actiso</span></nav>
+      <div class="hs"><h1 class="h1">Quảng cáo Cacao Actiso</h1><span class="bd ok">Đã phân tích</span><span class="bd ne">1/4 cảnh có video</span></div>
+    </div>
+    <div class="sp"></div>
+    <button class="btn sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>Kế hoạch .md</button>
+    <button class="btn sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>Ảnh tham chiếu .zip</button>
+    <a class="btn sm" href="PlanRequest.dc.html">Phân tích lại <span class="tag ai">AI</span></a>
+    <button class="btn sm ic" aria-label="Thao tác khác"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button>
+  </header>
+  <nav class="tabs" aria-label="Phần của kế hoạch">
+    <a class="tab on" href="PlanScene1.dc.html" aria-current="page">Cảnh <span class="n">4</span></a>
+    <a class="tab" href="Final.dc.html">Bản hoàn chỉnh</a>
+    <a class="tab" href="#">Ảnh tham chiếu <span class="n">3</span></a>
+    <a class="tab" href="PlanRequest.dc.html">Yêu cầu</a>
+  </nav>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start">
+    <aside class="card" style="flex: 1 1 290px; max-width: 320px; padding: 10px; display: flex; flex-direction: column; gap: 4px" aria-label="Danh sách cảnh">
+      <a class="li" href="PlanScene3.dc.html"><span class="ph" style="width: 44px; height: 64px">C1</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C1 · Văn phòng sáng sớm</b><span class="xs mut">Khung hình ✓ · 2 video · dùng bản 2</span><span class="bd ok" style="align-self: flex-start">Có video</span></span></a>
+      <a class="li on" href="PlanScene1.dc.html" aria-current="true"><span class="ph" style="width: 44px; height: 64px">C2</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C2 · Cận cảnh pha cacao</b><span class="xs mut">Khung hình cũ · chưa có video</span><span class="bd wa" style="align-self: flex-start">Cần kiểm tra lại</span></span></a>
+      <a class="li" href="PlanScene2.dc.html"><span class="ph" style="width: 44px; height: 64px">C3</span><span class="vs" style="gap: 4px; min-width: 0"><b class="s">C3 · Thưởng thức bên cửa sổ</b><span class="xs mut">Khung hình ✓ · chưa có video</span><span class="bd ne" style="align-self: flex-start">Chưa có video</span></span></a>
+      <a class="li" href="PlanScene3.dc.html"><span class="ph" style="width: 44px; height: 64px">C4</span><span class="vs" style="gap: 4px; min-width: 0; flex: 1"><b class="s">C4 · Hộp sản phẩm &amp; kêu gọi</b><span class="xs mut">Khung hình ✓ · đang tải video</span><span class="bar b"><i style="width: 64%"></i></span><span class="xs" style="color: #174f8a; font-weight: 600">Tải lên 64% — vẫn chạy khi đổi cảnh</span></span></a>
+      <div class="hr" style="margin: 6px 0"></div>
+      <div class="vs" style="gap: 6px; padding: 4px 6px 6px">
+        <span class="s"><b>1/4</b> cảnh đã chọn video</span>
+        <a class="btn sm dis" href="Final.dc.html" aria-disabled="true">Sang Bản hoàn chỉnh</a>
+        <span class="why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>Cần video cho C2, C3, C4.</span>
+      </div>
+    </aside>
+
+    <div class="vs" style="flex: 999 1 560px; min-width: 0; gap: 16px">
+      <div class="hs">
+        <h2 style="font-size: 18px; font-weight: 700">C2 · Cận cảnh pha cacao</h2>
+        <span class="sp"></span>
+        <a class="btn sm" href="PlanScene3.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg>Cảnh trước</a>
+        <a class="btn sm" href="PlanScene2.dc.html">Cảnh sau<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a>
+      </div>
+      <nav class="hs" style="gap: 10px; flex-wrap: wrap" aria-label="Các bước sản xuất">
+        <a class="step on warn" href="PlanScene1.dc.html" aria-current="step"><span class="num">1</span><span class="vs" style="gap: 1px"><b class="s">Khung hình mở đầu</b><span class="xs mut">ChatGPT · cần kiểm tra lại</span></span></a>
+        <a class="step" href="PlanScene2.dc.html"><span class="num">2</span><span class="vs" style="gap: 1px"><b class="s">Video trên Google Flow</b><span class="xs mut">Sao chép prompt</span></span></a>
+        <a class="step" href="PlanScene3.dc.html"><span class="num">3</span><span class="vs" style="gap: 1px"><b class="s">Tải &amp; chọn video</b><span class="xs mut">Chưa có video</span></span></a>
+      </nav>
+
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; align-items: start">
+        <div class="card pad vs" style="grid-column: span 3">
+          <div class="hs"><span class="h2">Tin nhắn tạo ảnh</span><span class="tag ex">GỬI CHATGPT</span><span class="sp"></span><button class="btn sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>Sao chép tin nhắn</button><button class="btn sm b">Mở ChatGPT<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></button></div>
+          <div class="mono code" style="max-height: 230px; overflow: auto">Create a vertical 9:16 opening frame. Close-up of a woman's hands stirring a cup of hot cacao on a light wooden table, warm morning sunlight from the left, cream and brown palette.
+Image 1 = product box "Cacao Actiso" (front) — place on the left, label fully readable, do not change the logo.
+Image 2 = model reference — same sleeve and skin tone.
+No text overlay. Photorealistic, shallow depth of field.</div>
+          <ol class="s" style="margin: 0; padding-left: 18px; line-height: 1.8">
+            <li>Sao chép tin nhắn và đính kèm các ảnh bên phải <b>đúng thứ tự</b>.</li>
+            <li>Tạo ảnh ở ChatGPT (trình duyệt), tải ảnh về máy.</li>
+            <li>Tải ảnh đó vào ô Storyboard bên dưới.</li>
+          </ol>
+        </div>
+        <div class="card pad vs" style="grid-column: span 2; gap: 10px">
+          <span class="h2">Ảnh đính kèm theo thứ tự</span>
+          <div class="hs" style="flex-wrap: nowrap; align-items: flex-start"><span class="b6 s" style="width: 18px">1</span><span class="ph" style="width: 52px; height: 52px">Hộp</span><span class="vs" style="gap: 2px; flex: 1; min-width: 0"><b class="s">Hộp Cacao Actiso – mặt trước</b><span class="xs mut">Prompt gọi: "Image 1" · tham chiếu sản phẩm</span><span class="hs" style="gap: 4px"><button class="btn sm g">Xem lớn</button><button class="btn sm g">Tải file</button></span></span></div>
+          <div class="hs" style="flex-wrap: nowrap; align-items: flex-start"><span class="b6 s" style="width: 18px">2</span><span class="ph" style="width: 52px; height: 52px">Mẫu</span><span class="vs" style="gap: 2px; flex: 1; min-width: 0"><b class="s">Người mẫu nữ, áo sơ mi trắng</b><span class="xs mut">Prompt gọi: "Image 2" · giữ nhận diện nhân vật</span><span class="hs" style="gap: 4px"><button class="btn sm g">Xem lớn</button><button class="btn sm g">Tải file</button></span></span></div>
+          <div class="hs" style="flex-wrap: nowrap; align-items: flex-start; border: 1px dashed #d9a54f; border-radius: 8px; padding: 6px"><span class="b6 s" style="width: 18px">3</span><span style="width: 52px; height: 52px; border-radius: 8px; border: 1.5px dashed #d9a54f; display: flex; align-items: center; justify-content: center; color: #7a4305; font-size: 11px">Thiếu</span><span class="vs" style="gap: 2px; flex: 1; min-width: 0"><b class="s">Bối cảnh bếp – bàn gỗ</b><span class="xs" style="color: #7a4305">Chưa có ảnh trong kế hoạch. Thêm ở tab Ảnh tham chiếu hoặc bỏ qua theo ghi chú.</span></span></div>
+        </div>
+      </div>
+
+      <div class="card pad vs">
+        <div class="hs"><span class="h2">Storyboard đã tải</span><span class="xs mut">Đã tải 2/8 lần cho cảnh này</span></div>
+        <div class="hs" style="align-items: flex-start; gap: 16px; flex-wrap: wrap">
+          <span class="ph" style="width: 112px; height: 200px">Storyboard C2</span>
+          <div class="vs" style="flex: 1 1 320px; gap: 10px">
+            <div class="kv"><dt>Tên file</dt><dd class="mono" style="font-weight: 500">c2_storyboard_v2.png</dd><dt>Tải lúc</dt><dd>30/10/2026 14:20</dd><dt>Kích thước</dt><dd>1080×1920 · 2,4 MB</dd></div>
+            <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span><b>Cần kiểm tra lại.</b> Tin nhắn tạo ảnh đã thay đổi sau khi phân tích lại (31/10 09:05). Ảnh này vẫn dùng được, nhưng hãy đối chiếu với nội dung mới.</span></div>
+            <div class="hs"><button class="btn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>Đổi ảnh…</button><button class="btn g">Xem lớn</button><span class="sp"></span><a class="btn p" href="PlanScene2.dc.html">Tiếp: Bước 2<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Xoá logo Veo: khả dụng</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+  <span><i class="dot in"></i>Tải lên: 1 (C4 · 64%)</span>
+  <span class="sp"></span><span>Dữ liệu: D:\AutoVideo</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mini = !!(this.state && this.state.mini);
+    return {
+      sideCls: mini ? 'mini' : '',
+      sideOpen: mini ? 'false' : 'true',
+      tgLabel: mini ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: mini ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !mini })
+    };
+  }
+}
+</script>
+</body>
+</html>

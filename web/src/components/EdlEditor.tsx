@@ -273,7 +273,7 @@ export function EdlEditor({ fc, onRendered, rerender }: { fc: FinalCut; onRender
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button variant="primary" loading={rerender.isPending} icon={<Icon name="refresh" size={14} />} onClick={submit}>
+          <Button variant="primary" actionKind="local" loading={rerender.isPending} icon={<Icon name="refresh" size={14} />} onClick={submit}>
             Render lại (không tốn credit)
           </Button>
           <span className="text-xs text-muted">Tạo một version mới, các bản cũ vẫn được giữ.</span>

@@ -175,7 +175,7 @@ export function GradePanel({ fc, api, blockReason, onCreated }: { fc: FinalCut; 
             <Button size="sm" onClick={() => setDraft(neutralGrade())} disabled={busy || isNeutralGrade(draft)}>
               Mặc định
             </Button>
-            <Button size="sm" icon={<Icon name="eye" size={14} />} loading={preview.isPending} disabled={busy} onClick={() => preview.mutate(draft)}>
+            <Button size="sm" actionKind="local" icon={<Icon name="eye" size={14} />} loading={preview.isPending} disabled={busy} onClick={() => preview.mutate(draft)}>
               Xem trước
             </Button>
             {unchanged && <span className="text-xs text-muted">Đang là thông số của bản v{fc.version}.</span>}
@@ -184,24 +184,18 @@ export function GradePanel({ fc, api, blockReason, onCreated }: { fc: FinalCut; 
           {preview.isError && <InlineError>{errorMessage(preview.error)}</InlineError>}
           {shown && (
             <div>
-              {stale && <p className="mb-1.5 text-xs text-warn-fg">Bạn đã đổi thông số sau lần xem trước này; bấm «Xem trước» để cập nhật ảnh «Sau».</p>}
+              {stale && <p className="plan-old mb-1.5 rounded-md border px-2 py-1.5 text-xs text-warn-fg">Ảnh xem trước đã cũ. Bạn đã đổi thông số sau lần xem trước; bấm «Xem trước» để cập nhật ảnh «Sau».</p>}
               <BeforeAfter data={shown.data} stale={stale} reference={shownRef} />
             </div>
           )}
 
           {create.isError && <InlineError>{errorMessage(create.error)}</InlineError>}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3">
-            <Button variant="primary" loading={create.isPending} disabledReason={createReason} onClick={() => create.mutate(draft)} icon={<Icon name="plus" size={14} />}>
+            <Button variant="primary" actionKind="local" loading={create.isPending} disabledReason={createReason} onClick={() => create.mutate(draft)} icon={<Icon name="plus" size={14} />}>
               Tạo phiên bản
             </Button>
             <span className="text-xs text-muted">Chỉ chạy bước chỉnh màu trên bản sạch (không render, không tốn AI hay credit). Bản hiện tại được giữ.</span>
           </div>
-          {blockReason && (
-            <p className="flex items-start gap-1 text-xs text-warn-fg">
-              <Icon name="alert" size={13} className="mt-px shrink-0" />
-              <span>{blockReason}</span>
-            </p>
-          )}
         </div>
       )}
     </section>

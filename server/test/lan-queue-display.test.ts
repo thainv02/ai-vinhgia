@@ -47,7 +47,6 @@ async function mk(concurrency: number, wm: 'auto' | 'off' = 'off') {
     config: { renderConcurrency: concurrency, gwrCli: FAKE_CLI, watermarkRemover: wm, gwrTimeoutMs: 60_000 },
   });
   c = L.client({ ip: '192.168.1.31' });
-  await c.login();
 }
 
 beforeEach(() => {
@@ -79,7 +78,6 @@ run('bản dựng LAN: chờ AI rồi chờ render', () => {
     // một yêu cầu phân tích của người khác đến TRƯỚC khi bấm dựng → đứng trước edit_plan trong hàng đợi worker
     const other = (await c.post('/lan/api/plans', { name: 'Của người khác', created_by_name: 'B', brief: 'b' })).body.plan;
     const cb = L.client({ ip: '192.168.1.32' });
-    await cb.login();
     expect((await cb.post(`/lan/api/plans/${other.id}/analyze`, {})).status).toBe(201);
 
     const built = await c.post(cutsUrl(), {});
@@ -155,8 +153,6 @@ run('việc xoá logo LAN trong hàng đợi render song song', () => {
     await mk(2, 'auto');
     const c2 = L.client({ ip: '192.168.1.33' });
     const c3 = L.client({ ip: '192.168.1.34' });
-    await c2.login();
-    await c3.login();
     const u1 = await post(c, 'a.mp4');
     const u2 = await post(c2, 'b.mp4');
     const u3 = await post(c3, 'c.mp4');

@@ -24,6 +24,10 @@ export interface SourceVideo {
   error: string | null;
   error_code: string | null;
   queue: { state: 'waiting' | 'running' | null; position: number | null };
+  /** Đang chạy: `asr` nhận dạng, `ai_fix` AI đang chuẩn hoá chính tả (server cũ không có). */
+  stt_phase?: 'asr' | 'ai_fix' | null;
+  /** Bước AI chuẩn hoá chính tả của lần nhận dạng gần nhất; null = không chạy. */
+  ai_fix?: { model: string | null; changed_words: number; accepted: number; sentences: number; error: string | null; at?: string | null; /** Lần chuẩn hoá lại gần nhất lỗi (lời thoại vẫn là bản đã chuẩn hoá trước đó). */ retry_error?: string | null } | null;
   /** App: /files/… (video gốc). LAN: bản xem thử 480p. */
   video_url: string | null;
   poster_url: string | null;
@@ -151,6 +155,10 @@ export interface ClipProjectSummary {
   updated_at?: string;
   clip_count?: number;
   source_video?: { duration_s: number | null; status: SourceStatus } | null;
+  /** Trang planner: được xoá (bản desktop luôn true; LAN chỉ người tạo). */
+  can_delete?: boolean;
+  /** Chỉ khi `can_delete`: lý do chưa xoá được lúc này; null = xoá được. */
+  delete_block?: string | null;
 }
 
 export interface TranscriptWord {
@@ -188,7 +196,8 @@ export interface ClipServerStatus {
   max_bytes: number;
   max_s: number;
   retention_days: number | null;
-  stt: { configured: boolean };
+  /** `ready`: nhận dạng được ngay; không thì `reason` (vd bản desktop chưa tải model nhận dạng trên máy). */
+  stt: { configured: boolean; ready?: boolean; reason?: string | null };
   captions: { available: boolean; reason: string | null; font?: string | null };
   plan: { min_count: number; max_count: number };
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI Vinh Gia",
+  "version": "0.1.0",
+  "identifier": "vn.syntra.autovideo",
+  "build": {
+    "frontendDist": "splash"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "publisher": "Vinh Gia",
+    "shortDescription": "AI Vinh Gia",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "resources": {
+      "../dist-win/": "runtime/"
+    }
+  }
+}

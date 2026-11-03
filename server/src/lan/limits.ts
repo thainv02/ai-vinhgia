@@ -43,7 +43,6 @@ export const uploadBusy = (): AppError =>
 
 /** Giới hạn tốc độ theo IP (spec §1 của planner và §C của dựng bản hoàn chỉnh/xoá logo). */
 export const LAN_RATE = {
-  loginFailures: { max: 10, windowMs: 15 * 60_000 },
   analyze: { max: 6, windowMs: 60 * 60_000 },
   createPlan: { max: 20, windowMs: 60 * 60_000 },
   uploadFiles: { max: 60, windowMs: 60 * 60_000 },
@@ -72,7 +71,6 @@ export const LAN_RATE = {
 } as const;
 
 export interface LanLimiters {
-  loginFails: SlidingWindowLimiter;
   analyze: SlidingWindowLimiter;
   createPlan: SlidingWindowLimiter;
   uploadFiles: SlidingWindowLimiter;
@@ -94,10 +92,13 @@ export interface LanLimiters {
   clipGate: UploadGate;
 }
 
-export function makeLimiters(now: () => number): LanLimiters {
-  const lim = (r: { max: number; windowMs: number }) => new SlidingWindowLimiter(r.max, r.windowMs, now);
+/** Hạn mức thay cho LAN_RATE ở bản desktop (một người dùng trên chính máy mình): thực tế không giới hạn. */
+export const DESKTOP_RATE_MAX = 1_000_000;
+
+/** `unlimited` (bản desktop): bỏ hạn mức theo giờ; vẫn giữ giới hạn số luồng tải đồng thời. */
+export function makeLimiters(now: () => number, opts: { unlimited?: boolean } = {}): LanLimiters {
+  const lim = (r: { max: number; windowMs: number }) => new SlidingWindowLimiter(opts.unlimited ? DESKTOP_RATE_MAX : r.max, r.windowMs, now);
   return {
-    loginFails: lim(LAN_RATE.loginFailures),
     analyze: lim(LAN_RATE.analyze),
     createPlan: lim(LAN_RATE.createPlan),
     uploadFiles: lim(LAN_RATE.uploadFiles),

@@ -24,6 +24,7 @@ import { appendLogRow, VIDEO_TYPE_TEXT, verdictText } from './logmd.js';
 import { cancelCutForJob, editPlanResult, failEditPlanCut } from './final-cuts.js';
 import { completeEditPlanJob } from './final-revisions.js';
 import { clipPlanResult, clipPlanStale, completeClipPlanJob } from './clips/plan.js';
+import { cancelHtmlCompose, completeHtmlComposeJob, failHtmlCompose, htmlComposeStale } from './html/compose-lifecycle.js';
 import { emitProject } from './project-view.js';
 import { computePayload } from './payload.js';
 import {
@@ -45,6 +46,8 @@ import { QUEUED_SCENE_STATUS } from './job-queue.js';
 import { claimBlockReason } from './rules.js';
 import { transition } from './transition.js';
 import { getWorkerRow, pauseQueue } from './worker.js';
+import { composeParallel } from './html/compose-parallel.js';
+import { refreshSegmentPayload } from './html/segments.js';
 
 // ---------------------------------------------------------------- tạo job (đã tách sang job-create.ts)
 
@@ -100,9 +103,22 @@ export function claimNext(ctx: AppContext, workerId: string | null, opts: { mana
           continue;
         }
       }
+      if (job.type === 'html_compose') {
+        const active=ctx.db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE type='html_compose' AND status IN ('claimed','running')").get() as {n:number};
+        if(active.n>=composeParallel(ctx))continue;
+        const stale = htmlComposeStale(ctx, job);
+        if (stale) {
+          cancelStaleHtmlCompose(ctx, job, stale);
+          continue;
+        }
+      }
       if (claimBlockReason(ctx, job)) continue;
 
       const now = ctx.now();
+      if(job.type==='html_compose'){
+        refreshSegmentPayload(ctx,job);
+        ctx.db.prepare("UPDATE html_segments SET status='composing',updated_at=? WHERE job_id=? AND status='queued'").run(now,job.id);
+      }
       const payload = job.worker_mode === 'managed' && job.payload !== '{}' ? parseJson<Record<string, unknown>>(job.payload, {}) : computePayload(ctx, job);
       const res = ctx.db
         .prepare(
@@ -145,6 +161,12 @@ function cancelStaleEditPlan(ctx: AppContext, job: JobRow): void {
 function cancelStaleClipPlan(ctx: AppContext, job: JobRow, why: string): void {
   ctx.db.prepare("UPDATE jobs SET status = 'cancelled', finished_at = ?, error = ? WHERE id = ?").run(ctx.now(), why, job.id);
   logEvent(ctx, { project_id: job.project_id, type: 'job.cancelled', message: `Job #${job.id} (clip_plan) bị hủy: ${why}` });
+  emitJob(ctx, job.id, job.project_id);
+}
+
+function cancelStaleHtmlCompose(ctx: AppContext, job: JobRow, why: string): void {
+  ctx.db.prepare("UPDATE jobs SET status = 'cancelled', finished_at = ?, error = ? WHERE id = ?").run(ctx.now(), why, job.id);
+  logEvent(ctx, { project_id: job.project_id, type: 'job.cancelled', message: `Job #${job.id} (html_compose) bị hủy: ${why}` });
   emitJob(ctx, job.id, job.project_id);
 }
 
@@ -207,6 +229,7 @@ const ALLOWED_ASSET_KINDS: Record<JobType, AssetKind[]> = {
   revise_prompt: [],
   edit_plan: [],
   clip_plan: [],
+  html_compose: [],
 };
 
 function assertClaimed(job: JobRow): void {
@@ -344,6 +367,9 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
       // Server kiểm tra lại mọi ID câu và tự tính giây (bám khoảng lặng). Có đề xuất mà tất cả đều sai → INVALID_CLIP_PLAN (400), job giữ nguyên để worker sửa và gọi lại.
       const done = completeClipPlanJob(ctx, job, parse(clipPlanResult, result));
       Object.assign(result, { created: done.created, rejected: done.rejected.length });
+    } else if (job.type === 'html_compose') {
+      // Bộ file đã được route /complete ghi staging + kiểm tra (stageHtmlComposeCompletion); ở đây công bố nguyên tử nếu phiên bản/job còn active.
+      completeHtmlComposeJob(ctx, job, result);
     } else {
       // analyze_brief: cần đã gọi POST /api/worker/scenes trước đó
       const n = (ctx.db.prepare('SELECT COUNT(*) AS n FROM scenes WHERE project_id = ?').get(project.id) as { n: number }).n;
@@ -415,6 +441,8 @@ export function applyJobFailure(ctx: AppContext, job: JobRow, body: FailBody): v
       emitProject(ctx, project.id);
     } else if (job.type === 'edit_plan') {
       failEditPlanCut(ctx, job.id, body.error);
+    } else if (job.type === 'html_compose') {
+      failHtmlCompose(ctx, job, code, body.error);
     }
     logEvent(ctx, {
       project_id: job.project_id,
@@ -468,6 +496,8 @@ export function cancelJob(ctx: AppContext, jobId: number) {
       emitProject(ctx, job.project_id);
     } else if (job.type === 'edit_plan') {
       cancelCutForJob(ctx, job.id);
+    } else if (job.type === 'html_compose') {
+      cancelHtmlCompose(ctx, job);
     }
     logEvent(ctx, {
       project_id: job.project_id,

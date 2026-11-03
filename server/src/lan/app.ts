@@ -4,23 +4,23 @@ import { assertLanConfig } from '../config.js';
 import type { AppContext } from '../context.js';
 import { installBodyParsers } from '../lib/http.js';
 import { registerErrorHandling } from '../routes/errors.js';
+import { htmlPreviewOrigin } from '../services/html/preview.js';
 import { registerLanRoutes } from './routes.js';
 import { registerLanSecurity } from './security.js';
-import { LanSessions } from './session.js';
 
 export interface BuildLanAppOptions {
   logger?: boolean;
-  /** Test: nhận dòng log để kiểm tra không lộ mã truy cập/cookie. */
+  /** Test: nhận dòng log để kiểm tra không lộ cookie. */
   logStream?: { write(line: string): void };
 }
 
 /**
- * Listener LAN: một Fastify instance THỨ HAI trong cùng tiến trình, dùng chung AppContext (DB, đồng hồ, SSE) với app chính.
- * Chỉ đăng ký route planner (`registerLanRoutes`), KHÔNG import hay đăng ký bất kỳ route nào của app chính (projects, scenes,
- * jobs, worker, ai, files, stream, final-cuts). App chính vẫn chỉ nghe 127.0.0.1 và kiểm tra Host/Origin như cũ.
+ * Listener giao diện (tên lịch sử "LAN"): một Fastify instance THỨ HAI trong cùng tiến trình, dùng chung AppContext (DB, đồng hồ, SSE)
+ * với API chính, chỉ nghe 127.0.0.1. Chỉ đăng ký route planner (`registerLanRoutes`), KHÔNG import hay đăng ký bất kỳ route nào của
+ * API chính (projects, scenes, jobs, worker, ai, files, stream, final-cuts).
  */
 export async function buildLanApp(ctx: AppContext, opts: BuildLanAppOptions = {}): Promise<FastifyInstance> {
-  assertLanConfig({ ...ctx.config, lanEnabled: true }); // cổng trùng app chính, hoặc LAN_REQUIRE_CODE=true mà mã yếu/trống: không bật
+  assertLanConfig(ctx.config); // cổng trùng API chính: không bật
   const app = Fastify({
     logger:
       opts.logger === false
@@ -31,13 +31,12 @@ export async function buildLanApp(ctx: AppContext, opts: BuildLanAppOptions = {}
   });
   installBodyParsers(app);
   registerErrorHandling(app);
-  const sessions = new LanSessions(() => ctx.clock.now());
-  registerLanSecurity(app, sessions, ctx.config.lanAllowedHosts, ctx.config.lanRequireCode);
+  registerLanSecurity(app, () => htmlPreviewOrigin(ctx));
   await app.register(multipart, {
     preservePath: true,
     // mỗi ảnh ≤ maxUploadBytes (10 MB), tối đa 12 ảnh mỗi request
     limits: { fileSize: ctx.config.maxUploadBytes, files: 12, fields: 40, parts: 60 },
   });
-  await registerLanRoutes(app, ctx, sessions);
+  await registerLanRoutes(app, ctx);
   return app;
 }

@@ -4,9 +4,12 @@ import { buildApp } from './app.js';
 import type { FastifyInstance } from 'fastify';
 import { DATA_DIR, ENV_FILE, assertLanConfig, loadConfig } from './config.js';
 import { backupDb } from './db/index.js';
-import { ensureLanAccessCode, ensureWorkerToken, loadDotEnv } from './lib/env.js';
+import { ensureWorkerToken, loadDotEnv } from './lib/env.js';
 import { createRotatingLog, type RotatingLog } from './lib/log-file.js';
 import { buildLanApp } from './lan/app.js';
+import { startEmbeddedWorker, type EmbeddedWorker } from './services/embedded-worker.js';
+import { stopHtmlPreview, startHtmlPreview } from './services/html/preview.js';
+import { installHtmlValidator } from './services/html/engine/index.js';
 import { warmMediaBinaries } from './services/media.js';
 
 const LOG_FILE = path.join(DATA_DIR, 'logs', 'server.log');
@@ -19,15 +22,7 @@ async function main(): Promise<void> {
   loadDotEnv(envFile);
   const generated = !process.env.WORKER_TOKEN;
   ensureWorkerToken(envFile);
-  // LAN bật + LAN_REQUIRE_CODE=true mà chưa có mã truy cập: sinh ngẫu nhiên và ghi vào .env (giống WORKER_TOKEN).
-  // LAN tắt, hoặc không đòi mã (mặc định): không sinh mã, không động vào .env.
-  let lanCodeGenerated = false;
-  const early = loadConfig();
-  if (early.lanEnabled && early.lanRequireCode && !(process.env.LAN_ACCESS_CODE ?? '').trim()) {
-    ensureLanAccessCode(envFile);
-    lanCodeGenerated = true;
-  }
-  const config = loadConfig();
+  const config = { ...loadConfig(), envFile };
   assertLanConfig(config);
 
   // Production: mức warn, ghi file logs/server.log (xoay vòng ~5 file × 5MB), không in ra console. Dev: như cũ.
@@ -35,6 +30,7 @@ async function main(): Promise<void> {
   const production = process.env.NODE_ENV === 'production';
   if (production) fileLog = createRotatingLog(LOG_FILE);
 
+  installHtmlValidator(); // lint thật (HyperFrames + bảo mật) cho phiên bản Video HTML; test tự gọi nếu cần
   const app = await buildApp({
     config,
     startTimers: true,
@@ -48,37 +44,56 @@ async function main(): Promise<void> {
   }
 
   let lan: FastifyInstance | null = null;
+  let worker: EmbeddedWorker | null = null;
+  let stopping = false;
   const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
     app.log.info(`${signal}: đang tắt server...`);
+    await worker?.stop(); // dừng worker nhúng trước khi đóng API nó đang gọi
     await lan?.close(); // đóng listener LAN trước khi app chính đóng DB
+    await stopHtmlPreview(app.ctx).catch(() => undefined);
     await app.close();
     fileLog?.close();
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  // Vỏ app desktop (Tauri) giữ pipe stdin: đóng cửa sổ thì pipe đóng → tắt gọn (Windows không gửi được SIGTERM cho tiến trình con).
+  if (process.argv.includes('--exit-on-stdin-close')) {
+    process.stdin.on('error', () => undefined);
+    process.stdin.once('close', () => void shutdown('stdin đóng'));
+    process.stdin.resume();
+  }
 
   // kiểm tra trình dựng / xoá logo nền, không chặn việc mở cổng
   void app.ctx.finalRender!.status().then((fr) => app.log.info(`Trình dựng bản hoàn chỉnh: ${fr.active ?? 'không có'} — ${fr.reason}`));
   void app.ctx.finalRender!.watermarkStatus().then((wm) => app.log.info(`Xoá logo Veo: ${wm.active ? 'bật' : 'tắt'} — ${wm.reason}`));
   await app.listen({ port: config.port, host: config.host });
   void warmMediaBinaries(config); // tìm sẵn ffmpeg/ffprobe để lần dùng đầu không phải chờ
-  app.log.info(`API sẵn sàng tại http://${config.host}:${config.port}${config.webDistDir ? ' (kèm giao diện web)' : ''}`);
-  if (config.lanEnabled) {
-    // Listener LAN riêng (chỉ route planner). Lỗi mở cổng LAN không được làm sập app chính đang chạy.
-    try {
-      lan = await buildLanApp(app.ctx);
-      await lan.listen({ port: config.lanPort, host: config.lanHost });
-      app.ctx.lan = { listening: true, host: config.lanHost, port: config.lanPort, error: null };
-      app.log.info(`Trang planner LAN sẵn sàng tại http://${config.lanHost}:${config.lanPort} (${config.lanRequireCode ? 'cần mã truy cập: xem trong app chính hoặc .env' : 'không cần mã truy cập'})`);
-      if (lanCodeGenerated) app.log.info(`Đã tạo LAN_ACCESS_CODE mới và ghi vào ${path.relative(DATA_DIR, envFile)}`);
-    } catch (err) {
-      app.ctx.lan = { listening: false, host: config.lanHost, port: config.lanPort, error: (err as Error).message };
-      app.log.error({ err }, 'Không bật được listener LAN; app chính vẫn chạy');
-      await lan?.close().catch(() => undefined);
-      lan = null;
-    }
+  app.log.info(`API nội bộ sẵn sàng tại http://${config.host}:${config.port}`);
+  // Listener preview Video HTML (127.0.0.1) mở TRƯỚC listener giao diện để trang có sẵn origin cho frame-src. Lỗi không làm sập app.
+  try {
+    const pv = await startHtmlPreview(app.ctx);
+    app.log.info(`Preview Video HTML sẵn sàng tại ${pv.origin}`);
+  } catch (err) {
+    app.log.error({ err }, 'Không bật được listener preview Video HTML; tab Video HTML sẽ không xem trước được');
   }
+  // Listener giao diện (trang planner, chỉ 127.0.0.1). Vỏ Tauri chờ cổng này trả 200 rồi mới hiện trang.
+  try {
+    lan = await buildLanApp(app.ctx);
+    await lan.listen({ port: config.lanPort, host: config.lanHost });
+    app.ctx.lan = { listening: true, host: config.lanHost, port: config.lanPort, error: null };
+    app.log.info(`Giao diện sẵn sàng tại http://${config.lanHost}:${config.lanPort}`);
+  } catch (err) {
+    app.ctx.lan = { listening: false, host: config.lanHost, port: config.lanPort, error: (err as Error).message };
+    app.log.error({ err }, 'Không bật được listener giao diện');
+    await lan?.close().catch(() => undefined);
+    lan = null;
+  }
+  if (!config.aiApiKey) app.log.warn('Chưa có API key của máy chủ AI: các việc AI sẽ chờ tới khi nhập key trong Cài đặt');
+  worker = await startEmbeddedWorker({ config, log: (level, msg) => app.log[level](msg) });
+  app.log.info(`Worker AI nhúng đã chạy (AI: ${config.aiApiUrl}, model ${config.aiModel})`);
   if (generated) app.log.info(`Đã tạo WORKER_TOKEN mới và ghi vào ${path.relative(DATA_DIR, envFile)}`);
   app.log.info(`ROOT_DIR=${config.rootDir} | DB=${path.relative(DATA_DIR, config.dbPath)}`);
 }

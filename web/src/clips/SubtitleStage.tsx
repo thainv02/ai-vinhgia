@@ -103,6 +103,17 @@ export function SubtitleStage({ clip, idx, store, preset, fontFamily, layout, fr
     onLayout(next);
   };
 
+  const nudgeEdge = (mode: 'left' | 'right') => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const amount = e.key === 'ArrowRight' ? 0.01 : -0.01;
+    const next = mode === 'left'
+      ? clampLayout({ ...lay, left: lay.left + amount, width: lay.width - amount })
+      : clampLayout({ ...lay, width: lay.width + amount });
+    onLayout(next);
+    onCommit(next);
+  };
+
   const end = useCallback(() => {
     if (!drag.current) return;
     drag.current = null;
@@ -153,8 +164,8 @@ export function SubtitleStage({ clip, idx, store, preset, fontFamily, layout, fr
                 ))}
               </span>
             )}
-            {!disabled && <span className="cd-handle cd-handle-l" role="separator" aria-label="Kéo mép trái" onPointerDown={begin('left')} />}
-            {!disabled && <span className="cd-handle cd-handle-r" role="separator" aria-label="Kéo mép phải" onPointerDown={begin('right')} />}
+            {!disabled && <button type="button" className="cd-handle cd-handle-l" aria-label="Kéo mép trái hoặc dùng phím mũi tên" onPointerDown={begin('left')} onKeyDown={nudgeEdge('left')} />}
+            {!disabled && <button type="button" className="cd-handle cd-handle-r" aria-label="Kéo mép phải hoặc dùng phím mũi tên" onPointerDown={begin('right')} onKeyDown={nudgeEdge('right')} />}
           </div>
         </div>
       )}

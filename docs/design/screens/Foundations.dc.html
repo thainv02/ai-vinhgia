@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Nền tảng & bộ thành phần</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="background: #e8ecef; min-height: 1500px">
+<div style="max-width: 1360px; margin: 0 auto; padding: 40px 32px 56px; display: flex; flex-direction: column; gap: 20px">
+  <div class="hs" style="gap: 16px">
+    <img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia" style="width: 64px; height: 64px; object-fit: contain; background: #fff; border-radius: 12px; padding: 6px">
+    <div class="vs" style="gap: 4px">
+      <h1 style="font-size: 30px; font-weight: 700">AI Vinh Gia · Nền tảng thiết kế</h1>
+      <p class="mut" style="max-width: 820px; line-height: 1.6">Kế thừa nền tảng CRM Vinh Gia: xanh đậm cho thanh điều hướng, xanh ngọc cho hành động chính, xanh dương cho thông tin và lựa chọn, đỏ chỉ dùng cho xoá/lỗi. Font Be Vietnam Pro đủ dấu tiếng Việt; prompt và tên file dùng JetBrains Mono, luôn xuống dòng.</p>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <div class="card pad vs">
+      <h2 class="h2">Màu — giao diện sáng</h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #153f86"></i><b style="color: #1c2530">Điều hướng #153F86</b>Sidebar</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #207d79"></i><b style="color: #1c2530">Chính #207D79</b>Một nút chính / màn</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #174fa4"></i><b style="color: #1c2530">Thông tin #174FA4</b>Chọn, tab, link</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #4a3699"></i><b style="color: #1c2530">AI #4A3699</b>Dấu "gọi AI"</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #2b7f60"></i><b style="color: #1c2530">Thành công #2B7F60</b>Xong, sạch logo</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #d98a2b"></i><b style="color: #1c2530">Cảnh báo #D98A2B</b>Cũ, cần kiểm tra</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #cf310a"></i><b style="color: #1c2530">Nguy hiểm #CF310A</b>Xoá, lỗi</div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #e8ecef; border: 1px solid #d5dce2"></i><b style="color: #1c2530">Nền #E8ECEF</b>Mực #1C2530</div>
+      </div>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Màu — giao diện tối <span class="hint">(Sáng / Tối / Theo Windows trong Cài đặt)</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #0e1620"></i><b style="color: #1c2530">Nền #0E1620</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #16212d"></i><b style="color: #1c2530">Bề mặt #16212D</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #0b1f45"></i><b style="color: #1c2530">Sidebar #0B1F45</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #2a9a94"></i><b style="color: #1c2530">Chính #2A9A94</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #6ea0ec"></i><b style="color: #1c2530">Thông tin #6EA0EC</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #e6edf3"></i><b style="color: #1c2530">Chữ #E6EDF3</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #9fb0c0"></i><b style="color: #1c2530">Phụ #9FB0C0</b></div>
+        <div class="vs xs mut" style="gap: 6px"><i style="display: block; height: 52px; border-radius: 8px; background: #2a3846"></i><b style="color: #1c2530">Viền #2A3846</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <div class="card pad vs">
+      <h2 class="h2">Chữ</h2>
+      <div style="font-size: 20px; font-weight: 700">Tiêu đề màn hình 20 / 700</div>
+      <div style="font-size: 15px; font-weight: 700">Tiêu đề khối 15 / 700</div>
+      <div>Nội dung 14 / 400 — Cảnh C2 · Cận cảnh pha cacao</div>
+      <div class="s mut">Chú thích 12,5 / 400 — 10 phút trước · 1080×1920 · 9,8 MB</div>
+      <div class="mono code">Prompt 12,5 mono — Close-up of hands stirring a cup of cacao, warm morning light, product box "Cacao Actiso" visible on the left…</div>
+      <p class="xs mut">Khoảng cách theo bậc 4 px (4 · 8 · 12 · 16 · 20 · 28). Bo góc: 7 px nút/ô, 10–12 px thẻ, 14 px hộp thoại.</p>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Dấu hiệu loại hành động <span class="hint">— luôn đi kèm nút có tác động</span></h2>
+      <div class="hs"><span class="tag ai"><svg class="i" viewBox="0 0 24 24" style="width: 12px; height: 12px" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>AI</span><span class="s">Gọi dịch vụ AI, vào hàng đợi AI, có thể tốn lượt</span></div>
+      <div class="hs"><span class="tag lo">TRÊN MÁY</span><span class="s">Xử lý cục bộ: dựng, chỉnh màu tay, nhận dạng lời nói</span></div>
+      <div class="hs"><span class="tag ex"><svg class="i" viewBox="0 0 24 24" style="width: 12px; height: 12px" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>MỞ NGOÀI</span><span class="s">Mở ChatGPT / Google Flow trong trình duyệt mặc định</span></div>
+      <div class="hs" style="margin-top: 6px">
+        <button class="btn p">Phân tích bằng AI <span class="tag ai">AI</span></button>
+        <button class="btn">Render phiên bản mới <span class="tag lo">TRÊN MÁY</span></button>
+        <button class="btn b">Mở Google Flow <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card pad vs">
+    <h2 class="h2">Nút — trạng thái</h2>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; align-items: start">
+      <div class="vs" style="gap: 8px"><span class="xs mut b6">Mặc định</span><button class="btn p">Tạo kế hoạch</button><button class="btn">Lưu nháp</button><button class="btn d">Xoá…</button></div>
+      <div class="vs" style="gap: 8px"><span class="xs mut b6">Rê chuột</span><button class="btn p" style="background: #1a6764">Tạo kế hoạch</button><button class="btn" style="background: #f1f4f7">Lưu nháp</button><button class="btn d" style="background: #fdf0ec">Xoá…</button></div>
+      <div class="vs" style="gap: 8px"><span class="xs mut b6">Tiêu điểm bàn phím</span><button class="btn p" style="outline: 2px solid #174fa4; outline-offset: 2px">Tạo kế hoạch</button><button class="btn" style="outline: 2px solid #174fa4; outline-offset: 2px">Lưu nháp</button></div>
+      <div class="vs" style="gap: 8px"><span class="xs mut b6">Đang xử lý</span><button class="btn p" disabled=""><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-8-8"></path></svg>Đang gửi…</button></div>
+      <div class="vs" style="gap: 8px"><span class="xs mut b6">Khoá — lý do tại chỗ</span><button class="btn p" disabled="">Edit tự động <span class="tag ai">AI</span></button><div class="why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>Còn 3/4 cảnh chưa có video: C2, C3, C4.</div></div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <div class="card pad vs">
+      <h2 class="h2">Ô nhập</h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+        <label class="lbl">Tên kế hoạch <span class="req" style="display: inline">*</span><input class="inp" value="Quảng cáo Cacao Actiso"><span class="hint">22/200 ký tự</span></label>
+        <label class="lbl">Tiêu điểm<input class="inp" style="outline: 2px solid #174fa4; outline-offset: 1px; border-color: #174fa4" value="Livestream 28/10"></label>
+        <label class="lbl">Thời lượng (giây)<input class="inp err" value="75"><span class="ferr"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>Chỉ nhận 1–60 giây.</span></label>
+        <label class="lbl">Model<select class="inp" disabled=""><option>Kiểm tra key để tải danh sách</option></select><span class="hint">Chưa có key hợp lệ.</span></label>
+      </div>
+      <div class="hs"><div class="seg" role="group" aria-label="Tỉ lệ"><button class="on">9:16</button><button>1:1</button><button>16:9</button></div><label class="ck"><input type="checkbox" checked="">Loại trừ đoạn đã có</label></div>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Huy hiệu trạng thái <span class="hint">— luôn có chữ, không chỉ màu</span></h2>
+      <div class="hs" style="gap: 6px"><span class="xs mut b6" style="width: 88px">Tải lên</span><span class="bd ne">Đã chọn</span><span class="bd in">Đang tải 64%</span><span class="bd in">Đang kiểm tra</span><span class="bd ok">Xong</span><span class="bd ne">Đã huỷ</span><span class="bd er">Lỗi file</span></div>
+      <div class="hs" style="gap: 6px"><span class="xs mut b6" style="width: 88px">AI</span><span class="bd ai">Chờ AI · vị trí 2</span><span class="bd ai">AI đang chạy</span><span class="bd ok">Xong</span><span class="bd er">AI lỗi</span><span class="bd ne">Đã huỷ</span></div>
+      <div class="hs" style="gap: 6px"><span class="xs mut b6" style="width: 88px">Render</span><span class="bd in">Chờ dựng · vị trí 1</span><span class="bd in">Render 40%</span><span class="bd in">Xoá logo 72%</span><span class="bd ok">Sạch logo</span><span class="bd wa">Còn logo</span></div>
+      <div class="hs" style="gap: 6px"><span class="xs mut b6" style="width: 88px">Kết quả cũ</span><span class="bd old">Cũ vì đổi video</span><span class="bd old">Cần dựng lại</span><span class="bd old">Xem trước đã cũ</span><span class="bd wa">Cần kiểm tra lại</span></div>
+      <div class="hs" style="gap: 6px"><span class="xs mut b6" style="width: 88px">Clip</span><span class="bd ne">Chờ duyệt</span><span class="bd in">Đã duyệt</span><span class="bd ne" style="text-decoration: line-through">Bỏ qua</span><span class="bd ok">Đã dựng v2</span><span class="bd er">Dựng lỗi</span></div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+    <div class="card pad vs">
+      <h2 class="h2">Tải lên — 100% chưa phải xong</h2>
+      <div class="vs" style="gap: 6px"><div class="hs s"><b class="mono" style="font-size: 12px">c4_flow_take3.mp4</b><span class="sp"></span><span class="mut">64% · 41/64 MB</span></div><div class="bar b"><i style="width: 64%"></i></div><span class="xs mut">Đang truyền file…</span></div>
+      <div class="vs" style="gap: 6px"><div class="hs s"><b class="mono" style="font-size: 12px">c4_flow_take3.mp4</b><span class="sp"></span><span class="mut">100%</span></div><div class="bar st"><i style="width: 100%"></i></div><span class="xs" style="color: #174f8a; font-weight: 600">Đang kiểm tra video… chưa hoàn tất</span></div>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Tab &amp; bộ lọc</h2>
+      <div class="tabs" style="padding: 0"><a class="tab on" href="#">Cảnh <span class="n">4</span></a><a class="tab" href="#">Bản hoàn chỉnh</a><a class="tab" href="#">Ảnh tham chiếu</a></div>
+      <div class="hs" style="gap: 8px"><button class="chip on">Tất cả <span class="n">6</span></button><button class="chip">Bản nháp <span class="n">3</span></button></div>
+    </div>
+    <div class="card pad vs">
+      <h2 class="h2">Timeline điểm cắt</h2>
+      <div style="display: flex; height: 26px; border-radius: 6px; overflow: hidden; gap: 2px">
+        <div style="flex: 3; background: #207d79"></div><div class="ph" style="flex: 1; border-radius: 0"></div><div style="flex: 4; background: #207d79"></div><div class="ph" style="flex: 2; border-radius: 0"></div>
+      </div>
+      <div class="hs xs"><span class="hs" style="gap: 6px"><i style="width: 14px; height: 10px; background: #207d79; border-radius: 2px; display: inline-block"></i>Đoạn giữ</span><span class="hs" style="gap: 6px"><i class="ph" style="width: 14px; height: 10px; border-radius: 2px; display: inline-block"></i>Đoạn bỏ (sọc)</span></div>
+    </div>
+  </div>
+  <div class="hs"><div class="toast"><svg class="i" viewBox="0 0 24 24" style="color: #7fd3a5" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>Đã sao chép tin nhắn tạo ảnh</div><div class="toast" style="background: #8f240b"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>Không tải được danh sách. <button class="btn sm" style="margin-left: 6px">Thử lại</button></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

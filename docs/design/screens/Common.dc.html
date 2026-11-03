@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Mẫu dùng chung</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="background: #e8ecef; min-height: 1100px">
+<div style="max-width: 1360px; margin: 0 auto; padding: 36px 32px 48px; display: flex; flex-direction: column; gap: 20px">
+  <h1 style="font-size: 26px; font-weight: 700">Mẫu dùng chung · xác nhận, toast, rỗng, lỗi</h1>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start">
+
+    <div class="dlg" role="dialog" aria-labelledby="d1">
+      <div class="dh"><span style="width: 36px; height: 36px; border-radius: 50%; background: #fde9e3; color: #a82a0c; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></span><h2 class="h2" id="d1">Xoá vĩnh viễn "Siro ho thảo dược"?</h2></div>
+      <div class="db"><p class="s" style="line-height: 1.55">Sẽ xoá khỏi máy: yêu cầu, <b>4 ảnh tham chiếu</b>, mọi storyboard, video cảnh và bản hoàn chỉnh. <b>Không có thùng rác</b> — không thể khôi phục.</p>
+      <label class="lbl">Gõ <span class="mono" style="display: inline">XOA</span> để xác nhận<input class="inp" value="XOA"></label></div>
+      <div class="df"><button class="btn">Giữ lại</button><button class="btn dd">Xoá vĩnh viễn</button></div>
+    </div>
+
+    <div class="dlg" role="dialog" aria-labelledby="d2">
+      <div class="dh"><h2 class="h2" id="d2">Huỷ bản dựng v3?</h2></div>
+      <div class="db"><div class="kv"><dt>Sẽ dừng</dt><dd>Bước Chỉnh màu (đang 45%)</dd><dt>Vẫn giữ</dt><dd>Bản sạch v2 và điểm cắt của v3</dd><dt>Làm tiếp</dt><dd>"Thử chỉnh màu lại" trong lịch sử phiên bản — không cần dựng lại toàn bộ</dd></div></div>
+      <div class="df"><button class="btn">Tiếp tục dựng</button><button class="btn d">Huỷ bước chỉnh màu</button></div>
+    </div>
+
+    <div class="vs">
+      <div class="dlg" role="dialog" aria-labelledby="d3">
+        <div class="dh"><h2 class="h2" id="d3">Chưa thể xoá dự án</h2></div>
+        <div class="db"><div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>2 clip đang dựng. Đợi xong hoặc huỷ các lượt dựng rồi thử lại — app không xoá một phần.</div></div>
+        <div class="df"><button class="btn">Đóng</button><button class="btn">Xem việc đang chạy</button></div>
+      </div>
+      <div class="toast"><svg class="i" viewBox="0 0 24 24" style="color: #7fd3a5" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg><span>Đã lưu phụ đề clip 3 · bản MP4 cũ cần dựng lại</span><span class="sp"></span><button class="btn sm g" style="color: #fff">Dựng lại</button></div>
+      <div class="toast"><svg class="i" viewBox="0 0 24 24" style="color: #7fd3a5" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg><span>Đã sao chép prompt Flow (C3)</span></div>
+    </div>
+
+    <div class="card pad vs" style="align-items: center; text-align: center; padding: 36px 24px">
+      <span class="ph" style="width: 72px; height: 72px; border-radius: 50%"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg></span>
+      <h3 class="h2">Chưa có kế hoạch nào</h3>
+      <p class="s mut" style="max-width: 300px; line-height: 1.55">Tạo kế hoạch từ yêu cầu kịch bản và ảnh sản phẩm. Có thể lưu nháp trước, phân tích sau.</p>
+      <button class="btn p">Tạo kế hoạch đầu tiên</button>
+    </div>
+
+    <div class="card pad vs" style="align-items: center; text-align: center; padding: 36px 24px">
+      <span class="ph" style="width: 72px; height: 72px; border-radius: 50%"><svg class="i" viewBox="0 0 24 24" style="width: 28px; height: 28px" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></span>
+      <h3 class="h2">Không có kế hoạch khớp "sữa hạt"</h3>
+      <p class="s mut">Thử từ khoá khác hoặc bỏ bộ lọc "Bản nháp".</p>
+      <div class="hs"><button class="btn">Xoá tìm kiếm</button><button class="btn">Bỏ bộ lọc</button></div>
+    </div>
+
+    <div class="vs">
+      <div class="card pad vs" style="gap: 10px" aria-label="Đang tải">
+        <div class="skel" style="width: 40%"></div><div class="skel"></div><div class="skel" style="width: 80%"></div><div class="skel" style="width: 65%"></div>
+        <span class="xs mut">Đang tải danh sách…</span>
+      </div>
+      <div class="card pad vs" style="gap: 10px">
+        <div class="note er"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span><b>Mất kết nối dịch vụ trên máy.</b> Không tải được danh sách. Đây không phải AI đang chờ.</span></div>
+        <div class="hs"><button class="btn">Thử lại</button><button class="btn g">Mở thư mục log</button></div>
+      </div>
+    </div>
+
+    <div class="card pad vs" style="grid-column: span 2">
+      <h2 class="h2">Thanh thông báo theo ngữ cảnh</h2>
+      <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg><span class="sp"><b>Chưa có API key AI.</b> Bản nháp của bạn đã được giữ. Thêm key để phân tích.</span><a class="btn sm" href="Settings.dc.html">Mở Cài đặt › AI</a></div>
+      <div class="note in"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span class="sp"><b>AI chưa chạy:</b> hàng đợi AI đang tạm dừng vì chưa kết nối được dịch vụ. Yêu cầu của bạn vẫn ở vị trí 1 — không cần gửi lại.</span></div>
+      <div class="note in"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="sp"><b>Chưa cài bộ dựng MP4.</b> Xem trước vẫn dùng được; chỉ xuất MP4 bị chặn.</span><a class="btn sm" href="Settings.dc.html">Cài đặt › Bộ dựng</a></div>
+      <div class="note er"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span class="sp"><b>Ổ D: còn 1,2 GB.</b> Cần ~3 GB để dựng. Dọn bớt dữ liệu rồi thử lại — bấm lại liên tục sẽ không giúp.</span></div>
+      <div class="note ne"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg><span class="sp"><b>App vừa khởi động lại.</b> 1 lượt dựng đã được xếp lại, 1 lượt nhận dạng bị đánh dấu lỗi — có thể thử lại.</span></div>
+    </div>
+
+    <div class="card pad vs">
+      <h2 class="h2">Hai hàng đợi tách biệt</h2>
+      <div class="hs"><span class="bd ai">Hàng đợi AI</span><span class="s">1 đang chạy · 2 chờ</span></div>
+      <div class="hs"><span class="bd in">Hàng đợi Render</span><span class="s">2/2 đang chạy · 1 chờ</span></div>
+      <div class="hr"></div>
+      <div class="vs" style="gap: 8px">
+        <div class="hs s"><span class="bd in">Render 40%</span>v3 · Trà Actiso</div>
+        <div class="hs s"><span class="bd in">Xoá logo 72%</span>veo_c1.mp4</div>
+        <div class="hs s"><span class="bd ne">Chờ · vị trí 1</span>Clip 6 · Livestream</div>
+      </div>
+      <p class="xs mut">Mỗi việc có trạng thái riêng; huỷ một việc không huỷ cả hàng đợi.</p>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

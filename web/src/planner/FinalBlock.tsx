@@ -28,7 +28,7 @@ const isActive = (c: LanFinalCut | undefined): boolean => !!c && (c.status === '
 
 const TONE_CLS: Record<string, string> = { ok: 'av-badge-ok', info: 'av-badge-info', danger: 'av-badge-danger', neutral: 'av-badge-neutral', warn: 'av-badge-warn' };
 const toneCls = (t: string): string => TONE_CLS[t] ?? 'av-badge-neutral';
-const SCENE_COLORS = ['#2a6fb8', '#207d79', '#7a5bb5', '#b8722a', '#2b7f60', '#b8456a'];
+const SCENE_COLORS = [1, 2, 3, 4, 5, 6].map((i) => `var(--scene-${i})`);
 const dur = (s: number | null | undefined): string => {
   if (s === null || s === undefined) return '—';
   const m = Math.floor(s / 60);
@@ -154,7 +154,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: LanFinalCut; workerOnline
 }
 
 /** Ô "Góp ý cho AI": tạo phiên bản mới từ góp ý, bản đang xem được giữ nguyên. */
-function Feedback({ fc, api, blockReason, onCreated, intent }: { fc: FinalCut; api: RevisionApi; blockReason: string | null; onCreated: (c: FinalCut) => void; intent: { nonce: number; text?: string } }) {
+function Feedback({ fc, api, blockReason, onCreated, intent, nextVersion, latestId }: { fc: FinalCut; api: RevisionApi; blockReason: string | null; onCreated: (c: FinalCut) => void; intent: { nonce: number; text?: string }; nextVersion: number; latestId: number | undefined }) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
   const box = useRef<HTMLElement>(null);
@@ -180,7 +180,10 @@ function Feedback({ fc, api, blockReason, onCreated, intent }: { fc: FinalCut; a
   };
   return (
     <section ref={box} className="av-card ws-fcard ws-fb" aria-labelledby={`fb-h-${fc.id}`}>
-      <h3 id={`fb-h-${fc.id}`}>Góp ý cho AI để tạo bản v{fc.version + 1}</h3>
+      <h3 id={`fb-h-${fc.id}`}>Góp ý cho AI trên v{fc.version}</h3>
+      <p className="av-muted" style={{ margin: '4px 0 8px', fontSize: 12.5 }}>
+        {fc.id !== latestId ? `Bạn đang góp ý trên bản cũ v${fc.version}. AI tạo v${nextVersion} từ v${fc.version}; các bản khác được giữ nguyên.` : `AI sẽ tạo bản v${nextVersion} từ v${fc.version}; các bản trước được giữ nguyên.`}
+      </p>
       <textarea
         id={`fb-text-${fc.id}`}
         ref={ref}
@@ -207,7 +210,7 @@ function Feedback({ fc, api, blockReason, onCreated, intent }: { fc: FinalCut; a
             </button>
           ))}
         </div>
-        <Btn size="sm" variant="primary" icon="send" loading={send.isPending} disabledReason={reason} onClick={submit}>Gửi góp ý</Btn>
+        <Btn size="sm" variant="primary" icon="send" actionKind="ai" loading={send.isPending} disabledReason={reason} onClick={submit}>Gửi góp ý</Btn>
       </div>
       {send.isError && <InlineError>{errorMessage(send.error)}</InlineError>}
       {blockReason && <p className="ws-warn">{blockReason}</p>}
@@ -386,8 +389,8 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
   const planName = detail.plan.name.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '') || 'ban-hoan-chinh';
   const waiting = fc ? (fc.status === 'planning' ? aiQueueNote(fc.ai_queue, detail.worker.online, fc.parent_id ? 'feedback' : 'cut') : renderQueueNote(fc)) : null;
   const createBtn = (
-    <Btn variant={!fc || fc.outdated ? 'primary' : undefined} size={fc ? 'sm' : undefined} icon="film" loading={create.isPending} disabledReason={buildReason} onClick={() => create.mutate()}>
-      {list.length ? 'Edit lại tự động' : 'Edit tự động'}
+    <Btn variant={!fc || fc.outdated ? 'primary' : undefined} size={fc ? 'sm' : undefined} icon="film" actionKind="ai" loading={create.isPending} disabledReason={buildReason} onClick={() => create.mutate()}>
+      {list.length ? 'Dựng lại tự động' : 'Dựng tự động'}
     </Btn>
   );
 
@@ -404,7 +407,6 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
           <div className="ws-empty">
             <strong>Chưa có bản hoàn chỉnh</strong>
             {createBtn}
-            {buildReason && <p className="ws-warn">{buildReason}</p>}
           </div>
         ) : (
           <>
@@ -422,7 +424,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
                     )}
                     {fc.status === 'ready' && <span className={`av-badge ${fc.watermark_removed ? 'av-badge-ok' : 'av-badge-warn'}`}>{fc.watermark_removed ? 'Đã xoá logo Veo' : 'Còn logo Veo'}</span>}
                     {gradeChips(fc).map((c) => <span key={c} className="av-badge av-badge-info">Màu: {c}</span>)}
-                    {fc.outdated && <span className="av-badge av-badge-warn">Cũ vì đổi video</span>}
+                    {fc.outdated && <span className="av-badge av-badge-warn plan-old">Cũ vì đổi video</span>}
                   </div>
                   {fc.status !== 'ready' && <Stages fc={fc} watermarkActive={wm.active} />}
                   {waiting && fc.status !== 'ready' && <span className="ws-warn" style={{ color: waiting.warn ? 'var(--warn-fg)' : 'var(--muted)' }}>{waiting.title}</span>}
@@ -432,8 +434,8 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
                   {(clean.isError || cancel.isError) && <InlineError>{errorMessage(clean.error ?? cancel.error)}</InlineError>}
                   <div className="ws-actions">
                     {videoUrl && <LinkBtn href={videoUrl} download={`${planName}_v${fc.version}.mp4`} icon="download" primary small={false}>Tải video</LinkBtn>}
-                    <Btn icon="edit" onClick={() => setEditing((v) => !v)} disabledReason={fc.edl ? null : 'Chưa có điểm cắt để chỉnh'}>{editing ? 'Đóng trình chỉnh' : 'Chỉnh điểm cắt'}</Btn>
-                    {fc.status === 'ready' && <Btn icon="image" onClick={() => setGrading((v) => !v)}>{grading ? 'Đóng chỉnh màu' : 'Chỉnh màu'}</Btn>}
+                    <Btn icon="edit" actionKind="local" onClick={() => setEditing((v) => !v)} disabledReason={fc.edl ? null : 'Chưa có điểm cắt để chỉnh'}>{editing ? 'Đóng trình chỉnh' : 'Chỉnh điểm cắt'}</Btn>
+                    {fc.status === 'ready' && <Btn icon="image" actionKind="local" onClick={() => setGrading((v) => !v)}>{grading ? 'Đóng chỉnh màu' : 'Chỉnh màu'}</Btn>}
                     <CleanLogoView
                       fc={fc}
                       loading={clean.isPending}
@@ -461,7 +463,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
                   </div>
                 )}
 
-                {fc.status === 'ready' && <Feedback fc={fc} api={revApi} blockReason={feedbackBlock} onCreated={onRevisionCreated} intent={fbIntent} />}
+                {fc.status === 'ready' && <Feedback fc={fc} api={revApi} blockReason={feedbackBlock} onCreated={onRevisionCreated} intent={fbIntent} nextVersion={(list[0]?.version ?? fc.version) + 1} latestId={list[0]?.id} />}
                 {grading && fc.status === 'ready' && (
                   <div ref={gradeBox}>
                     <GradePanel key={fc.id} fc={fc} api={revApi} blockReason={gradeBlock} onCreated={onRevisionCreated} />
@@ -472,7 +474,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
 
             {editing && (
               <div className="av-card ws-sec-card">
-                <h3>Chỉnh điểm cắt</h3>
+                <h3>Chỉnh điểm cắt từ v{fc.version} <span className="plan-action-label">TRÊN MÁY · KHÔNG GỌI AI</span></h3>
                 <EdlEditor
                   key={fc.id}
                   fc={fc}
@@ -542,7 +544,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
                   <strong>{creatorText(v)}</strong>
                   <span>{fmtDateTime(v.created_at)}{v.duration_s !== null ? ` · ${dur(v.duration_s)}` : ''}{v.status === 'ready' && v.watermark_removed ? ' · đã xoá logo' : ''}</span>
                   {v.status !== 'ready' && <span>{finalStatusLabel(v)}</span>}
-                  {v.outdated && <span className="av-badge av-badge-warn">Cũ vì đổi video</span>}
+                  {v.outdated && <span className="av-badge av-badge-warn plan-old">Cũ vì đổi video</span>}
                 </span>
               </button>
             );

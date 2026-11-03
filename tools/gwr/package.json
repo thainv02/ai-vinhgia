@@ -1,0 +1,14 @@
+{
+  "name": "@autovideo/gwr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Xoá logo Veo trên video: lớp chạy của app quanh @pilio/gemini-watermark-remover (chỉ phần video), dùng trình duyệt có sẵn trên máy",
+  "type": "module",
+  "bin": {
+    "gwr": "./gwr.mjs"
+  },
+  "dependencies": {
+    "@pilio/gemini-watermark-remover": "1.0.45",
+    "playwright-core": "^1.56.0"
+  }
+}

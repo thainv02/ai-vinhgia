@@ -50,6 +50,8 @@ export async function makeEnv(opts: Partial<BuildAppOptions> = {}): Promise<Env>
     dbPath,
     clock,
     logger: false,
+    // Test hàng đợi không phụ thuộc RAM còn trống trên máy; ca thiếu RAM tự inject giá trị thấp.
+    finalRender:{freeMemBytes:()=>8*1024**3,...opts.finalRender},
     config: { workerToken: WORKER_TOKEN, aiHome: path.join(root, 'private-ai'), ...opts.config },
   });
   return {
@@ -66,6 +68,7 @@ export async function makeEnv(opts: Partial<BuildAppOptions> = {}): Promise<Env>
         dbPath,
         clock,
         logger: false,
+        finalRender:{freeMemBytes:()=>8*1024**3,...opts.finalRender,...overrides.finalRender},
         config: { workerToken: WORKER_TOKEN, ...opts.config, ...overrides.config },
       });
       extra.push(a);
@@ -74,7 +77,8 @@ export async function makeEnv(opts: Partial<BuildAppOptions> = {}): Promise<Env>
     async close() {
       await app.close();
       for (const a of extra) await a.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      // Windows: ffmpeg/ffprobe vừa bị dừng khi đóng app có thể còn giữ file thêm chốc lát (EBUSY) → thử lại
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     },
   };
 }

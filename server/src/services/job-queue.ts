@@ -11,6 +11,7 @@ import { isManagedJobType } from '../config.js';
 import type { JobRow, JobType } from '../db/types.js';
 import { claimBlockReason } from './rules.js';
 import { clipPlanStale } from './clips/plan.js';
+import { htmlComposeStale } from './html/compose-lifecycle.js';
 import { isOnline, getWorkerRow } from './worker.js';
 
 /** Trạng thái cảnh mà một job `queued` đòi hỏi (job lệch trạng thái bị hủy lúc claim). Dùng chung với `claimNext`. */
@@ -52,6 +53,7 @@ function claimable(ctx: AppContext, job: JobRow, now: string): boolean {
     if (!cut || cut.status !== 'planning') return false;
   }
   if (job.type === 'clip_plan' && clipPlanStale(ctx, job)) return false;
+  if (job.type === 'html_compose' && htmlComposeStale(ctx, job)) return false;
   return claimBlockReason(ctx, job) === null;
 }
 
@@ -81,4 +83,11 @@ export function aiQueueInfoById(ctx: AppContext, jobId: number | null): AiQueueI
   if (jobId === null) return null;
   const job = ctx.db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as JobRow | undefined;
   return job ? aiQueueInfo(ctx, job) : null;
+}
+
+/** Tóm tắt hàng đợi AI của worker nhúng cho thanh trạng thái: số job đang chạy và đang chờ (làn managed). */
+export function aiQueueSummary(ctx: AppContext): { running: number; waiting: number } {
+  const jobs = ctx.db.prepare("SELECT type, worker_mode, status FROM jobs WHERE status IN ('queued','claimed','running')").all() as Pick<JobRow, 'type' | 'worker_mode' | 'status'>[];
+  const lane = jobs.filter((j) => isManagedLane(ctx, j));
+  return { running: lane.filter((j) => j.status !== 'queued').length, waiting: lane.filter((j) => j.status === 'queued').length };
 }

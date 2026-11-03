@@ -47,11 +47,6 @@ describe('Host / Origin', () => {
     expect(r.status).toBe(403);
   });
 
-  it('EXTRA_ALLOWED_ORIGINS mở thêm origin', async () => {
-    await env.close();
-    env = await makeEnv({ config: { extraAllowedOrigins: ['http://localhost:5174'] } });
-    expect((await userClient(env.app).post('/api/projects', { name: 'A' }, { origin: 'http://localhost:5174' })).status).toBe(201);
-  });
 
   it('origin theo đúng cổng đang chạy (--port) được phép, cổng khác thì không', async () => {
     await env.close();

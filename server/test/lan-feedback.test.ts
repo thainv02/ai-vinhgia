@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LAN_RATE } from '../src/lan/routes.js';
-import { LAN_QUEUE_CAP } from '../src/services/lan-queue.js';
+import { DESKTOP_RATE_MAX } from '../src/lan/limits.js';
 import { FFMPEG, FFPROBE, FakeRenderer } from './final-helpers.js';
 import { setupAllDone, userClient, workerClient } from './helpers.js';
 import { makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
@@ -18,7 +17,6 @@ let c: LanClient;
 let fake: FakeRenderer;
 let fx: LanPlanFixture;
 let tmp: string;
-const db = () => L.env.ctx.db;
 const idle = () => L.env.ctx.finalRender!.idle();
 const worker = () => workerClient(L.env.app);
 const cutsUrl = (tail = '') => `/lan/api/plans/${fx.plan.id}/final-cuts${tail}`;
@@ -35,7 +33,6 @@ async function mk(o: { gwr?: boolean } = {}) {
     config: o.gwr === false ? { watermarkRemover: 'off' } : { gwrCli: FAKE_CLI, watermarkRemover: 'auto', gwrTimeoutMs: 60_000 },
   });
   c = L.client();
-  await c.login();
   fx = await makeLanPlan(L, c, 2);
   for (let i = 0; i < 2; i++) expect((await c.uploadVideo(sceneUrl(i), { name: `c${i + 1}.mp4`, data: clip(3) })).status).toBe(201);
 }
@@ -73,7 +70,7 @@ run('LAN: góp ý cho AI + chỉnh màu', () => {
     const r = await c.post(cutsUrl(`/${v1.id}/feedback`), { feedback: 'Màu ấm hơn, tương phản cao hơn' });
     expect(r.status, r.raw).toBe(201);
     expect(r.body.final_cut).toMatchObject({ version: 2, status: 'planning', parent_id: v1.id, parent_version: 1, feedback: 'Màu ấm hơn, tương phản cao hơn', base_path: null, video_path: null });
-    expect(r.body.rate.feedback_remaining).toBe(LAN_RATE.feedback.max - 1);
+    expect(r.body.rate.feedback_remaining).toBe(DESKTOP_RATE_MAX - 1);
     expect(JSON.stringify(r.body)).not.toContain(L.env.root);
     const job = await worker().get('/api/worker/next?worker=w1');
     expect(job.body.payload.revision).toMatchObject({ parent_cut_id: v1.id, feedback: 'Màu ấm hơn, tương phản cao hơn' });
@@ -86,7 +83,7 @@ run('LAN: góp ý cho AI + chỉnh màu', () => {
     expect((await c.get(v2.video_url)).status).toBe(200);
     expect((await c.get(`/lan/files/output/${fx.slug}/final/${fx.slug}_final_v2_base.mp4`)).status).toBe(404); // bản sạch chưa chỉnh màu không phục vụ qua LAN
     expect(JSON.stringify(v2)).not.toContain(L.env.root);
-    expect((await c.get('/lan/api/status')).body.remaining).toMatchObject({ feedback: LAN_RATE.feedback.max - 1, grade: LAN_RATE.grade.max, grade_preview: LAN_RATE.gradePreview.max });
+    expect((await c.get('/lan/api/status')).body.remaining).toMatchObject({ feedback: DESKTOP_RATE_MAX - 1, grade: DESKTOP_RATE_MAX, grade_preview: DESKTOP_RATE_MAX });
     expect(fake.calls).toHaveLength(1);
   });
 
@@ -99,14 +96,14 @@ run('LAN: góp ý cho AI + chỉnh màu', () => {
       expect(it.before_url).toMatch(new RegExp(`^/lan/files/output/${fx.slug}/final/preview/`));
       expect([(await c.get(it.before_url)).status, (await c.get(it.after_url)).status]).toEqual([200, 200]);
     }
-    expect(pv.body.rate.grade_preview_remaining).toBe(LAN_RATE.gradePreview.max - 1);
+    expect(pv.body.rate.grade_preview_remaining).toBe(DESKTOP_RATE_MAX - 1);
     // không phục vụ ảnh preview của slug khác / tên lạ
     expect((await c.get(`/lan/files/output/khong-co/final/preview/x.jpg`)).status).toBe(404);
     expect((await c.get(`/lan/files/output/${fx.slug}/final/preview/..%2F..%2Fx.jpg`)).status).toBe(404);
     const g = await c.post(cutsUrl(`/${v1.id}/grade`), { grade: { temperature_k: 7600 }, note: 'tay' });
     expect(g.status, g.raw).toBe(201);
     expect(g.body.final_cut).toMatchObject({ created_by: 'user', status: 'rendering', stage: 'grade', base_path: null });
-    expect(g.body.rate.grade_remaining).toBe(LAN_RATE.grade.max - 1);
+    expect(g.body.rate.grade_remaining).toBe(DESKTOP_RATE_MAX - 1);
     await idle();
     expect((await c.get(cutsUrl(`/${g.body.final_cut.id}`))).body).toMatchObject({ status: 'ready', grade: { temperature_k: 7600 } });
   });
@@ -126,62 +123,12 @@ run('LAN: góp ý cho AI + chỉnh màu', () => {
     L.env.ctx.config.ffmpegPath = good;
     const re = await c.post(cutsUrl(`/${g.body.final_cut.id}/regrade`), {});
     expect(re.status, re.raw).toBe(200);
-    expect(re.body.rate.grade_remaining).toBe(LAN_RATE.grade.max - 2);
+    expect(re.body.rate.grade_remaining).toBe(DESKTOP_RATE_MAX - 2);
     await idle();
     expect((await c.get(cutsUrl(`/${g.body.final_cut.id}`))).body.status).toBe('ready');
   });
 
-  it('hạn mức theo IP: góp ý 20/giờ, chỉnh tay 30/giờ, xem trước 60/giờ; hết giờ thì dùng lại được; IP khác không bị ảnh hưởng', async () => {
-    expect(LAN_RATE.feedback.max).toBe(20);
-    expect(LAN_RATE.grade.max).toBe(30);
-    expect(LAN_RATE.gradePreview.max).toBe(60);
-    const v1 = await readyV1();
-    // chỉnh tay 30 lần (trung tính: chỉ hard link, nhanh)
-    for (let i = 0; i < LAN_RATE.grade.max; i++) {
-      const r = await c.post(cutsUrl(`/${v1.id}/grade`), { grade: {} });
-      expect([i, r.status]).toEqual([i, 201]);
-      await idle();
-    }
-    const over = await c.post(cutsUrl(`/${v1.id}/grade`), { grade: {} });
-    expect([over.status, over.body.error.code]).toEqual([429, 'RATE_LIMITED']);
-    expect(Number(over.headers['retry-after'])).toBeGreaterThan(0);
-    const other = L.client({ ip: '192.168.1.99' });
-    await other.login();
-    // IP khác không bị ảnh hưởng (hàng đợi LAN vẫn còn chỗ vì việc đã xong)
-    expect((await other.post(cutsUrl(`/${v1.id}/grade`), { grade: {} })).status).toBe(201);
-    await idle();
-    // góp ý: mỗi lần tạo bản planning rồi hủy để lần sau gửi được
-    const other2 = L.client({ ip: '192.168.1.98' });
-    await other2.login();
-    for (let i = 0; i < LAN_RATE.feedback.max; i++) {
-      const r = await other2.post(cutsUrl(`/${v1.id}/feedback`), { feedback: `góp ý ${i}` });
-      expect([i, r.status, r.raw.slice(0, 120)]).toEqual([i, 201, r.raw.slice(0, 120)]);
-      expect((await other2.post(cutsUrl(`/${r.body.final_cut.id}/cancel`), {})).status).toBe(200);
-    }
-    const f21 = await other2.post(cutsUrl(`/${v1.id}/feedback`), { feedback: 'quá' });
-    expect([f21.status, f21.body.error.code]).toEqual([429, 'RATE_LIMITED']);
-    // xem trước: 60 lần (cùng grade nên dùng cache), lần 61 bị chặn
-    const o3 = L.client({ ip: '192.168.1.97' });
-    await o3.login();
-    for (let i = 0; i < LAN_RATE.gradePreview.max; i++) expect([i, (await o3.post(cutsUrl(`/${v1.id}/grade-preview`), { grade: { contrast: 1.2 } })).status]).toEqual([i, 200]);
-    expect((await o3.post(cutsUrl(`/${v1.id}/grade-preview`), { grade: { contrast: 1.2 } })).body.error.code).toBe('RATE_LIMITED');
-    // sau 1 giờ dùng lại được
-    L.env.clock.advanceMinutes(61);
-    expect((await o3.post(cutsUrl(`/${v1.id}/grade-preview`), { grade: { contrast: 1.2 } })).status).toBe(200);
-  }, 120_000);
 
-  it('tính vào trần hàng đợi LAN (6): đầy → 429 QUEUE_FULL cho góp ý/chỉnh tay/thử lại; xem trước không vào hàng đợi', async () => {
-    const v1 = await readyV1();
-    const ins = db().prepare("INSERT INTO lan_tool_jobs (kind, status, client_id_hash, created_at) VALUES ('remove_logo', 'queued', 'h', ?)");
-    for (let i = 0; i < LAN_QUEUE_CAP; i++) ins.run(L.env.ctx.now());
-    for (const [tail, body] of [['feedback', { feedback: 'ấm hơn' }], ['grade', { grade: { contrast: 1.1 } }]] as const) {
-      const r = await c.post(cutsUrl(`/${v1.id}/${tail}`), body);
-      expect([tail, r.status, r.body.error.code]).toEqual([tail, 429, 'QUEUE_FULL']);
-    }
-    expect((await c.post(cutsUrl(`/${v1.id}/grade-preview`), { grade: { contrast: 1.1 } })).status).toBe(200);
-    // chưa tạo gì
-    expect((db().prepare('SELECT COUNT(*) AS n FROM final_cuts WHERE project_id = ?').get(fx.plan.id) as { n: number }).n).toBe(1);
-  });
 
   it('bản của dự án khác / dự án app → 404 cho cả 4 thao tác; kế hoạch bị xoá (thùng rác) → 404; kiểm tra đầu vào', async () => {
     const v1 = await readyV1();

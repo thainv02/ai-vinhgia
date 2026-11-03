@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { clampRenderConcurrency } from '../../config.js';
+import { autoRenderConcurrency, clampRenderConcurrency } from '../../config.js';
+import os from 'node:os';
 import type { AppContext } from '../../context.js';
 import {
   type Edl,
@@ -40,6 +41,7 @@ export interface RendererStatus {
 }
 
 export interface FinalRenderOptions {
+  freeMemBytes?:()=>number;
   /** Ép dùng một renderer cụ thể (test). */
   renderer?: Renderer;
   /** Giãn cách tối thiểu giữa hai lần ghi progress (mặc định 1000ms). */
@@ -67,7 +69,7 @@ export interface QueueInfo {
 /** Một việc trong hàng đợi: render/clean một bản dựng (`cut`) hoặc một việc công cụ LAN (`tool`, tự mang hàm chạy). `lan`: việc từ LAN. */
 interface QueueItem {
   kind: QueueKind;
-  id: number;
+  id: number | string;
   mode: 'full' | 'clean' | 'grade';
   lan: boolean;
   run?: (abort: AbortController) => Promise<void>;
@@ -76,14 +78,16 @@ interface QueueItem {
 /** Một việc ĐANG chạy (đã lấy ra khỏi hàng đợi, có AbortController riêng ngay từ lúc nhận để hủy được cả khi còn đang kiểm tra trình dựng). */
 interface RunningItem {
   kind: QueueKind;
-  id: number;
+  id: number | string;
   abort: AbortController;
   lan: boolean;
 }
 
 /** `cut`: bản dựng hoàn chỉnh; `tool`: việc công cụ LAN; `clip`: bản dựng clip cắt từ video dài; `preview`: bản xem thử 480p của video nguồn LAN. */
-export type QueueKind = 'cut' | 'tool' | 'clip' | 'preview';
-const keyOf = (kind: QueueKind, id: number): string => `${kind}:${id}`;
+/** `html`: dựng MP4 Video HTML (id = `html_renders.id`); `html-capture`: chụp khung hình cho AI vision (id dạng chuỗi `<jobId>-<n>`, mỗi lần chụp một mục). */
+export type QueueKind = 'cut' | 'tool' | 'clip' | 'preview' | 'html' | 'html-capture';
+export type HtmlQueueKind = 'html' | 'html-capture';
+const keyOf = (kind: QueueKind, id: number | string): string => `${kind}:${id}`;
 
 export class FinalRenderService {
   private queue: QueueItem[] = [];
@@ -174,13 +178,15 @@ export class FinalRenderService {
 
   /** Số việc chạy cùng lúc (`RENDER_CONCURRENCY`, luôn nguyên 1–4). */
   get concurrency(): number {
-    return clampRenderConcurrency(this.ctx.config.renderConcurrency);
+    return this.ctx.config.renderConcurrency==='auto'?autoRenderConcurrency({cores:os.availableParallelism(),freeMemBytes:(this.opts.freeMemBytes??os.freemem)()}):clampRenderConcurrency(this.ctx.config.renderConcurrency);
   }
 
   /** Số việc đang chạy lúc này. */
   get runningCount(): number {
     return this.running.size;
   }
+  /** Áp dụng giới hạn mới ngay; việc đã chạy tiếp tục tới khi hoàn tất. */
+  refreshConcurrency():void {this.schedule();}
 
   /**
    * `full`: render rồi (nếu bật) xoá logo rồi (nếu grade không trung tính) chỉnh màu; `clean`: chỉ chạy lại bước xoá logo trên bản raw có sẵn (rồi chỉnh màu nếu có);
@@ -210,18 +216,32 @@ export class FinalRenderService {
     this.drop(kind, id);
   }
 
+  /**
+   * Việc Video HTML: `html` (dựng MP4, id = `html_renders.id`) hoặc `html-capture` (chụp khung hình cho vision, id chuỗi `<jobId>-<n>`): cùng hàng đợi,
+   * cùng `RENDER_CONCURRENCY`; `lan=true` (việc desktop tính như công cụ/clip) nên việc của app thật vẫn đứng trước. `run` tự cập nhật DB.
+   */
+  enqueueHtmlTask(kind: HtmlQueueKind, id: number | string, lan: boolean, run: (abort: AbortController) => Promise<void>): void {
+    if (this.closed || this.isQueued(kind, id) || this.isRunning(kind, id)) return;
+    this.push({ kind, id, mode: 'full', lan, run });
+  }
+
+  /** Hủy việc `html`/`html-capture` đang chờ hoặc đang chạy (abort; slot chỉ nhả khi `run` đã settle, tức tiến trình đã thoát). */
+  cancelHtmlTask(kind: HtmlQueueKind, id: number | string): void {
+    this.drop(kind, id);
+  }
+
   /** Việc công cụ LAN (vd xoá logo video tải lên): cùng hàng đợi, luôn xếp sau việc của app. `run` tự cập nhật DB của việc. */
   enqueueTool(id: number, run: (abort: AbortController) => Promise<void>): void {
     if (this.closed || this.isQueued('tool', id) || this.isRunning('tool', id)) return;
     this.push({ kind: 'tool', id, mode: 'full', lan: true, run });
   }
 
-  private isQueued(kind: QueueKind, id: number): boolean {
+  private isQueued(kind: QueueKind, id: number | string): boolean {
     return this.queue.some((j) => j.kind === kind && j.id === id);
   }
 
   /** Đang chạy VÀ chưa bị hủy (việc đang dừng dở thì coi như không chạy, để xếp lại được). */
-  private isRunning(kind: QueueKind, id: number): boolean {
+  private isRunning(kind: QueueKind, id: number | string): boolean {
     const r = this.running.get(keyOf(kind, id));
     return !!r && !r.abort.signal.aborted;
   }
@@ -243,6 +263,7 @@ export class FinalRenderService {
    */
   private schedule(): void {
     while (!this.closed && this.running.size < this.concurrency) {
+      if(this.running.size>0&&(this.opts.freeMemBytes??os.freemem)()<1.5*1024**3)break;
       const i = this.queue.findIndex((j) => !this.running.has(keyOf(j.kind, j.id)));
       if (i < 0) break;
       const job = this.queue.splice(i, 1)[0]!;
@@ -254,8 +275,8 @@ export class FinalRenderService {
         .finally(() => {
           this.running.delete(key);
           this.inflight.delete(p);
-          if (job.kind === 'cut') this.emittedPos.delete(job.id);
-          else if (job.kind === 'clip') this.emittedClipPos.delete(job.id);
+          if (job.kind === 'cut') this.emittedPos.delete(job.id as number);
+          else if (job.kind === 'clip') this.emittedClipPos.delete(job.id as number);
           this.schedule();
         });
       this.inflight.add(p);
@@ -278,13 +299,13 @@ export class FinalRenderService {
     this.drop('tool', id);
   }
 
-  private drop(kind: QueueKind, id: number): void {
+  private drop(kind: QueueKind, id: number | string): void {
     const before = this.queue.length;
     this.queue = this.queue.filter((j) => !(j.kind === kind && j.id === id));
     this.running.get(keyOf(kind, id))?.abort.abort();
     if (this.queue.length !== before) {
-      if (kind === 'cut') this.emittedPos.delete(id);
-      else if (kind === 'clip') this.emittedClipPos.delete(id);
+      if (kind === 'cut') this.emittedPos.delete(id as number);
+      else if (kind === 'clip') this.emittedClipPos.delete(id as number);
       this.notifyQueue();
       this.resolveIdleIfDone();
     }
@@ -294,7 +315,7 @@ export class FinalRenderService {
    * Tình trạng của một việc trong hàng đợi: `running` (đang chạy) hoặc `waiting` với `position` (1 = chạy tiếp theo).
    * `null` = không có trong hàng đợi (đã xong, chưa xếp hàng, hoặc dịch vụ đã tắt).
    */
-  queueInfo(kind: QueueKind, id: number): QueueInfo | null {
+  queueInfo(kind: QueueKind, id: number | string): QueueInfo | null {
     const base = { running_count: this.running.size, concurrency: this.concurrency };
     if (this.running.has(keyOf(kind, id))) return { state: 'running', position: null, ...base };
     const i = this.queue.findIndex((j) => j.kind === kind && j.id === id);
@@ -305,7 +326,7 @@ export class FinalRenderService {
    * (Tương thích ngược với trường `queue_ahead`) 0 = đang chạy; n = số thứ tự nếu mọi việc chạy tuần tự, tính cả các việc đang chạy
    * (= `running_count + queue_position`); null = không có trong hàng đợi. Giao diện mới dùng `queueInfo`.
    */
-  position(kind: QueueKind, id: number): number | null {
+  position(kind: QueueKind, id: number | string): number | null {
     const q = this.queueInfo(kind, id);
     if (!q) return null;
     return q.state === 'running' ? 0 : q.position! + q.running_count;
@@ -363,14 +384,15 @@ export class FinalRenderService {
         changed.push(id);
       }
     };
-    this.queue.forEach((j, i) => j.kind === 'cut' && consider(j.id, i + 1));
+    this.queue.forEach((j, i) => j.kind === 'cut' && consider(j.id as number, i + 1));
     for (const r of this.running.values()) {
       if (r.kind !== 'cut') continue;
-      seen.add(r.id);
-      const prev = this.emittedPos.get(r.id);
-      this.emittedPos.set(r.id, 0);
+      const rid = r.id as number;
+      seen.add(rid);
+      const prev = this.emittedPos.get(rid);
+      this.emittedPos.set(rid, 0);
       // việc bắt đầu ngay (chưa từng báo "đang chờ") không cần thêm sự kiện: updateCut của chính nó đã phát
-      if (prev !== undefined && prev !== 0) changed.push(r.id);
+      if (prev !== undefined && prev !== 0) changed.push(rid);
     }
     for (const id of [...this.emittedPos.keys()]) if (!seen.has(id)) this.emittedPos.delete(id);
     for (const id of changed) {
@@ -390,18 +412,20 @@ export class FinalRenderService {
     const seen = new Set<number>();
     this.queue.forEach((j, i) => {
       if (j.kind !== 'clip') return;
-      seen.add(j.id);
-      if (this.emittedClipPos.get(j.id) !== i + 1) {
-        this.emittedClipPos.set(j.id, i + 1);
-        changed.push(j.id);
+      const jid = j.id as number;
+      seen.add(jid);
+      if (this.emittedClipPos.get(jid) !== i + 1) {
+        this.emittedClipPos.set(jid, i + 1);
+        changed.push(jid);
       }
     });
     for (const r of this.running.values()) {
       if (r.kind !== 'clip') continue;
-      seen.add(r.id);
-      const prev = this.emittedClipPos.get(r.id);
-      this.emittedClipPos.set(r.id, 0);
-      if (prev !== undefined && prev !== 0) changed.push(r.id);
+      const rid = r.id as number;
+      seen.add(rid);
+      const prev = this.emittedClipPos.get(rid);
+      this.emittedClipPos.set(rid, 0);
+      if (prev !== undefined && prev !== 0) changed.push(rid);
     }
     for (const id of [...this.emittedClipPos.keys()]) if (!seen.has(id)) this.emittedClipPos.delete(id);
     for (const id of changed) {
@@ -417,7 +441,7 @@ export class FinalRenderService {
   /** Thực thi một việc đã được lấy ra khỏi hàng đợi. Lỗi không lường trước đã được xử lý bên trong; ở đây không ném. */
   private async execute(job: QueueItem, item: RunningItem): Promise<void> {
     if (job.kind !== 'cut') await job.run?.(item.abort);
-    else await this.runOne(job.id, job.mode, item);
+    else await this.runOne(job.id as number, job.mode, item);
   }
 
   /** Ghi `progress` (throttle) chỉ khi bản vẫn `rendering`. */

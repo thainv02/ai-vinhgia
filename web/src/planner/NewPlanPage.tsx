@@ -7,6 +7,7 @@ import { InlineError } from '../components/States';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { lanLibrarySource, planner } from './api';
 import { hrefOf, navigate } from './useHashRoute';
+import './plan-design.css';
 
 /** App một người dùng: API vẫn đòi tên người tạo nên gửi giá trị cố định, không có ô nhập. */
 const CREATOR = 'Máy này';
@@ -84,16 +85,10 @@ export function NewPlanPage() {
             {busy}
           </span>
         )}
-        <button type="button" className="av-btn" disabled={locked || !!nameReason} title={nameReason ?? undefined} onClick={() => void submit(false)}>
-          Lưu nháp
-        </button>
-        <button type="button" className="av-btn av-btn-primary" disabled={locked || !!analyzeReason} title={analyzeReason ?? undefined} onClick={() => void submit(true)}>
-          <Icon name="send" size={15} /> Phân tích bằng AI
-        </button>
       </header>
 
       <form
-        className="av-page"
+        className="av-page plan-create"
         style={{ padding: '24px 32px 32px', maxWidth: 1104 }}
         onSubmit={(e) => {
           e.preventDefault();
@@ -104,7 +99,7 @@ export function NewPlanPage() {
           if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
         }}
       >
-        <section className="av-card av-card-pad" aria-labelledby="np-content">
+        <section className="av-card av-card-pad plan-create-content" aria-labelledby="np-content">
           <h2 id="np-content">Nội dung</h2>
           <label className="av-label">
             Tên kế hoạch
@@ -126,6 +121,16 @@ export function NewPlanPage() {
         </section>
 
         {error && <InlineError>{error}</InlineError>}
+        <div className="plan-create-actions">
+          <div className="plan-progress" aria-live="polite">
+            {busy ? <strong>{busy}</strong> : <><span>1 · Tạo kế hoạch</span><span>2 · Thêm ảnh ({refs.length})</span><span>3 · Gửi phân tích</span></>}
+            {planId !== null && <span>Tiếp tục trên cùng kế hoạch nếu có lỗi.</span>}
+          </div>
+          <div><button type="button" className="av-btn" disabled={locked || !!nameReason} onClick={() => void submit(false)}>Lưu nháp</button>{nameReason && <p className="plan-locked">⌑ {nameReason}</p>}</div>
+          <div><button type="button" className="av-btn av-btn-primary" disabled={locked || !!analyzeReason} onClick={() => void submit(true)}>
+            <Icon name="send" size={15} /> Phân tích bằng AI <span className="plan-action-label">AI</span>
+          </button>{analyzeReason && <p className="plan-locked">⌑ {analyzeReason}</p>}</div>
+        </div>
       </form>
     </>
   );

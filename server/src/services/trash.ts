@@ -18,6 +18,7 @@ import { hasLiveAction } from './managed.js';
 import { emitProject, projectSummary } from './project-view.js';
 import { getProject, getProjectAny, logEvent } from './repo.js';
 import { JOB_TYPE_LABEL } from './rules.js';
+import { stoppingRenderIds, waitHtmlRendersStopped } from './html/render.js';
 
 export const TRASH_DIR = 'output/.trash';
 const MS_DAY = 86_400_000;
@@ -29,7 +30,7 @@ export type DeletedBy = 'app' | 'lan';
 // ------------------------------------------------------------------ điều kiện chặn xoá
 
 export interface DeleteBlock {
-  code: 'JOB_RUNNING' | 'FINAL_CUT_ACTIVE' | 'ACTION_LIVE' | 'UPLOAD_ACTIVE' | 'CLIP_ACTIVE';
+  code: 'JOB_RUNNING' | 'FINAL_CUT_ACTIVE' | 'ACTION_LIVE' | 'UPLOAD_ACTIVE' | 'CLIP_ACTIVE' | 'HTML_ACTIVE';
   message: string;
 }
 
@@ -101,6 +102,13 @@ export function projectDeleteBlocks(ctx: AppContext, projectId: number): DeleteB
   if (rendering.n > 0) out.push({ code: 'CLIP_ACTIVE', message: `Đang dựng ${rendering.n} clip; hãy hủy hoặc đợi xong trước khi xoá.` });
   const stopping = (ctx.db.prepare('SELECT id FROM clip_cuts WHERE project_id = ?').all(projectId) as { id: number }[]).some((c) => ctx.finalRender?.queueInfo('clip', c.id));
   if (stopping && rendering.n === 0) out.push({ code: 'CLIP_ACTIVE', message: 'Một clip vẫn nằm trong hàng đợi dựng (đang dừng tiến trình); hãy thử lại sau ít giây.' });
+
+  // Dự án Video HTML: phiên bản đang tạo/kiểm tra (staging đang ghi) hoặc đang dựng MP4 (bản dựng queued/rendering) chặn xoá; hủy xong mới xoá được.
+  const htmlBusy = ctx.db.prepare("SELECT version, status FROM html_versions WHERE project_id = ? AND status IN ('composing','validating') ORDER BY version").all(projectId) as { version: number; status: string }[];
+  if (htmlBusy.length) out.push({ code: 'HTML_ACTIVE', message: `Video HTML đang ${htmlBusy.some((v) => v.status === 'validating') ? 'kiểm tra' : 'được AI tạo'} (${htmlBusy.map((v) => 'v' + v.version).join(', ')}); hãy hủy hoặc đợi xong trước khi xoá.` });
+  const htmlRender = ctx.db.prepare("SELECT COUNT(*) AS n FROM html_renders r JOIN html_versions v ON v.id = r.version_id WHERE v.project_id = ? AND r.status IN ('queued','rendering')").get(projectId) as { n: number };
+  if (htmlRender.n > 0) out.push({ code: 'HTML_ACTIVE', message: `Đang dựng ${htmlRender.n} video HTML; hãy hủy hoặc đợi xong trước khi xoá.` });
+  else if (stoppingRenderIds(ctx, projectId).length) out.push({ code: 'HTML_ACTIVE', message: 'Một video HTML vẫn nằm trong hàng đợi dựng (đang dừng tiến trình); hãy thử lại sau ít giây.' });
   return out;
 }
 
@@ -230,6 +238,74 @@ function originals(ctx: AppContext, p: ProjectRow): { output: string; refs: stri
 }
 
 const compactStamp = (iso: string): string => iso.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+
+// ------------------------------------------------------------------ file đang mở (Windows)
+
+/** Mã lỗi Windows khi đổi tên/xoá thư mục có file đang bị tiến trình khác mở (ffmpeg chưa thoát hẳn, trình xem video...). */
+const IN_USE_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const isInUse = (err: unknown): boolean => IN_USE_CODES.has((err as NodeJS.ErrnoException)?.code ?? '');
+
+/** Thư mục chuyển được (không file nào bên trong đang bị mở)? Thử đổi tên sang tên tạm rồi đổi lại; thư mục không tồn tại = chuyển được. */
+async function dirMovable(abs: string): Promise<boolean> {
+  const probe = `${abs}.inuse-check`;
+  // lần thử trước bị ngắt giữa hai lần đổi tên (tiến trình chết): đưa thư mục về đúng tên
+  if (pathKind(abs) === 'none' && pathKind(probe) === 'dir') await fs.promises.rename(probe, abs);
+  if (pathKind(abs) !== 'dir') return true;
+  try {
+    await fs.promises.rename(abs, probe);
+  } catch (err) {
+    if (isInUse(err)) return false;
+    throw err;
+  }
+  await fs.promises.rename(probe, abs);
+  return true;
+}
+
+export const FILE_IN_USE_MESSAGE =
+  'Có file trong dự án đang được mở (ví dụ video đang phát trong chương trình khác, hoặc thư mục đang mở trong Explorer). Hãy đóng file/thư mục đó rồi xoá lại.';
+
+/**
+ * Chờ file của dự án hết bị giữ trước khi xoá (Windows không cho đổi tên/xoá thư mục có file đang mở). Tiến trình vừa bị dừng (ffmpeg sau khi hủy)
+ * thường nhả file trong vòng một giây; quá `timeoutMs` thì 409 `FILE_IN_USE` để người dùng đóng file rồi thử lại. Không chặn event loop.
+ */
+export async function waitProjectFilesFree(ctx: AppContext, id: number, timeoutMs = 4_000): Promise<void> {
+  const p = getProjectAny(ctx, id);
+  const dirs = [originals(ctx, p).output, originals(ctx, p).refs];
+  const trash = trashDirOf(ctx, p);
+  if (trash) dirs.push(trash);
+  const until = Date.now() + timeoutMs; // giờ thật (không theo ctx.clock): chờ tiến trình của hệ điều hành nhả file
+  for (;;) {
+    let free = true;
+    for (const d of dirs) if (!(await dirMovable(d))) free = false;
+    if (free) return;
+    if (Date.now() >= until) throw conflict('FILE_IN_USE', FILE_IN_USE_MESSAGE);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
+/** Trước khi xoá: dự án đang bận (đang dựng, job đang chạy...) → 409 `PROJECT_BUSY` ngay; không bận thì chờ file được nhả (`waitProjectFilesFree`). */
+export async function awaitDeletable(ctx: AppContext, id: number): Promise<void> {
+  await waitHtmlRendersStopped(ctx, id); // bản dựng HTML vừa hủy: chờ tiến trình dựng thoát hẳn rồi mới xét chặn
+  const blocks = projectDeleteBlocks(ctx, id);
+  if (blocks.length) throw blockedError(blocks);
+  await waitProjectFilesFree(ctx, id);
+}
+
+/**
+ * Xoá từ giao diện planner. Bản desktop (một người dùng, không có trang thùng rác): xoá vĩnh viễn ngay. Trang LAN: chuyển vào thùng rác của chủ máy.
+ * Xoá vĩnh viễn lỗi giữa chừng (hiếm) → dự án nằm lại trong thùng rác (đã ẩn); bản desktop giữ thùng rác 0 ngày nên lần bảo trì sau dọn nốt.
+ */
+export async function deleteFromPlanner(ctx: AppContext, id: number): Promise<{ purged: boolean }> {
+  await awaitDeletable(ctx, id);
+  deleteProject(ctx, id, { by: 'lan' });
+  try {
+    purgeProject(ctx, id);
+    return { purged: true };
+  } catch (err) {
+    console.warn(`[trash] xoá vĩnh viễn dự án #${id} chưa xong, sẽ dọn ở lần bảo trì sau:`, err instanceof Error ? err.message : err);
+    return { purged: false };
+  }
+}
 
 // ------------------------------------------------------------------ xoá (vào thùng rác)
 
@@ -466,8 +542,10 @@ export function purgeProject(ctx: AppContext, id: number, opts: { confirmName?: 
   for (const t of targets) {
     if (!t.startsWith(root + path.sep)) continue;
     try {
-      fs.rmSync(t, { recursive: true, force: true });
+      // Windows: file vừa được nhả có thể còn khoá thêm chốc lát → thử lại vài lần
+      fs.rmSync(t, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     } catch (err) {
+      if (isInUse(err)) throw conflict('FILE_IN_USE', FILE_IN_USE_MESSAGE);
       throw new AppError('PURGE_FAILED', `Không xoá được ${rel(ctx, t)} (${err instanceof Error ? err.message : String(err)}). Dự án vẫn nằm trong thùng rác; thử lại sau.`, 500);
     }
   }

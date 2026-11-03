@@ -86,6 +86,8 @@ export function computePayload(ctx: AppContext, job: JobRow): Record<string, unk
 
   if (job.type === 'edit_plan') return editPlanPayloadFor(ctx, job);
   if (job.type === 'clip_plan') return clipPlanPayloadFor(ctx, job);
+  // html_compose: payload là snapshot bất biến lúc tạo phiên bản (brief/mẫu/asset/cha/chính sách model); KHÔNG BAO GIỜ tính lại lúc claim
+  if (job.type === 'html_compose') return parseJson<Record<string, unknown>>(job.payload, {});
 
   const scene = getScene(ctx, job.scene_id as number);
 

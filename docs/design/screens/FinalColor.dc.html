@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chỉnh màu</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="app" style="min-height: 960px">
+<div class="row">
+<nav class="side {{ sideCls }}" aria-label="Điều hướng chính">
+  <div class="brand"><img src="../../../web/src/assets/vinh-gia-logo.jpg" alt="Logo Vinh Gia"><div><b>AI Vinh Gia</b><small>Sản xuất video</small></div></div>
+  <a class="nav on" href="Main.dc.html" title="Kế hoạch video" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path></svg><span class="lb">Kế hoạch video</span></a>
+  <a class="nav" href="Clips.dc.html" title="Cắt clip"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"></path></svg><span class="lb">Cắt clip</span></a>
+  <a class="nav" href="Html.dc.html" title="Video đồ hoạ"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 13 9 5 9-5"></path></svg><span class="lb">Video đồ hoạ</span></a>
+  <a class="nav" href="Tool.dc.html" title="Xoá logo Veo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12M4.5 15.5 14 6a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"></path></svg><span class="lb">Xoá logo Veo</span></a>
+  <a class="nav" href="Settings.dc.html" title="Cài đặt"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span class="lb">Cài đặt</span></a>
+  <div class="sec">Gần đây</div>
+  <a class="rec" href="PlanScene1.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 4v16M17 4v16"></path></svg><span>Quảng cáo Cacao Actiso</span></a>
+  <a class="rec" href="ClipWorkspace.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.1 15.9M14.5 14.5 20 20"></path></svg><span>Livestream 28/10 – Cacao</span></a>
+  <a class="rec" href="HtmlDetail.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"></path></svg><span>Teaser khuyến mãi 11.11</span></a>
+  <div style="flex: 1; min-height: 24px"></div>
+  <button class="tg" type="button" onClick="{{ toggleSide }}" aria-label="{{ tgLabel }}" aria-expanded="{{ sideOpen }}" title="{{ tgLabel }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="{{ tgPath }}"></path></svg><span class="lb">Thu gọn</span></button>
+</nav>
+<main class="main">
+  <header class="top">
+    <div class="vs" style="gap: 4px">
+      <nav class="crumb" aria-label="Đường dẫn"><a href="Main.dc.html">Kế hoạch video</a><span>/</span><a href="Final.dc.html">Trà Actiso túi lọc – Tết</a><span>/</span><a href="Final.dc.html">Bản hoàn chỉnh</a><span>/</span><span>Chỉnh màu</span></nav>
+      <div class="hs"><h1 class="h1">Chỉnh màu từ v2</h1><span class="tag lo">TRÊN MÁY · KHÔNG GỌI AI</span></div>
+    </div>
+    <div class="sp"></div>
+    <a class="btn" href="Final.dc.html">Đóng</a>
+  </header>
+  <section class="cnt" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start">
+    <div class="vs" style="flex: 999 1 560px; min-width: 0; gap: 14px">
+      <div class="note wa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"></path><path d="M12 10v4M12 17h.01"></path></svg><span class="sp"><b>Ảnh xem trước đã cũ.</b> Bạn đã đổi Nhiệt độ màu và Bão hoà sau lần xem trước lúc 10:14.</span><button class="btn sm">Xem trước lại</button></div>
+      <div class="card pad vs">
+        <div class="hs"><span class="h2">Trước / sau tại 3 mốc</span><span class="xs mut">Ảnh kiểm tra tĩnh, không phải video cập nhật liên tục</span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+          <div class="vs" style="gap: 6px"><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; opacity: .6"><span class="ph" style="height: 230px">Trước</span><span class="ph" style="height: 230px; background: repeating-linear-gradient(135deg,#ead9c6 0 8px,#f2e5d6 8px 16px)">Sau</span></div><span class="xs mut">0:05 · C1</span></div>
+          <div class="vs" style="gap: 6px"><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; opacity: .6"><span class="ph" style="height: 230px">Trước</span><span class="ph" style="height: 230px; background: repeating-linear-gradient(135deg,#ead9c6 0 8px,#f2e5d6 8px 16px)">Sau</span></div><span class="xs mut">0:18 · C3</span></div>
+          <div class="vs" style="gap: 6px"><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; opacity: .6"><span class="ph" style="height: 230px">Trước</span><span class="ph" style="height: 230px; background: repeating-linear-gradient(135deg,#ead9c6 0 8px,#f2e5d6 8px 16px)">Sau</span></div><span class="xs mut">0:36 · C5</span></div>
+        </div>
+      </div>
+      <div class="card pad vs" style="gap: 10px">
+        <span class="h2">Chỉnh riêng từng cảnh <span class="hint">(do AI tạo qua góp ý)</span></span>
+        <div class="hs s"><b style="width: 30px">C3</b><span>Độ sáng +0,08 · từ góp ý v2 "Cảnh 3 tối quá"</span><span class="sp"></span><button class="btn sm g">Bỏ</button></div>
+        <p class="xs mut">Chưa có bộ thanh trượt riêng từng cảnh.</p>
+      </div>
+    </div>
+
+    <aside class="card" style="flex: 1 1 380px; max-width: 420px; display: flex; flex-direction: column" aria-label="Thông số màu">
+      <div class="pad vs" style="gap: 12px; border-bottom: 1px solid #e3e8ed">
+        <div class="hs"><span class="h2">Khớp màu</span><span class="xs mut">chạy trước thanh trượt</span></div>
+        <div class="seg" role="group" aria-label="Chế độ khớp màu"><button>Không</button><button class="on">Theo ảnh mẫu</button><button>Theo LUT</button></div>
+        <div class="hs" style="flex-wrap: nowrap; align-items: flex-start"><span class="ph" style="width: 64px; height: 64px">Ảnh mẫu</span><div class="vs" style="gap: 4px; flex: 1"><b class="s mono" style="font-size: 12px">mau_tet_am.jpg</b><span class="xs mut">JPG · 2,1 MB · tối đa 15 MiB</span><div class="hs" style="gap: 4px"><button class="btn sm g">Đổi ảnh…</button><button class="btn sm g">Từ ảnh tham chiếu</button><button class="btn sm g">Bỏ</button></div></div></div>
+        <label class="lbl">Cường độ · 60%<input type="range" min="0" max="100" value="60"></label>
+        <div class="hs"><div class="seg" role="group" aria-label="Phạm vi khớp"><button class="on">Chỉ tông màu</button><button>Cả độ sáng</button></div><label class="ck"><input type="checkbox">Khớp riêng từng cảnh</label></div>
+        <p class="xs mut">Có thể kéo thả hoặc dán ảnh PNG/JPG/WebP. LUT nhận file .cube (5 MiB).</p>
+      </div>
+      <div class="pad vs" style="gap: 12px">
+        <div class="hs"><span class="h2">Thanh trượt</span><span class="sp"></span><button class="btn sm g">Mặc định</button></div>
+        <label class="lbl"><span class="hs"><span>Nhiệt độ màu</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="7200 K"></span><input type="range" min="4000" max="9000" value="7200"><span class="hint">4000–9000 K · trung tính 6500 · cao hơn = ấm hơn</span></label>
+        <label class="lbl"><span class="hs"><span>Tương phản</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="1,08"></span><input type="range" min="70" max="150" value="108"><span class="hint">0,70–1,50 · trung tính 1,00</span></label>
+        <label class="lbl"><span class="hs"><span>Độ sáng</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="+0,03"></span><input type="range" min="-25" max="25" value="3"><span class="hint">−0,25 đến +0,25 · trung tính 0</span></label>
+        <label class="lbl"><span class="hs"><span>Bão hoà</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="1,15"></span><input type="range" min="50" max="180" value="115"><span class="hint">0,50–1,80 · trung tính 1,00</span></label>
+        <label class="lbl"><span class="hs"><span>Sống động</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="0"></span><input type="range" min="-50" max="100" value="0"><span class="hint">−0,50 đến +1,00 · trung tính 0</span></label>
+        <label class="lbl"><span class="hs"><span>Gamma</span><span class="sp"></span><input class="inp" style="width: 84px; min-height: 28px" value="1,00"></span><input type="range" min="70" max="140" value="100"><span class="hint">0,70–1,40 · trung tính 1,00</span></label>
+        <p class="xs mut">Nhấp đúp một thanh trượt để về trung tính.</p>
+      </div>
+      <div class="df" style="flex-direction: column; align-items: stretch">
+        <div class="hs"><button class="btn" style="flex: 1">Xem trước</button><button class="btn p" style="flex: 2">Tạo phiên bản v4 <span class="tag lo">TRÊN MÁY</span></button></div>
+        <span class="xs mut">Áp từ bản sạch chưa chỉnh màu của v2 — không chồng màu qua nhiều phiên bản. v2 giữ nguyên.</span>
+      </div>
+    </aside>
+  </section>
+</main>
+</div>
+<footer class="stb" aria-label="Trạng thái ứng dụng">
+  <span><i class="dot ok"></i>AI: sẵn sàng</span>
+  <span><i class="dot ok"></i>Xoá logo Veo: khả dụng</span>
+  <span><i class="dot in"></i>Render: 2/2 đang chạy · 1 chờ</span>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mini = !!(this.state && this.state.mini);
+    return {
+      sideCls: mini ? 'mini' : '',
+      sideOpen: mini ? 'false' : 'true',
+      tgLabel: mini ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng',
+      tgPath: mini ? 'm13 9 3 3-3 3' : 'm16 9-3 3 3 3',
+      toggleSide: () => this.setState({ mini: !mini })
+    };
+  }
+}
+</script>
+</body>
+</html>

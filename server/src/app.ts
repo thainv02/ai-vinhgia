@@ -13,7 +13,6 @@ import { registerColorRefRoutes } from './routes/color-refs.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerFinalCutRoutes } from './routes/final-cuts.js';
 import { registerJobRoutes } from './routes/jobs.js';
-import { registerLanInfoRoute } from './routes/lan-info.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerSceneRoutes } from './routes/scenes.js';
 import { registerSecurity } from './routes/security.js';
@@ -28,6 +27,9 @@ import { SttService, type SttServiceOptions } from './services/clips/stt.js';
 import { emitPlanningQueueChanges, recoverRenderingCuts } from './services/final-cuts.js';
 import { FinalRenderService, type FinalRenderOptions, type Renderer } from './services/final-render/index.js';
 import { expireToolJobs, recoverToolJobs } from './services/lan-tools.js';
+import { recoverHtmlVersions } from './services/html/compose-lifecycle.js';
+import { recoverHtmlRenders } from './services/html/render.js';
+import { closeHtmlVoice, recoverHtmlVoice } from './services/html/voice.js';
 import { backfillRefHashes } from './services/refs.js';
 import { SseHub } from './services/sse.js';
 import { TRASH_SWEEP_INTERVAL_MS, trashMaintenance } from './services/trash.js';
@@ -94,11 +96,14 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
   const ctx = new AppContext(db, config, opts.clock ?? systemClock, new SseHub());
   backfillRefHashes(ctx); // migration 002: điền content_hash còn thiếu của ảnh tham chiếu
   ctx.finalRender = new FinalRenderService(ctx, { ...opts.finalRender, renderer: opts.finalRenderer });
+  recoverHtmlVoice(ctx);
   ctx.stt = new SttService(ctx, opts.stt);
   recoverRenderingCuts(ctx); // bản đang `rendering` của tiến trình cũ (đã chết) → failed
   recoverClipCuts(ctx); // bản dựng clip đang `rendering` của tiến trình cũ → failed (dọn file dở)
   ctx.stt.recover(); // video đang nhận dạng của tiến trình cũ → xếp lại (thử lấy kết quả theo job id trước)
   recoverToolJobs(ctx); // việc công cụ LAN đang chờ/chạy của tiến trình cũ → failed (giữ input để thử lại)
+  recoverHtmlRenders(ctx); // bản dựng MP4 Video HTML queued/rendering của tiến trình cũ → failed (không tự dựng lại)
+  recoverHtmlVersions(ctx); // phiên bản Video HTML (sửa biến) dang dở do tắt app → failed, dọn staging
   try {
     expireToolJobs(ctx);
   } catch (err) {
@@ -131,7 +136,6 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
   registerJobRoutes(app, ctx);
   registerWorkerRoutes(app, ctx);
   registerAiRoutes(app, ctx);
-  registerLanInfoRoute(app, ctx);
   registerStreamRoutes(app, ctx);
   await registerFileRoutes(app, ctx);
 
@@ -192,6 +196,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
 
   app.addHook('onClose', async () => {
     for (const t of timers) clearInterval(t);
+    closeHtmlVoice(ctx);
     await ctx.stt?.close(); // dừng nhận dạng lời nói đang chạy (việc dở được khôi phục lúc khởi động lại)
     await ctx.finalRender?.close(); // dừng render đang chạy trước khi đóng DB
     ctx.sse.closeAll();

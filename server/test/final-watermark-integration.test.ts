@@ -1,23 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { REPO_ROOT } from '../src/config.js';
 import { descendants } from '../src/services/final-render/index.js';
-import { FFMPEG, FFPROBE, ffprobeJson } from './final-helpers.js';
+import { FFMPEG, ffprobeJson } from './final-helpers.js';
+import { GWR_CLI, VEO_SAMPLE, gwrAvailable } from './helpers-gwr.js';
 import { claimEditPlan, edlFor, makeEnv, setupAllDone, type Env } from './helpers.js';
 
 /**
  * Tích hợp THẬT với tool xoá logo Veo (gemini-watermark-remover: node + Chromium headless + onnxruntime-web).
- * Chỉ chạy khi có tool thật (GWR_CLI, mặc định <repo>/gemini-watermark-remover/bin/gwr.mjs) và Chromium của Playwright.
+ * Chỉ chạy khi có tool thật (GWR_CLI, mặc định <repo>/tools/gwr/gwr.mjs), Edge/Chrome trên máy và video mẫu tools/gwr/test/veo-sample.mp4.
  * Media nằm trong thư mục tạm: copy 1 video Cacao (chỉ ĐỌC từ output/cacao-smoothie/video/) rồi cắt clip ngắn 2,5 giây.
  */
-const CLI = process.env.GWR_CLI || path.join(REPO_ROOT, 'gemini-watermark-remover', 'bin', 'gwr.mjs');
-const SRC = fileURLToPath(new URL('../../output/cacao-smoothie/video/C1_v2.mp4', import.meta.url));
-const HOME = process.env.HOME ?? '';
-const hasChromium = fs.existsSync(path.join(HOME, 'Library', 'Caches', 'ms-playwright')) || fs.existsSync(path.join(HOME, '.cache', 'ms-playwright'));
-const available = fs.existsSync(CLI) && fs.existsSync(path.join(path.dirname(CLI), '..', 'node_modules')) && hasChromium && fs.existsSync(SRC) && !!FFMPEG && !!FFPROBE;
+const CLI = GWR_CLI;
+const SRC = VEO_SAMPLE;
+const available = gwrAvailable;
 
 let env: Env;
 afterEach(async () => {

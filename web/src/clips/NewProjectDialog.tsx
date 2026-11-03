@@ -7,31 +7,16 @@ import { useClipEnv } from './env';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { clipKeys } from './hooks';
 
-const NAME_KEY = 'autovideo-lan-name';
-const readName = (): string => {
-  try {
-    return window.localStorage.getItem(NAME_KEY) ?? '';
-  } catch {
-    return '';
-  }
-};
-
 /** Hộp thoại tạo dự án cắt clip: tên + tên riêng/thuật ngữ hay xuất hiện (giúp nhận dạng đúng). */
 export function NewClipProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
   const { api, scope, quota } = useClipEnv();
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [terms, setTerms] = useState('');
-  const [by, setBy] = useState(readName);
   const create = useMutation({
-    mutationFn: () => api.createProject({ name: name.trim(), ...(terms.trim() ? { stt_terms: terms.trim() } : {}), ...(scope === 'lan' && by.trim() ? { created_by_name: by.trim() } : {}) }),
+    mutationFn: () => api.createProject({ name: name.trim(), ...(terms.trim() ? { stt_terms: terms.trim() } : {}) }),
     meta: { silent: true },
     onSuccess: (d) => {
-      try {
-        if (scope === 'lan') window.localStorage.setItem(NAME_KEY, by.trim());
-      } catch {
-        /* trình duyệt chặn lưu */
-      }
       void qc.invalidateQueries({ queryKey: clipKeys.list(scope) });
       void qc.invalidateQueries({ queryKey: ['projects'] });
       onCreated(d.project.id);
@@ -56,7 +41,7 @@ export function NewClipProjectDialog({ open, onClose, onCreated }: { open: boole
       }
     >
       <form
-        className="space-y-3 text-sm"
+        className="cd-form space-y-3 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
           if (!reason) create.mutate();
@@ -72,17 +57,9 @@ export function NewClipProjectDialog({ open, onClose, onCreated }: { open: boole
           <label htmlFor="ncp-terms" className="mb-1 block text-[13px] font-semibold">
             Tên riêng / thuật ngữ hay xuất hiện (tuỳ chọn)
           </label>
-          <textarea id="ncp-terms" rows={2} value={terms} maxLength={500} onChange={(e) => setTerms(e.target.value)} placeholder="Vd: Cacao, Actiso, Autovideo" />
+          <textarea id="ncp-terms" rows={2} value={terms} maxLength={500} onChange={(e) => setTerms(e.target.value)} placeholder="Vd: Cacao, Actiso, Vinh Gia" />
           <p className="mt-1 text-xs text-muted">Cách nhau bằng dấu phẩy. Giúp nhận dạng lời nói đúng tên sản phẩm, tên người.</p>
         </div>
-        {scope === 'lan' && (
-          <div>
-            <label htmlFor="ncp-by" className="mb-1 block text-[13px] font-semibold">
-              Tên của bạn (tuỳ chọn)
-            </label>
-            <input id="ncp-by" value={by} maxLength={60} onChange={(e) => setBy(e.target.value)} placeholder="Vd: Lan" />
-          </div>
-        )}
         {scope === 'lan' && quota?.project !== undefined && quota.project !== null && <p className="text-xs text-muted">Còn {Math.max(0, quota.project)} lượt tạo dự án trong giờ này.</p>}
         {create.isError && <InlineError>{errorMessage(create.error)}</InlineError>}
       </form>
