@@ -58,7 +58,7 @@ export function parseChip(raw: string): ChipValue | null {
 }
 
 /** Đối chiếu thiết lập Flow đang chọn với payload. Ưu tiên chip tổng hợp, rồi trạng thái chọn của nút; không rõ → Issue. */
-export function evaluateVideoSettings(snap: ComposerSnapshot, want: VideoSettings, credits: number | undefined): Issue[] {
+export function evaluateVideoSettings(snap: ComposerSnapshot, want: VideoSettings): Issue[] {
   const issues: Issue[] = [];
   const chips = snap.chips.map(parseChip).filter((c): c is ChipValue => !!c);
   const distinct = new Set(chips.map((c) => `${c.resolution}|${c.duration}|${c.count}|${c.aspect ?? ''}`));
@@ -87,11 +87,6 @@ export function evaluateVideoSettings(snap: ComposerSnapshot, want: VideoSetting
       issues.push({ item, detail: `không xác minh được ${label[cat]} đang chọn (mở popover cài đặt và chọn ${shown(cat, want1)})` });
     }
   }
-  const nums = parseCredits(snap.text);
-  if (credits === undefined || !Number.isFinite(credits)) issues.push({ item: 'credits', detail: 'payload không có credits_expected' });
-  else if (nums.length === 0) issues.push({ item: 'credits', detail: 'không thấy dòng "Generating will use N credits" trên trang (mở popover cài đặt)' });
-  else if (nums.length > 1) issues.push({ item: 'credits', detail: `trang nêu nhiều mức credit khác nhau: ${nums.join(', ')}` });
-  else if (nums[0] !== credits) issues.push({ item: 'credits', detail: `trang báo ${nums[0]} credit, job được duyệt ${credits}` });
   return issues;
 }
 

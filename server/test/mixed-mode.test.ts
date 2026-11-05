@@ -44,7 +44,7 @@ describe('F3 claim theo loại job, không còn cổng WORKER_MODE toàn cục',
     expect(sb.body.lease_id).toBeUndefined();
     expect(sb.body.claimed_by).toBe('claude-1');
   });
-  it('WORKER.md legacy chạy y như cũ cho storyboard và video: heartbeat/complete không cần lease, ledger và lượt đúng', async () => {
+  it('WORKER.md legacy chạy y như cũ cho storyboard và video: heartbeat/complete không cần lease, lượt đúng, không ghi sổ credit', async () => {
     const sc = await setupProjectLegacy();
     const id = sc.scenes[0].id;
     await sc.user.post(`/api/scenes/${id}/approve`, { stage: 'storyboard' });
@@ -58,7 +58,8 @@ describe('F3 claim theo loại job, không còn cổng WORKER_MODE toàn cục',
     writeFile(env.root, j.payload.output.video_path, 'fake-mp4');
     const done = await legacy().post(`/api/worker/jobs/${j.id}/complete?worker=claude-1`, { assets: [{ kind: 'video', file_path: j.payload.output.video_path }], credits_cost: 15 });
     expect(done.status).toBe(200);
-    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(j.id)).toEqual({ n: 1 });
+    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(j.id)).toEqual({ n: 0 }); // credits_cost (worker cũ) bị bỏ qua
+    expect((await sc.user.get(`/api/scenes/${id}`)).body.attempts_used).toBe(1);
     expect(env.ctx.db.prepare('SELECT worker_mode FROM jobs WHERE id=?').get(j.id)).toEqual({ worker_mode: 'legacy' });
     // legacy fail cũng không cần lease
     await sc.user.post(`/api/scenes/${id}/approve`, { stage: 'video' });

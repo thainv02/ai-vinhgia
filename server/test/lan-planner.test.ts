@@ -67,7 +67,7 @@ describe('tạo kế hoạch', () => {
     const list = (await c.get('/lan/api/plans')).body;
     expect(list.map((p: any) => p.name)).toEqual(['Hai', 'Một']);
     expect(list[0]).toMatchObject({ id: b.id, created_by_name: 'Minh', status: 'draft', scene_count: 0, ref_count: 0, analysis: { state: 'idle' } });
-    expect(Object.keys(list[0]).sort()).toEqual(['analysis', 'can_delete', 'created_at', 'created_by_name', 'delete_block', 'id', 'name', 'ref_count', 'scene_count', 'status', 'updated_at']);
+    expect(Object.keys(list[0]).sort()).toEqual(['analysis', 'can_delete', 'created_at', 'created_by_name', 'delete_block', 'id', 'name', 'next_action', 'progress', 'ref_count', 'scene_count', 'status', 'thumbnail_url', 'updated_at']);
     expect(list.map((p: any) => p.id)).not.toContain(1);
     expect(a.id).toBeGreaterThan(1);
   });
@@ -340,7 +340,7 @@ describe('kế hoạch từng cảnh', () => {
     const prompt1 = (db().prepare("SELECT prompt FROM scenes WHERE code = 'C1'").get() as { prompt: string }).prompt;
     expect(c1.step2.prompt).toBe(prompt1);
     expect(c1.step2.attachments.map((a: any) => [a.order, a.kind, a.prompt_label])).toEqual([[1, 'ref', 'image 1'], [2, 'ref', 'image 2'], [3, 'storyboard_self', null]]);
-    expect(c1.step2.settings).toEqual({ aspect: '9:16', duration_s: 10, count: 1, resolution: '720p', estimated_credits: 15 });
+    expect(c1.step2.settings).toEqual({ aspect: '9:16', duration_s: 10, count: 1, resolution: '720p' });
     expect(c1.step2.notes.join(' ')).toContain('Bắt đầu tạo');
     // C2 dùng storyboard cảnh đầu
     expect(c2.use_prev_storyboard).toBe(true);
@@ -350,7 +350,8 @@ describe('kế hoạch từng cảnh', () => {
     expect(c3.step1.attachments).toEqual([]);
     expect(c3.step1.message).toContain('Không có ảnh tham chiếu đính kèm.');
     // thông tin gói
-    expect(d.plan).toMatchObject({ name: 'Cacao Actiso', created_by_name: 'Lan', style_lock: 'Ánh sáng ấm', credit_per_video: 15 });
+    expect(d.plan).toMatchObject({ name: 'Cacao Actiso', created_by_name: 'Lan', style_lock: 'Ánh sáng ấm' });
+    expect(d.plan).not.toHaveProperty('credit_per_video');
     expect(d.markdown).toContain('## C1 — Cảnh 1');
     expect(d.limits).toMatchObject({ max_refs: 12, max_upload_bytes: 10 * 1024 * 1024 });
     void hop;
@@ -658,4 +659,44 @@ describe('payload job storyboard dùng chung template với trang LAN', () => {
     );
     expect(j2.payload.chatgpt_message).toContain('ảnh 3 = storyboard cảnh C1');
   });
+});
+
+it('danh sách có tiến độ, ảnh LAN và bước tiếp theo; không tính storyboard/video nội bộ của app', async () => {
+  const p = await newPlan();
+  await c.post(`/lan/api/plans/${p.id}/analyze`, {});
+  await fakeWorkerAnalyze(p.id, [sceneInput(1), sceneInput(2)]);
+  let d = (await c.get(`/lan/api/plans/${p.id}`)).body;
+  const [a,b] = d.scenes;
+  const summary = async () => (await c.get('/lan/api/plans')).body.find((r: any) => r.id === p.id);
+  expect((await summary()).next_action).toMatchObject({ stage: 'storyboard', scene_code: 'C1' });
+  const internal = 'output/cacao-actiso/storyboard/internal.png'; writeFile(L.env.root, internal, PNG_BYTES);
+  db().prepare("INSERT INTO assets(scene_id,kind,file_path,attempt,meta,created_at) VALUES(?,'storyboard',?,1,'{\"source\":\"worker\"}',?)").run(a.id, internal, L.env.ctx.now());
+  expect((await summary()).thumbnail_url).toBeNull();
+  expect((await summary()).progress.storyboards).toBe(0);
+  const upload = await c.upload(`/lan/api/plans/${p.id}/scenes/${a.id}/storyboard`, [{ name: 'image.png', data: PNG_BYTES }]);
+  expect(upload.status, upload.raw).toBe(201);
+  const s = await summary();
+  expect(s.progress).toMatchObject({ storyboards: 1, prompts: 2, videos: 0 });
+  expect(s.thumbnail_url).toMatch(/^\/lan\/files\//);
+  expect((await c.get(s.thumbnail_url)).status).toBe(200);
+  expect(s.next_action).toMatchObject({ stage: 'video', scene_id: a.id });
+  const addVideo = (sceneId: number, source: string, name: string) => {
+    const file = `output/cacao-actiso/video/${name}.mp4`;writeFile(L.env.root, file, 'fake video');
+    const id = Number(db().prepare("INSERT INTO assets(scene_id,kind,file_path,attempt,meta,created_at) VALUES(?,'video',?,1,?,?)").run(sceneId, file, JSON.stringify({ source }), L.env.ctx.now()).lastInsertRowid);
+    db().prepare('UPDATE scenes SET selected_video_id=? WHERE id=?').run(id, sceneId);return id;
+  };
+  addVideo(a.id, 'worker', 'internal');
+  expect((await summary()).progress.videos).toBe(0);
+  addVideo(a.id, 'lan_upload', 'C1');
+  expect((await summary()).next_action).toMatchObject({ stage: 'storyboard', scene_id: b.id });
+  addVideo(b.id, 'lan_upload', 'C2');
+  expect((await summary()).progress.videos).toBe(2);
+  expect((await summary()).next_action).toEqual({ stage: 'final', label: 'Dựng bản hoàn chỉnh' });
+  const { currentSelection } = await import('../src/services/final-cuts.js');
+  db().prepare("INSERT INTO final_cuts(project_id,version,status,selection_signature,created_at,created_by) VALUES(?,1,'ready',?,?,'user')").run(p.id, currentSelection(L.env.ctx, p.id).signature, L.env.ctx.now());
+  expect((await summary()).progress.final_current).toBe(true);
+  addVideo(a.id, 'lan_upload', 'C1_new');
+  expect((await summary()).progress.final_current).toBe(false);
+  expect((await summary()).next_action.label).toBe('Dựng bản hoàn chỉnh');
+  expect(jobTypes()).toEqual(['analyze_brief']);
 });

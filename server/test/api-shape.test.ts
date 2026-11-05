@@ -15,7 +15,7 @@ afterEach(async () => {
 const keys = (o: object) => Object.keys(o).sort();
 
 describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
-  it('danh sách dự án có số cảnh, đếm theo trạng thái, credit đã dùng', async () => {
+  it('danh sách dự án có số cảnh, đếm theo trạng thái (không còn credit)', async () => {
     const sc = await setupProject(env, { scenes: 3 });
     await toStoryboardReview(sc, sc.scenes[0].id);
     await toVideoReview(sc, sc.scenes[0].id);
@@ -26,16 +26,14 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     const p = list[1];
     expect(keys(p)).toEqual(
       [
-        'brief', 'created_at', 'credit_per_video', 'credits_reserved', 'credits_used',
-        'created_by_name', 'done_count', 'final_cut_block', 'id', 'kind', 'latest_final_cut', 'max_attempts_per_scene', 'name', 'scene_count', 'slug', 'source', 'status', 'status_counts', 'style_lock', 'updated_at',
+        'brief', 'created_at',
+        'created_by_name', 'done_count', 'final_cut_block', 'id', 'kind', 'lan_mode', 'latest_final_cut', 'max_attempts_per_scene', 'name', 'scene_count', 'slug', 'source', 'status', 'status_counts', 'storyboard_generator', 'style_lock', 'updated_at',
       ].sort(),
     );
     expect(p).toMatchObject({
       scene_count: 3,
       done_count: 1,
       status_counts: { done: 1, awaiting_approval: 2 },
-      credits_used: 15,
-      credits_reserved: 0,
     });
   });
 
@@ -45,7 +43,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     await toVideoReview(sc, sc.scenes[0].id);
     const proj = (await sc.user.get(`/api/projects/${sc.project.id}`)).body;
     expect(keys(proj)).toEqual(expect.arrayContaining(['refs', 'budget', 'requeued_jobs', 'scene_count', 'status_counts']));
-    expect(keys(proj.budget)).toEqual(['credit_per_video', 'max_attempts', 'reserved', 'scenes', 'used']);
+    expect(keys(proj.budget)).toEqual(['max_attempts', 'scenes']);
 
     const scenes = (await sc.user.get(`/api/projects/${sc.project.id}/scenes`)).body;
     expect(scenes.map((s: any) => s.code)).toEqual(['C1', 'C2']);
@@ -73,7 +71,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
       [...keys(s), 'project', 'assets', 'comments', 'prompt_versions', 'jobs', 'prev_scene_id', 'next_scene_id'].sort(),
     );
     expect(d.project).toEqual({
-      id: sc.project.id, slug: 'cacao-actiso-plus', name: 'Cacao Actiso Plus', style_lock: '', credit_per_video: 15, max_attempts_per_scene: 2,
+      id: sc.project.id, slug: 'cacao-actiso-plus', name: 'Cacao Actiso Plus', style_lock: '', max_attempts_per_scene: 2,
     });
     expect(d.assets.map((a: any) => a.kind)).toEqual(['storyboard', 'video', 'grid']);
     expect(d.prev_scene_id).toBeNull();
@@ -81,11 +79,11 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     expect(d.jobs.map((j: any) => [j.type, j.status])).toEqual([['video', 'done'], ['storyboard', 'done']]);
     expect(keys(d.jobs[0])).toEqual(
       [
-        'approved_at', 'claimed_at', 'claimed_by', 'created_at', 'credits_cost', 'error', 'error_code', 'finished_at', 'heartbeat_at', 'id',
+        'approved_at', 'attempt_used', 'claimed_at', 'claimed_by', 'created_at', 'error', 'error_code', 'finished_at', 'heartbeat_at', 'id',
         'last_requeued_at', 'worker_mode', 'ai', 'lease_epoch', 'wait_reason', 'next_attempt_at', 'checkpoint', 'action_state', 'reconcile_required', 'payload', 'project_id', 'project_name', 'requeue_count', 'requires_approval', 'result', 'scene_code', 'scene_id', 'status', 'type',
       ].sort(),
     );
-    expect(d.jobs[0].credits_cost).toBe(15);
+    expect(d.jobs[0].attempt_used).toBe(false); // chỉ true với job video failed vẫn tính lượt
     expect((await sc.user.get(`/api/scenes/${sc.scenes[1].id}`)).body.prev_scene_id).toBe(sc.scenes[0].id);
     expect((await sc.user.get('/api/scenes/99999')).status).toBe(404);
   });
@@ -93,7 +91,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
   it('GET /api/jobs lọc theo projectId, status (nhiều giá trị), type; mới nhất trước', async () => {
     const a = await setupProject(env, { scenes: 2 });
     const b = await setupProject(env, { scenes: 1, project: { name: 'B' } });
-    await a.user.post(`/api/projects/${a.project.id}/approve-all`, { stage: 'storyboard', expectedCredits: 0 });
+    await a.user.post(`/api/projects/${a.project.id}/approve-all`, { stage: 'storyboard' });
     await b.user.post(`/api/scenes/${b.scenes[0].id}/approve`, { stage: 'storyboard' });
     const all = (await a.user.get('/api/jobs')).body;
     expect(all).toHaveLength(3);
@@ -129,7 +127,7 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     });
     expect(meta.scene_statuses).toHaveLength(14);
     expect(meta.scene_statuses[0]).toEqual({ value: 'draft', label: 'Nháp' });
-    expect(meta.scene_statuses.find((x: any) => x.value === 'blocked_budget')).toEqual({ value: 'blocked_budget', label: 'Flow hết credit' });
+    expect(meta.scene_statuses.find((x: any) => x.value === 'blocked_budget')).toEqual({ value: 'blocked_budget', label: 'Hết hạn mức tạo video' });
     expect(meta.verdicts).toEqual([{ value: 'pass', label: 'Đạt' }, { value: 'fix_in_edit', label: 'Sửa khi dựng' }, { value: 'redo', label: 'Tạo lại' }]);
     expect((await u.get('/api/health')).body.ok).toBe(true);
     expect(keys((await u.get('/api/worker/status')).body)).toEqual(['last_seen_at', 'online', 'pause_code', 'pause_reason', 'paused_at', 'queue_paused', 'server_time', 'worker_id']);
@@ -139,11 +137,13 @@ describe('hình dạng JSON (API.md phải khớp các trường này)', () => {
     const u = userClient(env.app);
     const a = (await u.post('/api/projects', { name: 'Sinh tố Cacao Đặc Biệt!' })).body;
     expect(a).not.toHaveProperty('credit_budget');
-    expect(a).toMatchObject({ slug: 'sinh-to-cacao-dac-biet', max_attempts_per_scene: 2, credit_per_video: 15, status: 'draft', brief: '', style_lock: '', scene_count: 0 });
+    expect(a).toMatchObject({ slug: 'sinh-to-cacao-dac-biet', max_attempts_per_scene: 2, status: 'draft', brief: '', style_lock: '', scene_count: 0 });
     expect((await u.post('/api/projects', { name: 'Sinh tố Cacao Đặc Biệt!' })).body.slug).toBe('sinh-to-cacao-dac-biet-2');
     expect((await u.post('/api/projects', { name: '!!!' })).body.slug).toBe('project');
     expect((await u.post('/api/projects', { name: 'x', credit_budget: 1.5 })).status).toBe(201); // credit_budget bị bỏ qua
-    expect((await u.post('/api/projects', { name: 'x', credit_per_video: 1.5 })).status).toBe(400);
+    expect(a).not.toHaveProperty('credit_per_video');
+    expect((await u.post('/api/projects', { name: 'x', credit_per_video: 1.5 })).status).toBe(201); // credit_per_video bị bỏ qua
+    expect((await u.post('/api/projects', { name: 'x', max_attempts_per_scene: 1.5 })).status).toBe(400);
     expect((await u.post(`/api/projects/${a.id}/brief`, {})).body.error.code).toBe('VALIDATION_ERROR'); // brief rỗng
     const b = await u.post(`/api/projects/${a.id}/brief`, { brief: 'Kịch bản' });
     expect(b.status).toBe(201);

@@ -53,8 +53,6 @@ interface ConfirmProps {
   title: string;
   children: ReactNode;
   confirmLabel: string;
-  /** Hiện huy hiệu credit trên nút xác nhận. */
-  credit?: number;
   danger?: boolean;
   pending?: boolean;
   error?: string | null;
@@ -65,8 +63,8 @@ interface ConfirmProps {
   wide?: boolean;
 }
 
-/** Bước xác nhận bắt buộc cho mọi thao tác tốn credit hoặc không hoàn tác. Nút "Hủy" nhận tiêu điểm đầu tiên. */
-export function ConfirmDialog({ open, title, children, confirmLabel, credit, danger, pending, error, confirmDisabledReason, cancelLabel = 'Hủy', onConfirm, onClose, wide }: ConfirmProps) {
+/** Bước xác nhận bắt buộc cho mọi thao tác tạo ảnh/video hoặc không hoàn tác. Nút "Hủy" nhận tiêu điểm đầu tiên. */
+export function ConfirmDialog({ open, title, children, confirmLabel, danger, pending, error, confirmDisabledReason, cancelLabel = 'Hủy', onConfirm, onClose, wide }: ConfirmProps) {
   return (
     <Modal
       open={open}
@@ -78,7 +76,7 @@ export function ConfirmDialog({ open, title, children, confirmLabel, credit, dan
           <Button onClick={onClose} disabled={pending}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={pending} credit={credit} disabledReason={confirmDisabledReason}>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={pending} disabledReason={confirmDisabledReason}>
             {confirmLabel}
           </Button>
         </>

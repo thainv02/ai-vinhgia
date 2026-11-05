@@ -1,11 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
+import { errorMessage } from '../api/errors';
+import { toast } from '../lib/toast';
 import '../index.css';
 import './planner.css';
 
 const queryClient = new QueryClient({
+  mutationCache: new MutationCache({ onError: (error, _vars, _ctx, mutation) => { if (!mutation.meta?.silent) toast.error(errorMessage(error)); } }),
   defaultOptions: {
     queries: {
       staleTime: 2_000,

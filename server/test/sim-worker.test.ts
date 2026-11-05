@@ -75,7 +75,7 @@ describe('npm run sim:worker (--once) chạy qua toàn bộ luồng với server
     expect(s1.video.verdict).toBe('pass');
     expect(fs.existsSync(path.join(env.root, s1.video.file_path))).toBe(true);
     expect(fs.existsSync(path.join(env.root, s1.grid.file_path))).toBe(true);
-    expect((await u.get(`/api/projects/${p.id}/budget`)).body).toMatchObject({ used: 15, reserved: 0 });
+    expect((await u.get(`/api/projects/${p.id}/budget`)).body.scenes[0]).toMatchObject({ attempts_used: 1 });
     expect((await u.get('/api/jobs?type=video')).body).toHaveLength(1); // chỉ job do người dùng duyệt
 
     // revise_prompt: thêm một dòng vào prompt kèm lý do

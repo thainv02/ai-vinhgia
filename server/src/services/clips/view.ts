@@ -1,8 +1,12 @@
 /**
- * JSON trả cho API cắt clip (hợp đồng mục 5 của đặc tả) và các hàm phát SSE. Cùng một bộ dựng cho app chính và listener LAN:
+ * JSON trả cho API highlight (hợp đồng mục 5 của đặc tả) và các hàm phát SSE. Cùng một bộ dựng cho app chính và listener LAN:
  * khác nhau ở tiền tố URL file (`/files` ↔ `/lan/files`), thông báo lỗi (LAN không lộ đường dẫn máy chủ) và bản xem video nguồn (LAN chỉ có bản 480p).
  */
 import fs from 'node:fs';
+import { jobIsActive } from '../../lib/job-state.js';
+import { cleanupSegmentsSpans, segmentDuration, type EditSnapshot } from '../../lib/clip-cleanup.js';
+import { clipParts, partsDuration, partSpans } from '../../lib/clip-parts.js';
+import { cleanupOf, cutIsCurrent } from './cleanup.js';
 import type { AppContext } from '../../context.js';
 import type { ClipCutRow, ClipRow, JobRow, ProjectRow, SourceVideoRow } from '../../db/types.js';
 import { aiQueueInfo } from '../job-queue.js';
@@ -83,6 +87,7 @@ export function cutJson(ctx: AppContext, row: ClipCutRow, o: ViewOpts) {
     aspect: row.aspect,
     reframe: parseJson<Record<string, unknown>>(row.reframe, {}),
     captions: parseJson<Record<string, unknown>>(row.captions, {}),
+    cleanup_count: parseJson<EditSnapshot | null>(row.edit_snapshot, null)?.cleanup_ids.length ?? 0,
     start_s: row.start_s,
     end_s: row.end_s,
     duration_s: row.duration_s,
@@ -112,6 +117,19 @@ export function captionWordsOf(row: Pick<ClipRow, 'caption_words'>): { i: number
 
 export interface ClipPre {
   transcript?: Transcript | null;
+  transcriptSourceId?: number;
+  cleanupJobs?: ReadonlyMap<number, JobRow>;
+}
+
+/** One indexed query for the project; discovery jobs and their transcript payloads are never read. */
+export function projectCleanupJobs(ctx: AppContext, projectId: number, clipId?: number): Map<number, JobRow> {
+  const rows = ctx.db.prepare(`SELECT j.*, c.id AS cleanup_clip_id FROM clips c JOIN jobs j ON j.id = (
+    SELECT id FROM jobs WHERE project_id=c.project_id AND type='clip_plan'
+      AND json_extract(payload,'$.mode')='cleanup' AND json_extract(payload,'$.clip_id')=c.id
+      AND (json_extract(payload,'$.edit_revision')=c.edit_revision OR id=json_extract(c.cleanup,'$.job_id'))
+    ORDER BY id DESC LIMIT 1
+  ) WHERE c.project_id=? AND (? IS NULL OR c.id=?)`).all(projectId, clipId ?? null, clipId ?? null) as (JobRow & { cleanup_clip_id: number })[];
+  return new Map(rows.map((j) => [j.cleanup_clip_id, j]));
 }
 
 export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPre = {}) {
@@ -119,14 +137,28 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
   const u = urlOf(o);
   const cw = captionWordsOf(row);
   let transcript = pre.transcript;
-  if (transcript === undefined) {
+  if (transcript === undefined || (pre.transcriptSourceId !== undefined && pre.transcriptSourceId !== row.source_id)) {
     const src = ctx.db.prepare('SELECT * FROM source_videos WHERE id = ?').get(row.source_id) as SourceVideoRow | undefined;
     transcript = src ? readTranscript(ctx, src) : null;
   }
+  const parts = clipParts(row);
   let excerpt: string | null = null;
   if (transcript) {
-    const words = cw ? cw.filter((w) => w.w) : transcript.words.slice(row.start_word, row.end_word + 1);
-    excerpt = excerptOf(words, 400);
+    const plan = cleanupOf(row);
+    const removed = plan?.proposals.filter((p) => plan.selected_ids.includes(p.id)) ?? [];
+    const kept = (w: { i: number }) => !removed.some((p) => w.i >= p.start_word && w.i <= p.end_word);
+    if (parts.length === 1) {
+      const words = cw ? cw.filter((w) => w.w) : transcript.words.slice(row.start_word, row.end_word + 1);
+      excerpt = excerptOf(words.filter(kept), 400);
+    } else {
+      // clip ghép: lời của các đoạn theo thứ tự phát, ngăn cách bằng "…"
+      const text = cw ? new Map(cw.map((w) => [w.i, w.w])) : null;
+      const words = parts.flatMap((p, k) => [
+        ...(k ? [{ i: -1, w: '…' }] : []),
+        ...transcript!.words.slice(p.start_word, p.end_word + 1).map((w) => ({ i: w.i, w: text ? (text.get(w.i) ?? w.w) : w.w })).filter((w) => w.w && kept(w)),
+      ]);
+      excerpt = excerptOf(words, 400);
+    }
   }
   const thumb = thumbRel(slug, row.code);
   let thumbUrl: string | null = null;
@@ -136,7 +168,12 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
   } catch {
     thumbUrl = null;
   }
+  const cleanup = cleanupOf(row);
   const cut = latestCut(ctx, row.id);
+  const cleanupJob = (pre.cleanupJobs ?? projectCleanupJobs(ctx, row.project_id, row.id)).get(row.id);
+  const retained = cleanup ? cleanupSegmentsSpans(partSpans(parts), cleanup.proposals, cleanup.selected_ids) : null;
+  const cleanupState = cleanup ? 'ready' : jobIsActive(cleanupJob) ? 'processing' : cleanupJob && ['failed', 'cancelled'].includes(cleanupJob.status) ? 'failed' : 'pending';
+  const cutStale = !!cut && !cutIsCurrent(row, cut, retained ?? undefined);
   const cuts = (ctx.db.prepare('SELECT COUNT(*) AS n FROM clip_cuts WHERE clip_id = ?').get(row.id) as { n: number }).n;
   return {
     id: row.id,
@@ -145,11 +182,14 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
     status: row.status,
     start_s: row.start_s,
     end_s: row.end_s,
-    duration_s: Math.round((row.end_s - row.start_s) * 1000) / 1000,
+    /** Clip ghép: tổng độ dài các đoạn (khác `end_s - start_s` của khung bao). */
+    duration_s: partsDuration(parts),
     start_word: row.start_word,
     end_word: row.end_word,
     start_sentence: row.start_sentence,
     end_sentence: row.end_sentence,
+    /** Clip ghép nhiều đoạn: các đoạn theo thứ tự phát; null = clip một đoạn. Khi có parts, start/end là khung bao của các đoạn. */
+    parts: parts.length > 1 ? parts : null,
     title: row.title,
     hook: row.hook,
     score: row.score,
@@ -162,6 +202,13 @@ export function clipJson(ctx: AppContext, row: ClipRow, o: ViewOpts, pre: ClipPr
     caption_edited: row.caption_source === 'user',
     /** Đề xuất bổ sung hợp đồng: chữ phụ đề hiện tại `[{i, w}]` (đã khôi phục dấu câu / sửa tay); null = dùng chữ ASR. */
     caption_words: cw,
+    edit_revision: row.edit_revision,
+    cleanup,
+    cleanup_state: cleanupState,
+    cleanup_job: cleanupJob ? planJobJson(ctx, cleanupJob, o) : null,
+    latest_cut_stale: cutStale,
+    retained_segments: retained,
+    edited_duration_s: retained ? segmentDuration(retained) : partsDuration(parts),
     latest_cut: cut ? cutJson(ctx, cut, o) : null,
     cuts_count: cuts,
   };
@@ -174,7 +221,7 @@ export function emitClip(ctx: AppContext, clipId: number, projectId: number): vo
 // ---------------------------------------------------------------- job đề xuất (clip_plan)
 
 export function planJobJson(ctx: AppContext, job: JobRow, o: ViewOpts) {
-  const q = job.status === 'queued' || job.status === 'claimed' || job.status === 'running' ? aiQueueInfo(ctx, job) : null;
+  const q = jobIsActive(job) ? aiQueueInfo(ctx, job) : null;
   const result = parseJson<{ summary?: string; not_found_reason?: string; created?: number } | null>(job.result, null);
   return {
     id: job.id,
@@ -193,7 +240,7 @@ export function planJobJson(ctx: AppContext, job: JobRow, o: ViewOpts) {
 }
 
 export function latestPlanJob(ctx: AppContext, projectId: number): JobRow | undefined {
-  return ctx.db.prepare("SELECT * FROM jobs WHERE project_id = ? AND type = 'clip_plan' ORDER BY id DESC LIMIT 1").get(projectId) as JobRow | undefined;
+  return ctx.db.prepare("SELECT * FROM jobs WHERE project_id = ? AND type = 'clip_plan' AND COALESCE(json_extract(payload, '$.mode'), '') != 'cleanup' ORDER BY id DESC LIMIT 1").get(projectId) as JobRow | undefined;
 }
 
 // ---------------------------------------------------------------- dự án
@@ -206,11 +253,12 @@ export function clipProjectDetail(ctx: AppContext, p: ProjectRow, o: ViewOpts) {
   const source = projectSource(ctx, p.id);
   const transcript = source ? readTranscript(ctx, source) : null;
   const plan = latestPlanJob(ctx, p.id);
+  const cleanupJobs = projectCleanupJobs(ctx, p.id);
   const blocks = projectDeleteBlocks(ctx, p.id);
   const base = {
     project: clipProjectInfo(p),
     source: source ? sourceJson(ctx, source, o) : null,
-    clips: projectClips(ctx, p.id).map((c) => clipJson(ctx, c, o, { transcript })),
+    clips: projectClips(ctx, p.id).map((c) => clipJson(ctx, c, o, { transcript, transcriptSourceId: source?.id, cleanupJobs })),
     plan_job: plan ? planJobJson(ctx, plan, o) : null,
   };
   if (!o.lan) return { ...base, delete_block: blocks.length ? { code: blocks[0]!.code, message: blocks.map((b) => b.message).join(' '), reasons: blocks } : null };
@@ -218,10 +266,12 @@ export function clipProjectDetail(ctx: AppContext, p: ProjectRow, o: ViewOpts) {
   return { ...base, can_delete: owns, delete_block: owns ? (blocks[0]?.message ?? null) : null };
 }
 
-/** Một dòng danh sách dự án cắt clip (LAN: `GET /lan/api/clip-projects`). */
+/** Một dòng danh sách dự án highlight (LAN: `GET /lan/api/clip-projects`). */
 export function clipProjectSummary(ctx: AppContext, p: ProjectRow, o: ViewOpts) {
   const source = projectSource(ctx, p.id);
-  const n = (ctx.db.prepare('SELECT COUNT(*) AS n FROM clips WHERE project_id = ?').get(p.id) as { n: number }).n;
+  const rows = ctx.db.prepare(`SELECT c.*, k.status AS cut_status,k.start_s AS cut_start,k.end_s AS cut_end,k.edit_snapshot AS cut_snapshot FROM clips c LEFT JOIN clip_cuts k ON k.id=(SELECT id FROM clip_cuts WHERE clip_id=c.id ORDER BY version DESC LIMIT 1) WHERE c.project_id=?`).all(p.id) as (ClipRow & { cut_status: string | null; cut_start: number; cut_end: number; cut_snapshot: string | null })[];
+  const ready = rows.filter((c) => c.cut_status === 'ready' && cutIsCurrent(c, { start_s: c.cut_start, end_s: c.cut_end, edit_snapshot: c.cut_snapshot })).length;
+  const poster = posterRel(p.slug);
   const base = {
     id: p.id,
     name: p.name,
@@ -232,7 +282,9 @@ export function clipProjectSummary(ctx: AppContext, p: ProjectRow, o: ViewOpts) 
     created_by_name: p.created_by_name,
     created_at: p.created_at,
     updated_at: p.updated_at,
-    clip_count: n,
+    clip_count: rows.length,
+    ready_count: ready,
+    poster_url: fileExists(ctx, poster) ? urlOf(o)(poster) : null,
     source_video: source ? { duration_s: source.duration_s, status: source.status } : null,
   };
   if (!o.lan) return base;

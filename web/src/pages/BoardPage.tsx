@@ -18,21 +18,16 @@ import { useApprovePreview, useBudget, useJobs, useProject, useScenes } from '..
 import { ACTIVE_JOB_STATUSES, SCENE_STATUS, TONE_CLASS } from '../lib/status';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 
-function CreditUsage({ budget }: { budget: Budget }) {
+/** Tổng lượt tạo video đã dùng của dự án (video đã có + job đang chờ/chạy + lượt lỗi vẫn tính). */
+function AttemptUsage({ budget }: { budget: Budget }) {
+  const used = budget.scenes.reduce((a, s) => a + s.attempts_used, 0);
   return (
     <div className="min-w-[200px] flex-1 sm:max-w-xs">
       <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-extrabold leading-none tracking-tight">{budget.used}</span>
-        <span className="text-[13px] font-medium">credit đã dùng</span>
+        <span className="text-2xl font-extrabold leading-none tracking-tight">{used}</span>
+        <span className="text-[13px] font-medium">lượt video đã dùng</span>
       </div>
-      <p className="mt-1.5 text-xs text-muted">
-        {budget.reserved > 0 && (
-          <>
-            Đặt trước <strong className="text-spend">{budget.reserved} credit</strong> cho video đang chờ ·{' '}
-          </>
-        )}
-        {budget.credit_per_video} credit/video · tối đa {budget.max_attempts} lượt/cảnh
-      </p>
+      <p className="mt-1.5 text-xs text-muted">Tối đa {budget.max_attempts} lượt/cảnh</p>
     </div>
   );
 }
@@ -148,7 +143,7 @@ export default function BoardPage() {
   const project = useProject(valid ? projectId : 0);
   const scenes = useScenes(valid ? projectId : 0);
   const budget = useBudget(valid ? projectId : 0);
-  // Dự án cắt clip có trang riêng: mở nhầm ở đây thì chuyển sang /clips/:id.
+  // Dự án highlight có trang riêng: mở nhầm ở đây thì chuyển sang /clips/:id.
   const isClips = project.data?.kind === 'clips';
   const sbPreview = useApprovePreview(projectId, 'storyboard', valid);
   const vdPreview = useApprovePreview(projectId, 'video', valid);
@@ -165,7 +160,6 @@ export default function BoardPage() {
   const shown = filter ? list.filter((s) => s.status === filter) : list;
   const waitingCount = (sbPreview.data?.count ?? 0) + (vdPreview.data?.count ?? 0);
   const approveReason = waitingCount > 0 ? null : sbPreview.isLoading || vdPreview.isLoading ? 'Đang tải' : 'Không có cảnh nào đang chờ duyệt';
-  const creditPerVideo = p?.credit_per_video ?? budget.data?.credit_per_video ?? 15;
 
   if (isClips) return <Navigate to={`/clips/${projectId}`} replace />;
   return (
@@ -192,7 +186,7 @@ export default function BoardPage() {
               Hàng đợi
             </LinkButton>
             <LinkButton to={`/projects/${projectId}/ledger`} size="sm" variant="ghost" icon={<Icon name="ledger" />}>
-              Nhật ký & credit
+              Nhật ký
             </LinkButton>
             <Button size="sm" variant="ghost" icon={<Icon name="gear" />} onClick={() => setSettingsOpen(true)} disabled={!p}>
               Cài đặt
@@ -201,7 +195,7 @@ export default function BoardPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-start gap-x-8 gap-y-3">
-          {budget.data ? <CreditUsage budget={budget.data} /> : <Skeleton className="h-12 w-60" />}
+          {budget.data ? <AttemptUsage budget={budget.data} /> : <Skeleton className="h-12 w-60" />}
           <div className="min-w-0 flex-1 basis-72 space-y-2">
             <StatusChips scenes={list} filter={filter} onFilter={setFilter} />
             <div className="flex flex-wrap items-center gap-2">
@@ -216,7 +210,7 @@ export default function BoardPage() {
               {approveReason && <span className="text-xs text-muted">{approveReason}</span>}
               {!approveReason && vdPreview.data && vdPreview.data.count > 0 && (
                 <span className="text-xs text-muted">
-                  Có {vdPreview.data.count} cảnh chờ tạo video: <strong className="text-spend">{vdPreview.data.total_credits} credit</strong>
+                  Có <strong className="text-fg">{vdPreview.data.count}</strong> cảnh chờ tạo video
                 </span>
               )}
             </div>
@@ -269,7 +263,7 @@ export default function BoardPage() {
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-[repeat(auto-fill,minmax(250px,1fr))]">
           {shown.map((s) => (
-            <SceneCard key={s.id} scene={s} projectId={projectId} creditPerVideo={creditPerVideo} />
+            <SceneCard key={s.id} scene={s} projectId={projectId} />
           ))}
         </div>
       )}

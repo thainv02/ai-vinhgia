@@ -1,5 +1,5 @@
 /**
- * Thùng rác dự án: xoá MỀM (khôi phục được) rồi xoá vĩnh viễn sau `TRASH_RETENTION_DAYS` ngày. Video trong dự án tốn credit thật nên KHÔNG có đường
+ * Thùng rác dự án: xoá MỀM (khôi phục được) rồi xoá vĩnh viễn sau `TRASH_RETENTION_DAYS` ngày. Video trong dự án là kết quả tạo thật nên KHÔNG có đường
  * xoá cứng tức thì: người dùng chỉ có `deleteProject` (vào thùng rác) và, từ app chính, `purgeProject` (xoá vĩnh viễn, phải gõ đúng tên).
  *
  * Xoá = (1) một transaction: kiểm tra điều kiện chặn, hủy job `queued`, đặt `deleted_at/deleted_by/trash_path`; (2) SAU commit, chuyển file bằng `rename`
@@ -12,7 +12,6 @@ import path from 'node:path';
 import type { AppContext } from '../context.js';
 import { AppError, badRequest, conflict, notFound } from '../lib/errors.js';
 import type { ProjectRow } from '../db/types.js';
-import { creditsUsed } from './budget.js';
 import { cancelJob } from './jobs.js';
 import { hasLiveAction } from './managed.js';
 import { emitProject, projectSummary } from './project-view.js';
@@ -40,7 +39,7 @@ const jobLabel = (type: string): string => JOB_TYPE_LABEL[type] ?? type;
  *  - JOB_RUNNING: có job `claimed`/`running` (worker đang giữ);
  *  - FINAL_CUT_ACTIVE: có bản dựng `planning`/`rendering`, hoặc bản dựng còn nằm trong hàng đợi render (kể cả bản vừa hủy mà tiến trình chưa dừng);
  *  - ACTION_LIVE: job managed (queued/claimed/running) có thao tác tạo bên ngoài còn sống (intent/uncertain/submitted/downloaded): phải đối soát trước
- *    để credit/lượt đã tốn được ghi đúng;
+ *    để lượt đã dùng được ghi đúng;
  *  - UPLOAD_ACTIVE: đang có video LAN được tải lên dự án (file đang ghi).
  * Job `queued` còn lại (không có thao tác sống) KHÔNG chặn: xoá sẽ hủy chúng. Job done/failed/cancelled không chặn.
  */
@@ -86,7 +85,7 @@ export function projectDeleteBlocks(ctx: AppContext, projectId: number): DeleteB
   for (const j of live) {
     out.push({
       code: 'ACTION_LIVE',
-      message: `Job #${j.id} (${jobLabel(j.type)}) đã gửi lệnh tạo sang Flow/ChatGPT mà chưa đối soát kết quả; hãy đối soát ở trang Hàng đợi trước khi xoá để credit và lượt đã tốn được ghi đúng.`,
+      message: `Job #${j.id} (${jobLabel(j.type)}) đã gửi lệnh tạo sang Flow/ChatGPT mà chưa đối soát kết quả; hãy đối soát ở trang Hàng đợi trước khi xoá để lượt đã dùng được ghi đúng.`,
     });
   }
 
@@ -94,7 +93,7 @@ export function projectDeleteBlocks(ctx: AppContext, projectId: number): DeleteB
     out.push({ code: 'UPLOAD_ACTIVE', message: 'Đang có video được tải lên kế hoạch này; hãy đợi tải xong rồi xoá.' });
   }
 
-  // Dự án cắt clip: đang nhận dạng lời nói (đang ghi transcript/file tạm vào thư mục dự án) hoặc đang dựng/chờ dựng clip (ffmpeg đang ghi file).
+  // Dự án highlight: đang nhận dạng lời nói (đang ghi transcript/file tạm vào thư mục dự án) hoặc đang dựng/chờ dựng clip (ffmpeg đang ghi file).
   const transcribing = ctx.db.prepare("SELECT id FROM source_videos WHERE project_id = ? AND status = 'transcribing' LIMIT 1").get(projectId);
   if (transcribing) out.push({ code: 'CLIP_ACTIVE', message: 'Video đang được nhận dạng lời nói; hãy hủy hoặc đợi xong trước khi xoá.' });
   const rendering = ctx.db.prepare("SELECT COUNT(*) AS n FROM clip_cuts WHERE project_id = ? AND status = 'rendering'").get(projectId) as { n: number };
@@ -383,7 +382,6 @@ export function trashItemJson(ctx: AppContext, p: ProjectRow) {
     size_bytes: size,
     scene_count: n.scenes,
     done_count: n.done,
-    credits_used: creditsUsed(ctx, p.id),
     /** Lý do chưa khôi phục được lúc này (chỗ cũ bị chiếm); null = khôi phục được. */
     restore_block: restoreConflict(ctx, p),
   };
@@ -450,7 +448,7 @@ export function restoreProject(ctx: AppContext, id: number): ProjectRow {
 
 /**
  * Xoá vĩnh viễn một dự án trong thùng rác: xoá thư mục thùng rác (và file còn sót ở chỗ cũ, nếu có) rồi `DELETE FROM projects`
- * (cascade tới cảnh, job, asset, bản dựng, ảnh tham chiếu, sổ credit, nhật ký, chính sách AI...). Không hoàn tác được.
+ * (cascade tới cảnh, job, asset, bản dựng, ảnh tham chiếu, nhật ký, chính sách AI...). Không hoàn tác được.
  * `confirmName` (nếu truyền) phải trùng tên dự án.
  */
 export function purgeProject(ctx: AppContext, id: number, opts: { confirmName?: string } = {}): { id: number; name: string } {

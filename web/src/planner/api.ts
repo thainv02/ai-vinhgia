@@ -2,7 +2,8 @@ import { ApiError } from '../api/errors';
 import { makeClipApi, type ClipIo } from '../clips/api';
 import type { LibraryEntry } from '../components/LibraryPickerDialog';
 import type { ColorRef, ColorRefList, Edl, FinalCut, Grade, GradePreview } from '../api/types';
-import type { LanFinalCut, LanLibraryItem, PlanDetail, PlanRefInfo, PlanSummary, PlannerStatus, SceneVideo, SceneVideos, ToolJob, ToolStatus } from './types';
+import type { StoryboardGenerator, VideoGenerator } from '../api/types';
+import type { AutoDetail, AutoSummary, LanFinalCut, LanLibraryItem, PlanDetail, PlanRefInfo, PlanSummary, PlannerStatus, SceneVideo, SceneVideos, ToolJob, ToolStatus } from './types';
 
 /** Phản hồi 401 UNAUTHENTICATED: phiên hết hạn hoặc chưa đăng nhập → App hiện lại màn nhập mã. */
 const unauthListeners = new Set<() => void>();
@@ -166,6 +167,20 @@ export const planner = {
   /** Xoá kế hoạch (chỉ trình duyệt đã tạo): chuyển vào thùng rác của chủ máy, chủ máy khôi phục được trong 30 ngày. */
   deletePlan: (planId: number) => request<{ ok: true; restorable_days: number }>('DELETE', `${P}/plans/${planId}`),
   planMdUrl: (planId: number) => `${P}/plans/${planId}/plan.md`,
+  // ---- Autovideo: tạo storyboard/video tự động bằng Muse / Google Flow của chủ máy ----
+  // (ảnh tham chiếu, phân tích, xoá và bản hoàn chỉnh dùng chung route của kế hoạch ở trên)
+  autoGenerators: () => get<{ generators: VideoGenerator[]; storyboard: StoryboardGenerator[] }>(`${P}/auto/generators`),
+  listAuto: () => get<AutoSummary[]>(`${P}/auto/projects`),
+  createAuto: (input: CreatePlanInput & { storyboard_generator: string }) => post<{ project: AutoSummary }>(`${P}/auto/projects`, input),
+  getAuto: (id: number) => get<AutoDetail>(`${P}/auto/projects/${id}`),
+  setAutoStoryboardGenerator: (id: number, storyboard_generator: string) => request<{ project: AutoSummary }>('PATCH', `${P}/auto/projects/${id}`, { storyboard_generator }),
+  autoStoryboard: (id: number, sceneId: number) => post<{ job_id: number }>(`${P}/auto/projects/${id}/scenes/${sceneId}/storyboard`),
+  autoVideo: (id: number, sceneId: number, generator: string) => post<{ job_id: number }>(`${P}/auto/projects/${id}/scenes/${sceneId}/video`, { generator }),
+  autoApproveAll: (id: number, stage: 'storyboard' | 'video', generator?: string) =>
+    post<{ stage: string; count: number; jobs: { scene_id: number; code: string; job_id: number }[] }>(`${P}/auto/projects/${id}/approve-all`, { stage, ...(generator ? { generator } : {}) }),
+  autoSelect: (id: number, sceneId: number, assetId: number) => post<{ ok: true }>(`${P}/auto/projects/${id}/scenes/${sceneId}/select`, { asset_id: assetId }),
+  autoPrompt: (id: number, sceneId: number, prompt: string) => request<{ ok: true }>('PUT', `${P}/auto/projects/${id}/scenes/${sceneId}/prompt`, { prompt }),
+  autoCancel: (id: number, sceneId: number) => post<{ ok: true }>(`${P}/auto/projects/${id}/scenes/${sceneId}/cancel`),
   refsZipUrl: (planId: number) => `${P}/plans/${planId}/refs.zip`,
 };
 
@@ -183,8 +198,8 @@ const lanIo: ClipIo = {
   upload: (p, form, onProgress) => uploadWithProgress(p, form, onProgress),
 };
 
-/** API cắt clip của trang LAN (`/lan/api/...`, cùng hợp đồng với app chính). */
+/** API highlight của trang LAN (`/lan/api/...`, cùng hợp đồng với app chính). */
 export const lanClipApi = makeClipApi('/lan/api', lanIo);
 
-/** Xoá dự án cắt clip (chỉ trình duyệt đã tạo): vào thùng rác của chủ máy. */
+/** Xoá dự án highlight (chỉ trình duyệt đã tạo): vào thùng rác của chủ máy. */
 export const lanDeleteClipProject = (id: number) => request<{ ok: true; restorable_days: number }>('DELETE', `/lan/api/clip-projects/${id}`);

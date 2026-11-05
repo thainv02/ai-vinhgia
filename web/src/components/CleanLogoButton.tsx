@@ -6,7 +6,7 @@ import { CleanLogoView } from './CleanLogoView';
 
 /**
  * "Xoá logo Veo" (bản sẵn sàng còn logo) / "Thử xoá logo lại" (lỗi ở bước xoá logo) của app chính. Chỉ chạy lại bước xoá logo,
- * không render lại, không tốn credit. Không hiện gì nếu bản dựng không cần.
+ * không render lại. Không hiện gì nếu bản dựng không cần.
  */
 export function CleanLogoButton({ fc, size = 'md' }: { fc: Pick<FinalCut | LatestFinalCut, 'id' | 'version' | 'status' | 'failed_stage' | 'watermark_removed'>; size?: 'sm' | 'md' }) {
   const clean = useCleanFinalCut();

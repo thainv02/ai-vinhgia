@@ -265,7 +265,6 @@ async function handle(job: Job): Promise<void> {
         { kind: 'video', file_path: p.output.video_path, meta: video },
         { kind: 'grid', file_path: p.output.grid_path, meta: {} },
       ],
-      credits_cost: p.credits_expected,
     });
     log(`video ${p.scene.code} lượt ${p.attempt} xong (${verdict}) -> HTTP ${c.status} ${c.status !== 200 ? JSON.stringify(c.json) : ''}`);
     return;
@@ -345,7 +344,7 @@ async function main(): Promise<void> {
   for (;;) {
     let r: ApiResult;
     try {
-      r = await api('GET', `/api/worker/next?worker=${WORKER_ID}&types=analyze_brief,storyboard,video,revise_prompt,edit_plan`); // không nhận clip_plan (job cắt clip cần AI thật, xem WORKER.md 4.6)
+      r = await api('GET', `/api/worker/next?worker=${WORKER_ID}&types=analyze_brief,storyboard,video,revise_prompt,edit_plan`); // không nhận clip_plan (job highlight cần AI thật, xem WORKER.md 4.6)
     } catch (err) {
       log(`Không kết nối được API: ${(err as Error).message}`);
       if (ONCE) process.exit(1);

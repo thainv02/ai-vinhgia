@@ -67,7 +67,7 @@ Chạy thử có giám sát trên một cảnh trước khi bật `video` trong 
 
 - Xoá dự án chỉ chuyển file bằng `rename` trong cùng ổ đĩa. Nếu `refs/` hoặc `output/.trash` nằm ở ổ khác (EXDEV) thì xoá bị hoàn tác với lỗi `TRASH_MOVE_FAILED`; chưa có đường sao chép-rồi-xoá.
 - Nếu chuyển file thất bại sau khi commit, các job `queued` đã bị hủy lúc xoá không được mở lại (chủ máy bấm duyệt lại); chỉ `deleted_at` được hoàn tác.
-- Xoá vĩnh viễn cũng xoá `credit_ledger` của dự án (khóa ngoại CASCADE): tổng credit đã dùng trước đây của dự án đó không còn trong sổ. Nếu cần lưu số liệu kế toán lâu dài thì xuất CSV (`GET /api/projects/:id/ledger.csv`) trước khi xoá vĩnh viễn, hoặc thêm bảng tổng hợp credit tách khỏi dự án.
+- (Đã bỏ credit 04/11/2026) Xoá vĩnh viễn vẫn xoá các dòng `credit_ledger` cũ của dự án (CASCADE); không còn API xuất sổ credit.
 - Thư mục `output/.trash/` còn sót (vd sau khi khôi phục mà còn file lạ) không có bộ dọn mồ côi; hiện chỉ thư mục của dự án đang trong thùng rác được xoá khi xoá vĩnh viễn.
 - Hàng đợi/hạn mức xoá LAN (10 lần/giờ/IP) giữ trong bộ nhớ như các hạn mức LAN khác. Quyền xoá LAN dựa trên cookie client (không phải danh tính): mất cookie là mất quyền xoá kế hoạch cũ của mình.
 - Trang Thùng rác không có chọn nhiều/xoá hàng loạt và không báo trước khi sắp quá hạn (chỉ hiện số ngày còn lại, đỏ khi ≤ 3 ngày).
@@ -94,7 +94,7 @@ Chạy thử có giám sát trên một cảnh trước khi bật `video` trong 
 - Chưa kiểm chứng với máy LAN thật (smoke chỉ dùng trình duyệt headless trên máy dev) và với AI thật cho các góp ý "giống ảnh mẫu hơn/nhẹ thôi" (chỉ test logic thuần và đường server).
 - Giao diện: dán ảnh (Ctrl/Cmd+V) bắt sự kiện ở cấp trang khi panel Chỉnh màu mở và con trỏ không ở ô nhập chữ; trên điện thoại chưa có nút "Dán" riêng.
 
-## Cắt clip từ video dài: việc còn lại (27/10/2026)
+## Highlight từ video dài: việc còn lại (27/10/2026)
 
 Đợt 1 (P1–P3 + LAN cơ bản) đã xong: nhận dạng qua STT nội bộ, AI chọn đoạn (`clip_plan`), duyệt/sửa điểm cắt trên lời thoại, dựng 9:16 `center`/`fit` có phụ đề ASS chạy theo từng từ, ZIP, LAN. Chưa làm (theo `PLAN-long-video-to-shorts.md`):
 

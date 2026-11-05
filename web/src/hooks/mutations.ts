@@ -30,8 +30,8 @@ function refreshProject(qc: QueryClient, projectId: number) {
 /** Duyệt storyboard / video cho một cảnh. Gọi với `silent` để hộp xác nhận tự hiển thị lỗi. */
 export function useApproveScene(opts: { silent?: boolean } = {}) {
   const qc = useQueryClient();
-  return useMutation<{ scene: Scene }, ApiError, { sceneId: number; stage: Stage }>({
-    mutationFn: ({ sceneId, stage }) => api.approve(sceneId, stage),
+  return useMutation<{ scene: Scene }, ApiError, { sceneId: number; stage: Stage; generator?: string }>({
+    mutationFn: ({ sceneId, stage, generator }) => api.approve(sceneId, stage, generator),
     onSuccess: ({ scene }) => syncScene(qc, scene),
     meta: opts.silent ? SILENT : undefined,
   });
@@ -95,6 +95,16 @@ export function useSetVerdict() {
   });
 }
 
+/** Xoá logo lại trên một ảnh storyboard Google Flow. Nơi gọi tự hiển thị lỗi. */
+export function useRemoveLogo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (assetId: number) => api.removeLogo(assetId),
+    onSuccess: ({ scene }) => syncScene(qc, scene),
+    meta: SILENT,
+  });
+}
+
 export function usePatchPrompt() {
   const qc = useQueryClient();
   return useMutation({
@@ -127,8 +137,7 @@ export function useResolveComment() {
 export function useApproveAll() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, stage, expectedCredits }: { projectId: number; stage: Stage; expectedCredits: number }) =>
-      api.approveAll(projectId, stage, expectedCredits),
+    mutationFn: ({ projectId, stage, generator }: { projectId: number; stage: Stage; generator?: string }) => api.approveAll(projectId, stage, generator),
     onSuccess: (_r, vars) => refreshProject(qc, vars.projectId),
     onError: (_e, vars) => refreshProject(qc, vars.projectId),
     meta: SILENT,
@@ -232,7 +241,7 @@ function syncFinalCut(qc: QueryClient, fc: FinalCut) {
   void qc.invalidateQueries({ queryKey: ['jobs'] });
 }
 
-/** Dựng bản mới (tạo version mới + job chọn điểm cắt cho Claude). Không tốn credit. */
+/** Dựng bản mới (tạo version mới + job chọn điểm cắt cho Claude). */
 export function useCreateFinalCut() {
   const qc = useQueryClient();
   return useMutation<FinalCut, ApiError, number>({

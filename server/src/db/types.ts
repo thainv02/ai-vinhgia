@@ -53,7 +53,7 @@ export type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 export interface ProjectRow {
   id: number;
-  /** 'scenes': dự án sản xuất video theo cảnh (mặc định); 'clips': dự án cắt clip từ video dài. */
+  /** 'scenes': dự án sản xuất video theo cảnh (mặc định); 'clips': dự án highlight từ video dài. */
   kind: ProjectKind;
   /** Tên riêng/thuật ngữ gợi ý cho nhận dạng lời nói (chỉ dự án 'clips'). */
   stt_terms: string | null;
@@ -61,10 +61,12 @@ export interface ProjectRow {
   name: string;
   brief: string;
   style_lock: string;
-  /** Cột giữ lại cho tương thích; server không còn đọc/kiểm tra/hiển thị (đã bỏ hạn mức credit). */
+  /** Cột giữ lại cho tương thích; server không còn đọc/kiểm tra/hiển thị (đã bỏ credit). */
   credit_budget: number;
   max_attempts_per_scene: number;
   credit_per_video: number;
+  /** Dịch vụ tạo ảnh storyboard: 'muse' | 'flow-image' (services/generators.ts). */
+  storyboard_generator: string;
   status: ProjectStatus;
   /** 'app': tạo từ app chính; 'lan': tạo từ trang planner LAN (chỉ lập kế hoạch prompt). */
   source: ProjectSource;
@@ -79,7 +81,11 @@ export interface ProjectRow {
   trash_path: string | null;
   /** sha256 của cookie client LAN đã tạo kế hoạch (chỉ kế hoạch mới); NULL = chỉ xoá được từ app chính. Không bao giờ trả ra API. */
   lan_client_hash: string | null;
+  /** Dự án LAN: 'plan' = kế hoạch prompt (tự tạo rồi tải lên); 'auto' = tab Autovideo (worker nền tạo storyboard/video). Dự án 'app': 'plan'. */
+  lan_mode: LanMode;
 }
+
+export type LanMode = 'plan' | 'auto';
 
 export interface RefRow {
   id: number;
@@ -222,7 +228,7 @@ export const SCENE_STATUS_LABEL: Record<SceneStatus, string> = {
   done: 'Hoàn tất',
   needs_revision: 'Cần sửa prompt',
   failed: 'Lỗi',
-  blocked_budget: 'Flow hết credit',
+  blocked_budget: 'Hết hạn mức tạo video',
   cancelled: 'Đã hủy',
 };
 
@@ -287,7 +293,7 @@ export interface ColorRefRow {
   created_at: string;
 }
 
-// ---------------------------------------------------------------- cắt clip từ video dài (migration 014)
+// ---------------------------------------------------------------- highlight từ video dài (migration 014)
 
 export const SOURCE_STATUSES = ['uploaded', 'transcribing', 'transcribed', 'failed', 'cancelled'] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
@@ -342,6 +348,10 @@ export interface ClipRow {
   job_id: number | null;
   caption_words: string | null;
   caption_source: 'ai' | 'user' | null;
+  cleanup: string | null;
+  edit_revision: number;
+  /** Clip ghép nhiều đoạn (migration 017): JSON `ClipPart[]` theo thứ tự phát; NULL = một đoạn. Xem lib/clip-parts.ts. */
+  parts: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -376,6 +386,7 @@ export interface ClipCutRow {
   parent_id: number | null;
   feedback: string | null;
   grade: string | null;
+  edit_snapshot: string | null;
   created_at: string;
   finished_at: string | null;
 }

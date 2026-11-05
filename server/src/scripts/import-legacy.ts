@@ -15,7 +15,7 @@ import { SseHub } from '../services/sse.js';
 
 const USAGE = `Cách dùng: npm run import:legacy -- [--dir <thư mục>] [--db <file.db>]
   --dir     thư mục dữ liệu cũ, con trực tiếp của output/ (mặc định ${DEFAULT_LEGACY_DIR})
-  --budget  (không còn dùng) hạn mức credit đã bị bỏ; nếu truyền sẽ in cảnh báo rồi bỏ qua
+  --budget  (không còn dùng) nếu truyền sẽ in cảnh báo rồi bỏ qua
   --db      file SQLite (mặc định lấy từ DB_PATH trong .env, thường data/app.db); đường dẫn tương đối tính từ ROOT_DIR`;
 
 function parseArgs(argv: string[]): { dir?: string; db?: string; help: boolean; budgetIgnored: boolean } {
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     console.log(USAGE);
     return;
   }
-  if (args.budgetIgnored) console.warn('Cảnh báo: --budget không còn dùng (đã bỏ hạn mức credit), bỏ qua.');
+  if (args.budgetIgnored) console.warn('Cảnh báo: --budget không còn dùng, bỏ qua.');
   loadDotEnv(path.join(REPO_ROOT, '.env'));
   const loaded = loadConfig();
   const rootDir = loaded.rootDir;

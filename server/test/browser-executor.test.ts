@@ -181,7 +181,7 @@ d('F2 precheck cứng trước browser_submit (video/Flow)', () => {
     expect(counters.flowGenerate).toBe(0);
   }
 
-  it('đủ điều kiện: 9:16, 10s, x1, 720p, 15 credit, prompt khớp (khác khoảng trắng), upload đúng thứ tự → ghi intent rồi submitted, bấm đúng một lần', async () => {
+  it('đủ điều kiện: 9:16, 10s, x1, 720p, prompt khớp (khác khoảng trắng), upload đúng thứ tự → ghi intent rồi submitted, bấm đúng một lần', async () => {
     const job = await videoJob();
     const t = await ready(job, '', { prompt: 'Style: warm kitchen.\n  Shot 1:   hand opens the box.' });
     try {
@@ -207,7 +207,7 @@ d('F2 precheck cứng trước browser_submit (video/Flow)', () => {
       expect(counters.flowGenerate).toBe(1);
     } finally { await t.close(); }
   });
-  it('popover đang đóng: executor tự mở chip để đọc dòng credit và lựa chọn 9:16, đóng lại rồi mới bấm', async () => {
+  it('popover đang đóng: executor tự mở chip để đọc lựa chọn 9:16, đóng lại rồi mới bấm', async () => {
     const job = await videoJob();
     const t = await ready(job); // settleSettings để popover mở; đóng nó bằng cách bấm chip lần nữa
     try {
@@ -234,14 +234,6 @@ d('F2 precheck cứng trước browser_submit (video/Flow)', () => {
     const job = await videoJob();
     const t = await ready(job, '?nostate=1&duration=10&aspect=9:16', { skipSettings: true });
     try { await expectRefused(t, job, /aspect_ratio.*không xác minh/); } finally { await t.close(); }
-  });
-  it('số credit trên trang khác credits_expected, hoặc không có dòng credit → từ chối credits', async () => {
-    const job = await videoJob();
-    const t = await ready(job, '?duration=10&aspect=9:16&credits=20', { skipSettings: true });
-    try { await press(t, /Video · 720p/); await expectRefused(t, job, /credits.*20 credit.*15/); } finally { await t.close(); }
-    await context.pages().at(-1)!.close();
-    const t2 = await ready(job, '?duration=10&aspect=9:16&credits=none', { skipSettings: true });
-    try { await expectRefused(t2, job, /credits.*không thấy dòng/); } finally { await t2.close(); }
   });
   it('prompt trong ô khác prompt của job → từ chối prompt; ô trống cũng từ chối', async () => {
     const job = await videoJob();

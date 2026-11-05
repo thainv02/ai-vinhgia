@@ -140,7 +140,7 @@ export interface Scenario {
   scenes: any[];
 }
 
-/** Tạo dự án + n cảnh (qua worker/scenes), mặc định ngân sách 120, 2 lượt, 15 credit/video. */
+/** Tạo dự án + n cảnh (qua worker/scenes), mặc định 2 lượt/cảnh. */
 export async function setupProject(
   env: Env,
   opts: { scenes?: number; project?: Record<string, unknown>; usePrev?: boolean } = {},
@@ -178,7 +178,7 @@ export async function claim(sc: Scenario, workerId = 'w1') {
 }
 
 /** Hoàn thành job (đã claim) bằng cách ghi file mẫu đúng theo payload.output. */
-export async function finish(sc: Scenario, job: any, extra: { verdict?: string; verdict_note?: string; credits_cost?: number } = {}) {
+export async function finish(sc: Scenario, job: any, extra: { verdict?: string; verdict_note?: string } = {}) {
   const { root } = sc.env;
   const p = job.payload;
   if (job.type === 'storyboard') {
@@ -197,7 +197,6 @@ export async function finish(sc: Scenario, job: any, extra: { verdict?: string; 
         { kind: 'video', file_path: p.output.video_path, meta: { duration_s: 10, width: 720, height: 1280 } },
         { kind: 'grid', file_path: p.output.grid_path },
       ],
-      credits_cost: extra.credits_cost,
     });
   }
   if (job.type === 'revise_prompt') {

@@ -68,14 +68,14 @@ describe('runner migration', () => {
       events: db.prepare('SELECT * FROM events').all(),
     };
 
-    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips']);
+    expect(runMigrations(db)).toEqual(['003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
     expect(runMigrations(db)).toEqual([]);
 
     expect(db.prepare('SELECT * FROM jobs ORDER BY id').all().map((row: any) => Object.fromEntries(Object.keys(jobsBefore[0] as object).map((key) => [key, row[key]])))).toEqual(jobsBefore);
     expect(db.prepare('SELECT id, job_id FROM assets ORDER BY id').all()).toEqual(assetsBefore); // job_id KHÔNG bị SET NULL
     expect(db.prepare('SELECT id, job_id, delta FROM credit_ledger ORDER BY id').all()).toEqual(ledgerBefore);
     // 009 (chạy cùng lượt) thêm 2 cột vào projects; dữ liệu cũ giữ nguyên và nhận giá trị mặc định
-    expect(db.prepare('SELECT * FROM projects').all()).toEqual((otherBefore.projects as Record<string, unknown>[]).map((p) => ({ ...p, source: 'app', created_by_name: null, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null })));
+    expect(db.prepare('SELECT * FROM projects').all()).toEqual((otherBefore.projects as Record<string, unknown>[]).map((p) => ({ ...p, source: 'app', created_by_name: null, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null, storyboard_generator: 'muse', lan_mode: 'plan' })));
     expect(db.prepare('SELECT * FROM scenes').all()).toEqual(otherBefore.scenes);
     expect(db.prepare('SELECT * FROM events').all()).toEqual(otherBefore.events);
     expect(db.pragma('foreign_key_check')).toEqual([]);
@@ -112,13 +112,13 @@ describe('runner migration', () => {
     const snap = (d: DB) => Object.fromEntries(tables.map((t) => [t, d.prepare(`SELECT * FROM "${t}"`).all()]));
     const before = snap(db);
 
-    expect(runMigrations(db)).toEqual(['013_color_refs', '014_clips']);
+    expect(runMigrations(db)).toEqual(['013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
     expect(runMigrations(db)).toEqual([]);
     const after = snap(db);
-    // 014 thêm 2 cột vào projects (kind, stt_terms): bỏ hai cột đó rồi so sánh; mọi dòng của mọi bảng cũ không đổi
-    const stripClipCols = (rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ kind: _k, stt_terms: _t, ...rest }) => rest);
+    // 014 thêm 2 cột vào projects (kind, stt_terms), 018 thêm storyboard_generator, 019 thêm lan_mode: bỏ các cột đó rồi so sánh; mọi dòng của mọi bảng cũ không đổi
+    const stripClipCols = (rows: unknown[]) => (rows as Record<string, unknown>[]).map(({ kind: _k, stt_terms: _t, storyboard_generator: _g, lan_mode: _m, ...rest }) => rest);
     expect({ ...after, projects: stripClipCols(after.projects as unknown[]), schema_migrations: undefined }).toEqual({ ...before, schema_migrations: undefined }); // mọi dòng của mọi bảng cũ không đổi
-    expect((after.schema_migrations as unknown[]).length).toBe(14);
+    expect((after.schema_migrations as unknown[]).length).toBe(19);
     const cols = (db.prepare("PRAGMA table_info('color_refs')").all() as { name: string }[]).map((c) => c.name);
     expect(cols).toEqual(['id', 'project_id', 'kind', 'file_path', 'thumb_path', 'original_name', 'content_hash', 'width', 'height', 'lut_size', 'created_by_name', 'created_at']);
     const ins = (kind: string, hash: string, project = 1, path = 'output/cu/final/color-refs/a.png') =>
@@ -153,11 +153,11 @@ describe('runner migration', () => {
     const before = counts(db);
     const projectsBefore = db.prepare('SELECT * FROM projects').all();
 
-    expect(runMigrations(db)).toEqual(['010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips']);
+    expect(runMigrations(db)).toEqual(['010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
     expect(runMigrations(db)).toEqual([]);
-    expect(counts(db)).toEqual({ ...before, schema_migrations: 14 }); // số dòng mọi bảng cũ không đổi (chỉ thêm dòng ghi nhận migration)
+    expect(counts(db)).toEqual({ ...before, schema_migrations: 19 }); // số dòng mọi bảng cũ không đổi (chỉ thêm dòng ghi nhận migration)
     expect((db.prepare('SELECT COUNT(*) AS n FROM lan_tool_jobs').get() as { n: number }).n).toBe(0);
-    expect(db.prepare('SELECT * FROM projects').all()).toEqual((projectsBefore as Record<string, unknown>[]).map((p) => ({ ...p, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null })));
+    expect(db.prepare('SELECT * FROM projects').all()).toEqual((projectsBefore as Record<string, unknown>[]).map((p) => ({ ...p, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null, storyboard_generator: 'muse', lan_mode: 'plan' })));
     const ins = (kind: string, status: string, progress: number | null = null) =>
       db.prepare('INSERT INTO lan_tool_jobs (kind, status, progress, original_name, client_id_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(kind, status, progress, 'a.mp4', 'h'.repeat(64), now);
     for (const st of ['queued', 'processing', 'ready', 'failed', 'cancelled', 'expired']) ins('remove_logo', st);
@@ -183,10 +183,10 @@ describe('runner migration', () => {
     db.prepare("INSERT INTO scenes (project_id, code, created_at, updated_at) VALUES (1, 'C1', ?, ?)").run(now, now);
     const before = db.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
 
-    expect(runMigrations(db)).toEqual(['009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips']);
+    expect(runMigrations(db)).toEqual(['009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
     expect(runMigrations(db)).toEqual([]);
     const after = db.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
-    expect(after).toEqual([{ ...before[0], source: 'app', created_by_name: null, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null }]);
+    expect(after).toEqual([{ ...before[0], source: 'app', created_by_name: null, deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null, storyboard_generator: 'muse', lan_mode: 'plan' }]);
     expect(db.prepare('SELECT COUNT(*) AS n FROM scenes').get()).toEqual({ n: 1 });
     db.prepare("INSERT INTO projects (slug, name, source, created_by_name, created_at, updated_at) VALUES ('lan', 'K', 'lan', 'Lan', ?, ?)").run(now, now);
     expect(() => db.prepare("INSERT INTO projects (slug, name, source, created_at, updated_at) VALUES ('x', 'X', 'web', ?, ?)").run(now, now)).toThrow(/CHECK/);
@@ -255,9 +255,9 @@ UPDATE assets SET scene_id = 999 WHERE id = 1;
     db = openDb(file);
     const db2 = openDb(file);
     try {
-      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips']);
+      expect(runMigrations(db)).toEqual(['001_init', '002_ref_library', '003_final_cuts', '004_watermark', '005_managed_workers', '006_account_identity', '007_account_quota', '008_job_reconciliations', '009_lan_planner', '010_lan_tools', '011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
       expect(runMigrations(db2)).toEqual([]);
-      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(14);
+      expect((db2.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get() as { n: number }).n).toBe(19);
     } finally {
       db2.close();
     }

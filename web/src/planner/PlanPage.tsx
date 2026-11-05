@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../api/errors';
 import { Alert, EmptyState, ErrorState, InlineError, Skeleton } from '../components/States';
+import { WorkflowSteps, type WorkflowStep } from '../components/WorkflowSteps';
+import { nextPlanAction } from '../../../server/src/lib/plan-progress';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { ImageLightbox } from '../components/ImageLightbox';
@@ -15,11 +17,14 @@ import { useNow } from '../lib/useNow';
 import { planner } from './api';
 import { CopyButton, PlanStatusBadge, WorkspaceTabs } from './parts';
 import { FinalBlock } from './FinalBlock';
-import { PlanWorkspace, ProjectAssets } from './PlanWorkspace';
+import { PlanWorkspace, ProjectAssets, type SceneFocus } from './PlanWorkspace';
 import type { PlanDetail } from './types';
 import { hrefOf, navigate } from './useHashRoute';
 
-function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: boolean; onClose: () => void }) {
+/** Phần chi tiết mà các hộp thoại/banner dùng chung giữa kế hoạch prompt và dự án Autovideo cần. */
+type PlanLike = { plan: { id: number; name: string; brief: string; style_lock: string } };
+
+export function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanLike; open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const status = useQuery({ queryKey: ['status'], queryFn: planner.status, enabled: open });
   const [brief, setBrief] = useState(detail.plan.brief);
@@ -31,6 +36,8 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
       toast.success('Đã gửi phân tích lại');
       void qc.invalidateQueries({ queryKey: ['plan', detail.plan.id] });
       void qc.invalidateQueries({ queryKey: ['plans'] });
+      void qc.invalidateQueries({ queryKey: ['auto', detail.plan.id] });
+      void qc.invalidateQueries({ queryKey: ['auto-projects'] });
       void qc.invalidateQueries({ queryKey: ['status'] });
       onClose();
     },
@@ -66,7 +73,7 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
         </div>
         <div>
           <label htmlFor="re-style" className="mb-1 block text-[13px] font-semibold">
-            Khóa nhất quán
+            Những thứ giữ giống nhau ở mọi cảnh
           </label>
           <textarea id="re-style" rows={3} value={styleLock} onChange={(e) => setStyleLock(e.target.value)} disabled={m.isPending} />
         </div>
@@ -79,16 +86,17 @@ function ReanalyzeDialog({ detail, open, onClose }: { detail: PlanDetail; open: 
   );
 }
 
-function DeleteDialog({ detail, onClose }: { detail: PlanDetail; onClose: () => void }) {
+export function DeleteDialog({ detail, onClose, auto = false }: { detail: PlanLike; onClose: () => void; auto?: boolean }) {
+  const noun = auto ? 'dự án' : 'kế hoạch';
   const qc = useQueryClient();
   const m = useMutation({
     mutationFn: () => planner.deletePlan(detail.plan.id),
     meta: { silent: true },
     onSuccess: () => {
-      toast.success(`Đã xoá kế hoạch "${detail.plan.name}"`);
-      qc.removeQueries({ queryKey: ['plan', detail.plan.id] });
-      void qc.invalidateQueries({ queryKey: ['plans'] });
-      navigate({ name: 'list' });
+      toast.success(`Đã xoá ${noun} "${detail.plan.name}"`);
+      qc.removeQueries({ queryKey: [auto ? 'auto' : 'plan', detail.plan.id] });
+      void qc.invalidateQueries({ queryKey: [auto ? 'auto-projects' : 'plans'] });
+      navigate({ name: auto ? 'auto' : 'list' });
       onClose();
     },
   });
@@ -96,30 +104,30 @@ function DeleteDialog({ detail, onClose }: { detail: PlanDetail; onClose: () => 
     <Modal
       open
       onClose={onClose}
-      title="Xoá kế hoạch?"
+      title={`Xoá ${noun}?`}
       footer={
         <>
           <Button onClick={onClose} disabled={m.isPending}>
             Giữ lại
           </Button>
           <Button variant="danger" icon={<Icon name="trash" size={15} />} loading={m.isPending} onClick={() => m.mutate()}>
-            Xoá kế hoạch
+            Xoá {noun}
           </Button>
         </>
       }
     >
       <div className="space-y-3 text-sm">
         <p>
-          Kế hoạch <strong>{detail.plan.name}</strong>, các video bạn đã tải lên và bản hoàn chỉnh sẽ <strong>biến mất khỏi trang này</strong>.
+          {auto ? 'Dự án' : 'Kế hoạch'} <strong>{detail.plan.name}</strong>, {auto ? 'storyboard, video đã tạo' : 'các video bạn đã tải lên'} và bản hoàn chỉnh sẽ <strong>biến mất khỏi trang này</strong>.
         </p>
-        <p className="text-muted">Chủ máy vẫn khôi phục được trong 30 ngày; sau đó kế hoạch bị xoá vĩnh viễn. Bạn không tự khôi phục được từ trang này.</p>
+        <p className="text-muted">Chủ máy vẫn khôi phục được trong 30 ngày; sau đó {noun} bị xoá vĩnh viễn. Bạn không tự khôi phục được từ trang này.</p>
         {m.isError && <InlineError>{errorMessage(m.error)}</InlineError>}
       </div>
     </Modal>
   );
 }
 
-function AnalysisBanner({ detail, onReanalyze }: { detail: PlanDetail; onReanalyze: () => void }) {
+export function AnalysisBanner({ detail, onReanalyze }: { detail: Pick<PlanDetail, 'analysis' | 'worker'> & { scenes: unknown[] }; onReanalyze: () => void }) {
   const a = detail.analysis;
   const now = useNow();
   if (a.state === 'queued' || a.state === 'running') {
@@ -164,6 +172,7 @@ export function PlanPage({ id }: { id: number }) {
   const [reanalyze, setReanalyze] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [view, setView] = useState('workspace');
+  const [focus, setFocus] = useState<SceneFocus>();
   useDocumentTitle(q.data?.plan.name);
   // Chi tiết kế hoạch đã kèm trạng thái worker mới nhất: đồng bộ vào chỉ báo ở header để không hiện số liệu cũ.
   const worker = q.data?.worker;
@@ -201,8 +210,22 @@ export function PlanPage({ id }: { id: number }) {
   const hasScenes = d.scenes.length > 0;
 
   const uploaded = d.scenes.filter((s) => s.videos.selected_id !== null).length;
-  const storyboards = d.scenes.filter((s) => !!s.storyboard).length;
-  const finalReady = d.final.latest?.status === 'ready';
+  const storyboards = d.scenes.filter((s) => !!s.storyboard && !s.storyboard.stale).length;
+  const finalReady = d.final.latest?.status === 'ready' && d.plan.progress?.final_current !== false;
+  const sceneProgress = d.scenes.map((s) => ({ id: s.id, code: s.code, storyboard: !!s.storyboard && !s.storyboard.stale, prompt: !!s.step2.prompt.trim(), video: s.videos.selected_id !== null }));
+  const next = nextPlanAction(sceneProgress, { status: d.final.latest?.status, current: d.plan.progress?.final_current });
+  const showScene = (sceneId: number, step: SceneFocus['step']) => { setView('workspace'); setFocus((old) => ({ scene_id: sceneId, step, request: (old?.request ?? 0) + 1 })); };
+  const openNext = () => { if (!next) return; if (next.stage === 'final') setView('final'); else if (next.scene_id) showScene(next.scene_id, next.stage === 'storyboard' ? 'storyboard' : next.stage === 'prompt' ? 'flow' : 'upload'); };
+  const allVideo = hasScenes && uploaded === d.scenes.length;
+  const allStoryboard = hasScenes && storyboards === d.scenes.length;
+  const promptCount = sceneProgress.filter((s) => s.prompt).length;
+  const workflow: WorkflowStep[] = [
+    { label: 'Storyboard', state: allStoryboard || allVideo ? 'done' : hasScenes ? 'active' : 'todo', note: `${storyboards}/${d.scenes.length} cảnh` },
+    { label: 'Prompt video', state: allVideo || (allStoryboard && promptCount === d.scenes.length) ? 'done' : allStoryboard ? 'active' : 'todo', note: `${promptCount}/${d.scenes.length} đã viết` },
+    { label: 'Video', state: allVideo ? 'done' : allStoryboard ? 'active' : 'todo', note: `${uploaded}/${d.scenes.length} đã tải` },
+    { label: 'Bản hoàn chỉnh', state: finalReady ? 'done' : d.final.active || allVideo ? 'active' : 'todo', note: d.final.active ? 'đang dựng' : finalReady ? 'sẵn sàng' : undefined },
+  ];
+  const openWorkflowStep = (index: number) => { if (index === 3) { setView('final'); return; } const target = d.scenes.find((s) => index === 0 ? !s.storyboard || s.storyboard.stale : index === 1 ? !s.step2.prompt.trim() : s.videos.selected_id === null) ?? d.scenes[0]; if (target) showScene(target.id, index === 0 ? 'storyboard' : index === 1 ? 'flow' : 'upload'); };
   const tabs = [
     { value: 'workspace', label: 'Cảnh & prompt', icon: 'film' as const, meta: String(d.scenes.length) },
     { value: 'final', label: 'Bản hoàn chỉnh', icon: 'play' as const, meta: d.final.active ? 'Đang dựng' : finalReady ? 'Sẵn sàng' : undefined },
@@ -231,18 +254,12 @@ export function PlanPage({ id }: { id: number }) {
             {hasScenes && <CopyButton text={d.markdown} label="Sao chép kế hoạch" size="md" />}
             <Button icon={<Icon name="edit" size={15} />} disabledReason={analyzing ? 'Đang phân tích, hãy đợi kết quả' : null} onClick={() => setReanalyze(true)}>Sửa yêu cầu</Button>
             {p.can_delete && <Button variant="danger" icon={<Icon name="trash" size={15} />} disabledReason={p.delete_block ?? null} onClick={() => setDeleting(true)}>Xoá kế hoạch</Button>}
-            {hasScenes && <Button variant="primary" icon={<Icon name={finalReady ? 'play' : 'film'} size={15} />} onClick={() => setView('final')}>
-              {d.final.active ? 'Xem tiến trình dựng' : finalReady ? 'Xem bản hoàn chỉnh' : 'Dựng bản hoàn chỉnh'}
-            </Button>}
+            {next && <Button variant="primary" icon={<Icon name={next.stage === 'storyboard' ? 'image' : next.stage === 'final' ? 'play' : 'film'} size={15} />} disabledReason={analyzing ? 'Đang phân tích lại kế hoạch' : null} onClick={openNext}>{next.label}</Button>}
           </div>
         </div>
 
-        <div className="plan-stat-row">
-          <div className="plan-stat"><span className="stat-icon"><Icon name="film" size={18} /></span><div><strong>{d.scenes.length} <span>cảnh</span></strong><small>Kịch bản đã phân cảnh</small></div></div>
-          <div className="plan-stat"><span className="stat-icon"><Icon name="image" size={18} /></span><div><strong>{storyboards}<span> / {d.scenes.length}</span></strong><small>Storyboard đã tải lên</small></div></div>
-          <div className="plan-stat"><span className={`stat-icon ${hasScenes && uploaded === d.scenes.length ? 'is-complete' : ''}`}><Icon name="check" size={18} /></span><div><strong>{uploaded}<span> / {d.scenes.length}</span></strong><small>Cảnh đã chọn video</small></div></div>
-          <div className="plan-stat plan-format"><span className="stat-icon"><Icon name="gear" size={18} /></span><div><strong>{d.settings.aspect} <span>· {d.settings.resolution}</span></strong><small>{d.settings.duration_s} giây / clip · x{d.settings.count}</small></div></div>
-        </div>
+        <div className="rounded-xl border border-line bg-surface px-4 py-4"><WorkflowSteps steps={workflow} label="Tiến độ kế hoạch" onSelect={openWorkflowStep} /></div>
+        <p className="text-xs text-muted">{d.scenes.length} cảnh · {d.settings.aspect} · {d.settings.resolution} · {d.settings.duration_s} giây/cảnh</p>
       </section>
 
       <div className="space-y-3">
@@ -256,7 +273,7 @@ export function PlanPage({ id }: { id: number }) {
       </div>
 
       <section id="plan-view-panel-workspace" role="tabpanel" aria-labelledby="plan-view-tab-workspace" hidden={view !== 'workspace'} tabIndex={0}>
-        {hasScenes ? <PlanWorkspace detail={d} onZoom={(src, title) => setZoom({ src, title })} onFinal={() => setView('final')} /> : analyzing ? (
+        {hasScenes ? <PlanWorkspace focus={focus} detail={d} onZoom={(src, title) => setZoom({ src, title })} onFinal={() => setView('final')} /> : analyzing ? (
           <div className="grid gap-4 lg:grid-cols-[260px_1fr]" aria-busy="true"><Skeleton className="h-80" /><Skeleton className="h-96" /></div>
         ) : <EmptyState icon="film" title={p.status === 'failed' ? 'Chưa có cảnh nào' : 'Kế hoạch chưa được phân tích'} action={<Button variant="primary" icon={<Icon name="send" />} onClick={() => setReanalyze(true)}>{p.status === 'failed' ? 'Phân tích lại' : 'Gửi phân tích'}</Button>}>Gửi yêu cầu cho AI để chia cảnh và viết prompt.</EmptyState>}
       </section>

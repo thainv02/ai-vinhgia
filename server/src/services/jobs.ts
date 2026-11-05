@@ -17,13 +17,13 @@ import {
   type FailCode,
   type JobRow,
   type JobType,
-  type ProjectRow,
   type SceneRow,
 } from '../db/types.js';
-import { appendLogRow, VIDEO_TYPE_TEXT, verdictText } from './logmd.js';
+import { appendLogRow, videoGeneratorLabel, videoTypeText, verdictText } from './logmd.js';
 import { cancelCutForJob, editPlanResult, failEditPlanCut } from './final-cuts.js';
 import { completeEditPlanJob } from './final-revisions.js';
 import { clipPlanResult, clipPlanStale, completeClipPlanJob } from './clips/plan.js';
+import { cleanupResult, completeCleanup, expireWaitingCleanup, isCleanupJob, queueRequiredCleanup } from './clips/cleanup.js';
 import { emitProject } from './project-view.js';
 import { computePayload } from './payload.js';
 import {
@@ -52,6 +52,9 @@ export { insertJob, type NewJob } from './job-create.js';
 
 // ---------------------------------------------------------------- claim
 
+/** Khoá sắp xếp: 1 với storyboard/video của dự án Autovideo (LAN), 0 với mọi job khác (dùng chung cho `claimNext` và vị trí hàng đợi Autovideo). */
+export const LAN_MEDIA_LAST = "CASE WHEN j.type IN ('storyboard','video') AND p.source = 'lan' AND p.lan_mode = 'auto' THEN 1 ELSE 0 END";
+
 /**
  * Claim nguyên tử job queued cũ nhất đủ điều kiện (BEGIN IMMEDIATE). Trả null nếu không có việc.
  * Ném QUEUE_PAUSED (503) nếu hàng đợi đang tạm dừng.
@@ -59,7 +62,7 @@ export { insertJob, type NewJob } from './job-create.js';
  * Chế độ kết hợp: managed worker chỉ nhận loại trong MANAGED_JOB_TYPES (hoặc job đã từng được managed worker giữ,
  * để resume không mắc kẹt khi đổi cấu hình); worker legacy nhận các loại còn lại.
  */
-export function claimNext(ctx: AppContext, workerId: string | null, opts: { managed?: boolean; types?: string[] } = {}) {
+export function claimNext(ctx: AppContext, workerId: string | null, opts: { managed?: boolean; types?: string[]; features?: string[] } = {}) {
   const id = ctx.tx(() => {
     const ws = getWorkerRow(ctx);
     if (ws.queue_paused) {
@@ -68,12 +71,16 @@ export function claimNext(ctx: AppContext, workerId: string | null, opts: { mana
         pause_reason: ws.pause_reason,
       });
     }
-    // job của dự án trong thùng rác không bao giờ được giao cho worker (xoá dự án vốn đã hủy job queued; đây là lớp chặn thứ hai)
+    // job của dự án trong thùng rác không bao giờ được giao cho worker (xoá dự án vốn đã hủy job queued; đây là lớp chặn thứ hai).
+    // Storyboard/video của dự án Autovideo (tab LAN) xếp SAU storyboard/video của chủ máy; trong từng nhóm vẫn theo id.
     const queued = ctx.db
-      .prepare("SELECT j.* FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.status = 'queued' AND p.deleted_at IS NULL ORDER BY j.id")
+      .prepare(`SELECT j.* FROM jobs j JOIN projects p ON p.id = j.project_id WHERE j.status = 'queued' AND p.deleted_at IS NULL
+                ORDER BY ${LAN_MEDIA_LAST}, j.id`)
       .all() as JobRow[];
     for (const job of queued) {
       if (opts.types && !opts.types.includes(job.type)) continue;
+      // Older workers must not interpret a cleanup request as a clip-discovery job.
+      if (job.type === 'clip_plan' && isCleanupJob(job) && (!opts.managed || !opts.features?.includes('clip_cleanup'))) continue;
       const managedType = isManagedJobType(ctx.config, job.type);
       if (opts.managed ? !managedType && job.worker_mode !== 'managed' : managedType || job.worker_mode === 'managed') continue;
       if (job.wait_reason && (!job.next_attempt_at || job.next_attempt_at > ctx.now())) continue;
@@ -146,6 +153,7 @@ function cancelStaleClipPlan(ctx: AppContext, job: JobRow, why: string): void {
   ctx.db.prepare("UPDATE jobs SET status = 'cancelled', finished_at = ?, error = ? WHERE id = ?").run(ctx.now(), why, job.id);
   logEvent(ctx, { project_id: job.project_id, type: 'job.cancelled', message: `Job #${job.id} (clip_plan) bị hủy: ${why}` });
   emitJob(ctx, job.id, job.project_id);
+  if (isCleanupJob(job)) ctx.afterCommit(() => queueRequiredCleanup(ctx, job.project_id));
 }
 
 function cancelStale(ctx: AppContext, job: JobRow, scene: SceneRow): void {
@@ -196,6 +204,7 @@ const assetInput = z.object({
 export const completeBody = z.object({
   result: z.record(z.string(), z.unknown()).optional(),
   assets: z.array(assetInput).optional(),
+  /** Cũ (thời còn ghi credit): vẫn nhận để worker cũ không lỗi, nhưng bị bỏ qua. */
   credits_cost: z.number().int().min(0).optional(),
 });
 export type CompleteBody = z.infer<typeof completeBody>;
@@ -270,7 +279,6 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
     const files = checkAssetFiles(ctx, job, input);
     const result = input.result ?? {};
     const now = ctx.now();
-    let creditsCost = 0;
 
     if (job.type === 'storyboard') {
       const scene = getScene(ctx, job.scene_id as number);
@@ -291,10 +299,13 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
       const scene = getScene(ctx, job.scene_id as number);
       const meta = parse(mediaResult, result);
       if (!files.some((f) => f.kind === 'video')) throw badRequest('ASSET_REQUIRED', 'Thiếu asset video trong kết quả');
+      const generatorLabel = videoGeneratorLabel(job.payload);
       for (const f of files) {
         const isVideo = f.kind === 'video';
         const asset = insertAsset(ctx, scene, job.id, {
           ...f,
+          // Ghi dịch vụ đã tạo để giao diện hiện cạnh video; job cũ không có thì để nguyên meta của worker.
+          meta: isVideo && generatorLabel ? { ...f.meta, generator: generatorLabel } : f.meta,
           attempt,
           verdict: isVideo ? meta.verdict ?? null : null,
           verdict_note: isVideo ? meta.verdict_note ?? meta.note ?? null : null,
@@ -303,14 +314,12 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
           appendLogRow(ctx, project.slug, {
             clip: scene.code,
             attempt,
-            type: VIDEO_TYPE_TEXT,
+            type: videoTypeText(job.payload),
             issue: asset.verdict_note ?? '',
             conclusion: verdictText(asset.verdict),
           });
         }
       }
-      creditsCost = input.credits_cost ?? project.credit_per_video;
-      if (creditsCost > 0) addLedger(ctx, project, scene.id, job.id, -creditsCost, `Video ${scene.code} lượt ${attempt} (job #${job.id})`);
       transition(ctx, scene.id, 'video_review', `job #${job.id} hoàn thành`);
     } else if (job.type === 'revise_prompt') {
       const scene = getScene(ctx, job.scene_id as number);
@@ -338,12 +347,16 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
       });
       transition(ctx, scene.id, 'awaiting_approval', `job #${job.id}: đã sửa prompt, chờ duyệt lại`);
     } else if (job.type === 'edit_plan') {
-      // Không có asset, không tốn credit. EDL sai → INVALID_EDL (400), job giữ nguyên để worker sửa và gọi lại.
+      // Không có asset. EDL sai → INVALID_EDL (400), job giữ nguyên để worker sửa và gọi lại.
       completeEditPlanJob(ctx, job, parse(editPlanResult, result));
     } else if (job.type === 'clip_plan') {
       // Server kiểm tra lại mọi ID câu và tự tính giây (bám khoảng lặng). Có đề xuất mà tất cả đều sai → INVALID_CLIP_PLAN (400), job giữ nguyên để worker sửa và gọi lại.
-      const done = completeClipPlanJob(ctx, job, parse(clipPlanResult, result));
-      Object.assign(result, { created: done.created, rejected: done.rejected.length });
+      if (isCleanupJob(job)) {
+        completeCleanup(ctx, job, parse(cleanupResult, result));
+      } else {
+        const done = completeClipPlanJob(ctx, job, parse(clipPlanResult, result));
+        Object.assign(result, { created: done.created, rejected: done.rejected.length });
+      }
     } else {
       // analyze_brief: cần đã gọi POST /api/worker/scenes trước đó
       const n = (ctx.db.prepare('SELECT COUNT(*) AS n FROM scenes WHERE project_id = ?').get(project.id) as { n: number }).n;
@@ -354,19 +367,13 @@ export function completeJob(ctx: AppContext, jobId: number, input: CompleteBody,
     }
 
     ctx.db
-      .prepare("UPDATE jobs SET status = 'done', result = ?, finished_at = ?, credits_cost = ?, heartbeat_at = ? WHERE id = ?")
-      .run(JSON.stringify(result), now, creditsCost, now, job.id);
+      .prepare("UPDATE jobs SET status = 'done', result = ?, finished_at = ?, credits_cost = 0, heartbeat_at = ? WHERE id = ?")
+      .run(JSON.stringify(result), now, now, job.id);
     emitJob(ctx, job.id, job.project_id);
     emitBudget(ctx, job.project_id);
+    if (job.type === 'clip_plan') ctx.afterCommit(() => queueRequiredCleanup(ctx, job.project_id));
   });
   return getJobJson(ctx, jobId);
-}
-
-export function addLedger(ctx: AppContext, project: ProjectRow, sceneId: number | null, jobId: number | null, delta: number, note: string) {
-  ctx.db
-    .prepare('INSERT INTO credit_ledger (project_id, scene_id, job_id, delta, note, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(project.id, sceneId, jobId, delta, note, ctx.now());
-  emitBudget(ctx, project.id);
 }
 
 // ---------------------------------------------------------------- fail
@@ -374,11 +381,19 @@ export function addLedger(ctx: AppContext, project: ProjectRow, sceneId: number 
 export const failBody = z.object({
   error: z.string().min(1, 'cần mô tả lỗi'),
   code: z.enum(FAIL_CODES).optional(),
+  /** Job video: lần tạo đã thực sự chạy (dù lỗi) nên vẫn tính một lượt của cảnh. Mặc định false. */
+  attempt_used: z.boolean().optional(),
+  /** Cũ: worker cũ gửi credits_cost > 0 khi lỗi mà vẫn tốn lượt; nay chỉ được hiểu là `attempt_used: true`, không ghi credit. */
   credits_cost: z.number().int().min(0).optional(),
+  /**
+   * Lỗi xảy ra TRƯỚC khi dịch vụ nhận lệnh tạo (vd Flow2API chưa chọn được tài khoản, cookie 401 ở bước tải ảnh): chưa tạo gì, chưa tốn credit,
+   * nên khi worker tự bật lại hàng đợi (`POST /api/worker/queue/auto-resume`) server được tạo lại job này. Ghi vào `result.retryable`.
+   */
+  retryable: z.boolean().optional(),
 });
 export type FailBody = z.infer<typeof failBody>;
 
-/** Worker báo job lỗi. CAPTCHA/LOGIN_REQUIRED/FLOW_OUT_OF_CREDIT/UI_CHANGED tạm dừng hàng đợi. */
+/** Worker báo job lỗi. CAPTCHA/LOGIN_REQUIRED/FLOW_OUT_OF_CREDIT (hết hạn mức tạo video)/UI_CHANGED tạm dừng hàng đợi. */
 export function failJob(ctx: AppContext, jobId: number, body: FailBody) {
   ctx.tx(() => {
     const job = getJobRow(ctx, jobId);
@@ -389,7 +404,9 @@ export function failJob(ctx: AppContext, jobId: number, body: FailBody) {
 }
 
 /**
- * Ghi nhận job thất bại (ledger/lượt/cảnh/sự kiện). Không kiểm tra trạng thái claim: `failJob` kiểm tra trước,
+ * Ghi nhận job thất bại (lượt/cảnh/sự kiện). Job video có `attempt_used` (hoặc `credits_cost > 0` từ worker cũ) được đánh dấu
+ * `result.attempt_used = true` để tính một lượt đã dùng (xem FAILED_ATTEMPT_USED_SQL); không ghi sổ credit.
+ * Không kiểm tra trạng thái claim: `failJob` kiểm tra trước,
  * còn đối soát `charge_and_fail` gọi cho job đang chờ (queued) vì worker đã dừng.
  */
 export function applyJobFailure(ctx: AppContext, job: JobRow, body: FailBody): void {
@@ -397,16 +414,15 @@ export function applyJobFailure(ctx: AppContext, job: JobRow, body: FailBody): v
     const project = getProject(ctx, job.project_id);
     const code: FailCode = body.code ?? 'OTHER';
     const now = ctx.now();
-    const cost = job.type === 'video' ? body.credits_cost ?? 0 : 0;
+    const attemptUsed = job.type === 'video' && (body.attempt_used === true || (body.credits_cost ?? 0) > 0);
     ctx.db
-      .prepare("UPDATE jobs SET status = 'failed', error = ?, error_code = ?, finished_at = ?, credits_cost = ? WHERE id = ?")
-      .run(body.error, code, now, cost, job.id);
+      .prepare("UPDATE jobs SET status = 'failed', error = ?, error_code = ?, finished_at = ?, credits_cost = 0, result = COALESCE(?, result) WHERE id = ?")
+      .run(body.error, code, now, attemptUsed || body.retryable ? JSON.stringify({ ...(attemptUsed ? { attempt_used: true } : {}), ...(body.retryable && !attemptUsed ? { retryable: true } : {}) }) : null, job.id);
 
     let sceneCode: string | null = null;
     if (job.scene_id !== null) {
       const scene = getScene(ctx, job.scene_id);
       sceneCode = scene.code;
-      if (cost > 0) addLedger(ctx, project, scene.id, job.id, -cost, `Video ${scene.code} lỗi nhưng vẫn tốn credit (job #${job.id})`);
       const to = job.type === 'video' && code === 'FLOW_OUT_OF_CREDIT' ? 'blocked_budget' : 'failed';
       transition(ctx, scene.id, to, `job #${job.id} lỗi [${code}]: ${body.error}`);
     } else if (job.type === 'analyze_brief') {
@@ -420,13 +436,14 @@ export function applyJobFailure(ctx: AppContext, job: JobRow, body: FailBody): v
       project_id: job.project_id,
       scene_id: job.scene_id,
       type: 'job.failed',
-      message: `Job #${job.id} (${job.type}${sceneCode ? ' ' + sceneCode : ''}) lỗi [${code}]: ${body.error}`,
+      message: `Job #${job.id} (${job.type}${sceneCode ? ' ' + sceneCode : ''}) lỗi [${code}]: ${body.error}${attemptUsed ? ' (vẫn tính một lượt)' : ''}`,
     });
     if (PAUSING_FAIL_CODES.includes(code)) {
       pauseQueue(ctx, code, `${code}: ${body.error}`, job.project_id);
     }
     emitJob(ctx, job.id, job.project_id);
     emitBudget(ctx, job.project_id);
+    if (isCleanupJob(job)) ctx.afterCommit(() => queueRequiredCleanup(ctx, job.project_id));
   });
 }
 
@@ -439,9 +456,9 @@ export function cancelJob(ctx: AppContext, jobId: number) {
     if (job.status !== 'queued' && job.status !== 'claimed' && job.status !== 'running') {
       throw conflict('INVALID_STATE', `Job #${job.id} đã ở trạng thái ${job.status}, không thể hủy`);
     }
-    // Job managed đã (có thể) tạo thứ gì đó bên ngoài: hủy sẽ làm mất ghi sổ credit/lượt. Phải đối soát trước.
+    // Job managed đã (có thể) tạo thứ gì đó bên ngoài: hủy sẽ làm mất ghi nhận lượt đã dùng. Phải đối soát trước.
     if (job.worker_mode === 'managed' && hasLiveAction(ctx, job.id)) {
-      throw conflict('RECONCILIATION_REQUIRED', `Job #${job.id} đã gửi lệnh tạo sang Flow/ChatGPT; hãy đối soát kết quả (POST /api/jobs/${job.id}/reconcile) thay vì hủy để credit và lượt được ghi đúng`);
+      throw conflict('RECONCILIATION_REQUIRED', `Job #${job.id} đã gửi lệnh tạo sang Flow/ChatGPT; hãy đối soát kết quả (POST /api/jobs/${job.id}/reconcile) thay vì hủy để lượt đã dùng được ghi đúng`);
     }
     const now = ctx.now();
     ctx.db.prepare('DELETE FROM browser_leases WHERE job_id=?').run(jobId);
@@ -489,6 +506,7 @@ export function cancelJob(ctx: AppContext, jobId: number) {
  */
 export function sweepStaleJobs(ctx: AppContext): number[] {
   return ctx.tx(() => {
+    expireWaitingCleanup(ctx);
     const cutoff = new Date(ctx.clock.now() - ctx.config.heartbeatStaleMinutes * 60_000).toISOString();
     const stale = ctx.db
       .prepare("SELECT * FROM jobs WHERE status IN ('claimed','running') AND (heartbeat_at IS NULL OR heartbeat_at < ?) ORDER BY id")
@@ -520,7 +538,7 @@ export function sweepStaleJobs(ctx: AppContext): number[] {
         project_id: job.project_id,
         scene_id: job.scene_id,
         type: 'job.requeued',
-        message: `Cảnh báo: job #${job.id} (${job.type}${code ? ' ' + code : ''}) mất heartbeat quá ${ctx.config.heartbeatStaleMinutes} phút, đã trả về hàng đợi (lần ${job.requeue_count + 1}). Worker cần kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại để tránh tốn credit hai lần.`,
+        message: `Cảnh báo: job #${job.id} (${job.type}${code ? ' ' + code : ''}) mất heartbeat quá ${ctx.config.heartbeatStaleMinutes} phút, đã trả về hàng đợi (lần ${job.requeue_count + 1}). Worker cần kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại để tránh tạo hai lần.`,
       });
       emitJob(ctx, job.id, job.project_id);
       emitBudget(ctx, job.project_id);

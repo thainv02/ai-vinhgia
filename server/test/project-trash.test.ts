@@ -460,10 +460,10 @@ describe('migration 011 trên DB cũ', () => {
       const counts = () => Object.fromEntries(tables.map((t) => [t, (d.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get() as { n: number }).n]));
       const before = counts();
       const proj0 = d.prepare('SELECT * FROM projects').all() as Record<string, unknown>[];
-      expect(runMigrations(d)).toEqual(['011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips']);
+      expect(runMigrations(d)).toEqual(['011_project_trash', '012_final_cut_feedback', '013_color_refs', '014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
       expect(runMigrations(d)).toEqual([]);
-      expect(counts()).toEqual({ ...before, schema_migrations: 14 });
-      expect(d.prepare('SELECT * FROM projects').all()).toEqual([{ ...proj0[0], deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null }]);
+      expect(counts()).toEqual({ ...before, schema_migrations: 19 });
+      expect(d.prepare('SELECT * FROM projects').all()).toEqual([{ ...proj0[0], deleted_at: null, deleted_by: null, trash_path: null, lan_client_hash: null, kind: 'scenes', stt_terms: null, storyboard_generator: 'muse', lan_mode: 'plan' }]);
       expect(() => d.prepare("UPDATE projects SET deleted_by = 'web' WHERE id = 1").run()).toThrow(/CHECK/);
       expect((d.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_projects_deleted'").all() as unknown[]).length).toBe(1);
       expect(d.pragma('foreign_key_check')).toEqual([]);

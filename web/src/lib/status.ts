@@ -52,7 +52,7 @@ export const SCENE_STATUS: Record<SceneStatus, StatusInfo> = {
   done: { label: 'Hoàn tất', tone: 'ok' },
   needs_revision: { label: 'Cần sửa prompt', tone: 'warn', live: true },
   failed: { label: 'Lỗi', tone: 'danger' },
-  blocked_budget: { label: 'Flow hết credit', tone: 'danger' },
+  blocked_budget: { label: 'Hết hạn mức tạo video', tone: 'danger' },
   cancelled: { label: 'Đã hủy', tone: 'neutral' },
 };
 
@@ -110,7 +110,7 @@ export const COMMENT_ACTION_LABEL: Record<CommentAction, string> = {
 export const FAIL_CODE_LABEL: Record<string, string> = {
   CAPTCHA: 'Gặp CAPTCHA',
   LOGIN_REQUIRED: 'Cần đăng nhập',
-  FLOW_OUT_OF_CREDIT: 'Flow hết credit',
+  FLOW_OUT_OF_CREDIT: 'Hết hạn mức tạo video',
   UI_CHANGED: 'Giao diện dịch vụ đã đổi',
   OTHER: 'Lỗi khác',
 };

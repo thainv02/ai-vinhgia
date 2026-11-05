@@ -3,6 +3,7 @@ import { useJobs, useWorkerStatus } from '../hooks/queries';
 import { useQueueControl } from '../hooks/mutations';
 import { ACTIVE_JOB_STATUSES, JOB_TYPE_LABEL } from '../lib/status';
 import { errorMessage } from '../api/client';
+import { fmtDateTime } from '../lib/format';
 import { Alert } from './States';
 import { Button } from './Button';
 
@@ -11,11 +12,15 @@ export const ACTIVE_JOBS_FILTER = { status: ACTIVE_JOB_STATUSES } as const;
 const PAUSE_HINT: Record<string, string> = {
   CAPTCHA: 'Hãy giải CAPTCHA trong Chrome của worker, sau đó tiếp tục hàng đợi.',
   LOGIN_REQUIRED: 'Hãy đăng nhập lại ChatGPT / Google Flow trong Chrome của worker, sau đó tiếp tục hàng đợi.',
-  FLOW_OUT_OF_CREDIT: 'Tài khoản Google Flow đã hết credit. Nạp thêm credit rồi mới tiếp tục hàng đợi.',
+  FLOW_OUT_OF_CREDIT: 'Tài khoản tạo video đã hết hạn mức. Kiểm tra tài khoản tạo video rồi mới tiếp tục hàng đợi.',
   UI_CHANGED: 'Giao diện dịch vụ đã đổi nên worker không thao tác được. Cần kiểm tra lại quy trình worker.',
 };
 
-/** Banner toàn cục: hàng đợi tạm dừng, job bị trả về do mất heartbeat, worker offline khi còn việc chờ. */
+/** Lượt gọi AI gần nhất của job (ai.outcome) cho biết vì sao job đang chờ `ai_quota`. */
+const AI_OUT_OF_TOKEN = ['quota_exhausted', 'rate_limited'];
+const AI_KEY_REJECTED = ['login_required', 'access_denied'];
+
+/** Banner toàn cục: hết token AI, hàng đợi tạm dừng, job bị trả về do mất heartbeat, worker offline khi còn việc chờ. */
 export function Banners() {
   const { data: worker } = useWorkerStatus();
   const { data: active } = useJobs(ACTIVE_JOBS_FILTER);
@@ -25,11 +30,27 @@ export function Banners() {
   const requeued = (active ?? []).filter((j) => j.requeue_count > 0);
   const waiting = (active ?? []).filter((j) => j.status === 'queued' || j.status === 'claimed' || j.status === 'running');
 
+  const aiWaiting = (active ?? []).filter((j) => j.status === 'queued' && j.wait_reason === 'ai_quota');
+  const outOfToken = aiWaiting.filter((j) => AI_OUT_OF_TOKEN.includes(j.ai?.outcome ?? ''));
+  const keyRejected = aiWaiting.filter((j) => AI_KEY_REJECTED.includes(j.ai?.outcome ?? ''));
+  const retryAt = outOfToken.map((j) => j.next_attempt_at).filter((t): t is string => !!t).sort()[0];
+
   const showOffline = !!worker && !worker.online && !worker.queue_paused && waiting.length > 0;
-  if (!worker?.queue_paused && requeued.length === 0 && !showOffline) return null;
+  if (!worker?.queue_paused && requeued.length === 0 && !showOffline && !outOfToken.length && !keyRejected.length) return null;
 
   return (
     <div className="mb-4 space-y-2">
+      {outOfToken.length > 0 && (
+        <Alert tone="danger">
+          <strong>Đã hết token AI trên tất cả tài khoản.</strong> {outOfToken.length} job đang chờ
+          {retryAt ? `, tự thử lại lúc ${fmtDateTime(retryAt)}` : ' và sẽ tự thử lại'}. Không cần tạo lại job.
+        </Alert>
+      )}
+      {keyRejected.length > 0 && (
+        <Alert tone="danger">
+          <strong>Key AI bị từ chối.</strong> {keyRejected.length} job đang chờ. Kiểm tra AI_API_KEY trong .env rồi khởi động lại server.
+        </Alert>
+      )}
       {worker?.queue_paused && (
         <Alert
           tone="danger"
@@ -59,7 +80,7 @@ export function Banners() {
         >
           <strong>{requeued.length} job bị trả về hàng đợi do mất heartbeat:</strong>{' '}
           {requeued.map((j) => `${j.scene_code ?? j.project_name ?? 'Dự án'} (${JOB_TYPE_LABEL[j.type]}, ${j.requeue_count} lần)`).join(', ')}.
-          <span className="block opacity-90">Worker cần kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại, tránh tốn credit hai lần.</span>
+          <span className="block opacity-90">Worker cần kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại, tránh tạo hai lần.</span>
         </Alert>
       )}
       {showOffline && (

@@ -35,6 +35,8 @@ export function registerAiRoutes(app: FastifyInstance, ctx: AppContext) {
       return listAccounts(ctx);
     });
     a.get('/api/ai/status', async () => ({ worker_mode: ctx.config.workerMode, managed_job_types: managedJobTypes(ctx.config), accounts: listAccounts(ctx),
+      // Không trả key.
+      ai_api: ctx.config.aiApi ? { base_url: ctx.config.aiApi.baseUrl, model: ctx.config.aiApi.model } : null,
       sessions: ctx.db.prepare('SELECT worker_id,mode,last_seen_at FROM worker_sessions').all() }));
     a.post('/api/ai/accounts', async (req, reply) => reply.code(201).send(createAccount(ctx, parse(accountBody, req.body))));
     a.patch('/api/ai/accounts/:id', async (req) => {

@@ -53,7 +53,7 @@ export function registerFinalCutRoutes(app: FastifyInstance, ctx: AppContext): v
     return reply.code(201).send({ final_cut: getFinalCutJson(ctx, cutId), job: getJobJson(ctx, jobId) });
   });
 
-  // Chỉnh màu tay (không AI, không tốn credit): phiên bản mới chỉ chạy bước chỉnh màu trên bản sạch.
+  // Chỉnh màu tay (không AI): phiên bản mới chỉ chạy bước chỉnh màu trên bản sạch.
   app.post('/api/final-cuts/:id/grade', async (req, reply) => {
     const id = intParam((req.params as { id: string }).id);
     getFinalCutRow(ctx, id);
@@ -84,7 +84,7 @@ export function registerFinalCutRoutes(app: FastifyInstance, ctx: AppContext): v
     return { final_cut: getFinalCutJson(ctx, id) };
   });
 
-  // Chạy lại RIÊNG bước xoá logo Veo (không render lại, không tốn credit)
+  // Chạy lại RIÊNG bước xoá logo Veo (không render lại)
   app.post('/api/final-cuts/:id/clean', async (req) => {
     const id = intParam((req.params as { id: string }).id);
     getFinalCutRow(ctx, id);

@@ -1,12 +1,16 @@
 /**
  * Dựng clip: MỘT lượt ffmpeg `-ss start -i src -t dur` (cắt chính xác, mã hoá lại) → reframe (`fit` nền mờ / `center` cắt giữa / tự nhận biết nguồn đã đúng tỉ lệ)
  * → `subtitles` (ASS, libass) → afade 0.06 s hai đầu → libx264 crf 18 preset medium + aac 160k + faststart.
+ * Clip ghép nhiều đoạn: mỗi đoạn một input (`-ss start -t dur -i src`), cắt bỏ trong từng đoạn, rồi `concat` theo THỨ TỰ PHÁT trước khi reframe/phụ đề.
  * Chạy trong hàng đợi render chung (`FinalRenderService.enqueueClipTask`), ưu tiên app hơn LAN, hủy được (kill ffmpeg, xoá file dở).
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { cleanupSegmentsSpans, retimeWords, segmentDuration, type EditSnapshot, type Segment } from '../../lib/clip-cleanup.js';
+import { clipParts, isMultiPart, partsDuration } from '../../lib/clip-parts.js';
+import { cleanupOf, clipSpans } from './cleanup.js';
 import type { AppContext } from '../../context.js';
 import { CAPTION_PRESETS, CLIP_ASPECTS, REFRAME_MODES, type CaptionPreset, type ClipAspect, type ClipCutRow, type ClipRow, type ProjectRow, type ReframeMode, type SourceVideoRow } from '../../db/types.js';
 import { conflict } from '../../lib/errors.js';
@@ -137,27 +141,93 @@ export interface GraphInput {
   aspect: ClipAspect;
   reframe: ResolvedReframe;
   ass: { file: string; fontsDir: string | null } | null;
+  /** Retained ranges relative to input seek (only for an approved cleanup). */
+  segments?: Segment[];
+  /**
+   * Clip ghép (≥ 2 đoạn): input thứ k là đoạn thứ k theo thứ tự phát (đã `-ss/-t`); `segments` là phần giữ lại TƯƠNG ĐỐI với đầu đoạn
+   * (không cắt bỏ gì: một khoảng [0, duration]). Khi có thì bỏ qua `segments` ở trên.
+   */
+  parts?: { duration: number; segments: Segment[] }[];
+  hasAudio?: boolean;
+  fps?: number | null;
+}
+
+const selectExprs = (segs: Segment[]) => ({
+  keep: segs.map((seg) => `gte(t,${f3(seg.start)})*lt(t,${f3(seg.end)})`).join('+'),
+  removed: [f3(segs[0]!.start), ...segs.slice(1).map((seg, i) => `${f3(seg.start - segs[i]!.end)}*gte(T,${f3(seg.start)})`)].join('+'),
+});
+const microFades = (d: number) => `afade=t=in:st=0:d=0.008,afade=t=out:st=${f3(Math.max(0, d - 0.008))}:d=0.008`;
+
+/**
+ * Đầu filtergraph cho clip ghép: mỗi input một nhánh hình (select/setpts như bản làm gọn, rồi fps) và tiếng (atrim từng phần giữ),
+ * rồi `concat=n=K:v=1:a=1` theo thứ tự phát (hình/tiếng khớp lại ở đầu mỗi đoạn) → `[joinedv]` và `[a]` (afade 0.06 s hai đầu).
+ */
+function multiPartHead(g: GraphInput & { parts: { duration: number; segments: Segment[] }[] }, out: string[]): void {
+  const fps = g.fps != null && Number.isFinite(g.fps) && g.fps > 0 ? g.fps : 25;
+  const all: Segment[] = [];
+  g.parts.forEach((p, k) => {
+    const segs = p.segments.length ? p.segments : [{ start: 0, end: p.duration }];
+    all.push(...segs);
+    const { keep, removed } = selectExprs(segs);
+    out.push(`[${k}:v]select='${keep}',setpts='PTS-(${removed})/TB',fps=${fps}:start_time=0[pv${k}]`);
+    if (!g.hasAudio) return;
+    const m = segs.length;
+    out.push(m > 1 ? `[${k}:a:0]asplit=${m}${segs.map((_, j) => `[ca${k}_${j}]`).join('')}` : `[${k}:a:0]anull[ca${k}_0]`);
+    segs.forEach((seg, j) => out.push(`[ca${k}_${j}]atrim=start=${f3(seg.start)}:end=${f3(seg.end)},asetpts=PTS-STARTPTS,${microFades(seg.end - seg.start)}[sa${k}_${j}]`));
+    out.push(m > 1 ? `${segs.map((_, j) => `[sa${k}_${j}]`).join('')}concat=n=${m}:v=0:a=1[pa${k}]` : `[sa${k}_0]anull[pa${k}]`);
+  });
+  const n = g.parts.length;
+  if (g.hasAudio) {
+    out.push(`${g.parts.map((_, k) => `[pv${k}][pa${k}]`).join('')}concat=n=${n}:v=1:a=1[joinedv][joineda]`);
+    out.push(`[joineda]afade=t=in:st=0:d=${FADE_S},afade=t=out:st=${f3(Math.max(0, segmentDuration(all) - FADE_S))}:d=${FADE_S}[a]`);
+  } else {
+    out.push(`${g.parts.map((_, k) => `[pv${k}]`).join('')}concat=n=${n}:v=1:a=0[joinedv]`);
+  }
 }
 
 /** filter_complex một lượt: reframe → (phụ đề) → nhãn `[v]`. */
 export function buildFilterGraph(g: GraphInput): { graph: string; width: number; height: number } {
   const { w, h } = targetSize(g.aspect, g.srcW, g.srcH);
   const parts: string[] = [];
+  let videoIn = '[0:v]';
+  if (g.parts && g.parts.length > 1) {
+    multiPartHead({ ...g, parts: g.parts }, parts);
+    videoIn = '[joinedv]';
+  } else if (g.segments?.length) {
+    const n = g.segments.length;
+    const fps = g.fps != null && Number.isFinite(g.fps) && g.fps > 0 ? g.fps : 25;
+    const keep = g.segments.map((seg) => `gte(t,${f3(seg.start)})*lt(t,${f3(seg.end)})`).join('+');
+    const removed = [f3(g.segments[0]!.start), ...g.segments.slice(1).map((seg, i) => `${f3(seg.start - g.segments![i]!.end)}*gte(T,${f3(seg.start)})`)].join('+');
+    // A single streaming video branch maps source PTS onto the subtitle/audio clock.
+    // Resetting each interval to its first frame accumulates frame rounding; splitting
+    // and interleaving video would buffer future segments. Quantize only once, after mapping.
+    parts.push(`[0:v]select='${keep}',setpts='PTS-(${removed})/TB',fps=${fps}:start_time=0[joinedv]`);
+    if (g.hasAudio) {
+      parts.push(n > 1 ? `[0:a:0]asplit=${n}${g.segments.map((_, i) => `[ca${i}]`).join('')}` : '[0:a:0]anull[ca0]');
+      g.segments.forEach((seg, i) => {
+        const d = seg.end - seg.start;
+        parts.push(`[ca${i}]atrim=start=${f3(seg.start)}:end=${f3(seg.end)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=0.008,afade=t=out:st=${f3(Math.max(0, d - 0.008))}:d=0.008[sa${i}]`);
+      });
+      parts.push(`${g.segments.map((_, i) => `[sa${i}]`).join('')}concat=n=${n}:v=0:a=1[joineda]`);
+    }
+    if (g.hasAudio) parts.push(`[joineda]afade=t=in:st=0:d=${FADE_S},afade=t=out:st=${f3(Math.max(0, segmentDuration(g.segments) - FADE_S))}:d=${FADE_S}[a]`);
+    videoIn = '[joinedv]';
+  }
   const even = (n: number): number => Math.max(2, Math.round(n / 2) * 2);
   if (g.reframe === 'native') {
-    parts.push(`[0:v]scale=${w}:${h}:flags=lanczos,setsar=1[base]`);
+    parts.push(`${videoIn}scale=${w}:${h}:flags=lanczos,setsar=1[base]`);
   } else if (g.reframe === 'center') {
     // cắt giữa khung theo tỉ lệ đích (kích thước chẵn), rồi scale
     const ta = w / h;
     const cw = g.srcW / g.srcH > ta ? Math.max(2, Math.floor((g.srcH * ta) / 2) * 2) : g.srcW;
     const ch = g.srcW / g.srcH > ta ? g.srcH : Math.max(2, Math.floor(g.srcW / ta / 2) * 2);
-    parts.push(`[0:v]crop=${cw}:${ch}:(iw-${cw})/2:(ih-${ch})/2,scale=${w}:${h}:flags=lanczos,setsar=1[base]`);
+    parts.push(`${videoIn}crop=${cw}:${ch}:(iw-${cw})/2:(ih-${ch})/2,scale=${w}:${h}:flags=lanczos,setsar=1[base]`);
   } else {
     // nền: phóng to phủ khung, làm mờ ở độ phân giải 1/4 (nhanh, tương đương mờ rộng ở độ phân giải đầy đủ), giảm sáng nhẹ; lớp chính nằm giữa
     const bw = even(w / 4);
     const bh = even(h / 4);
     parts.push(
-      `[0:v]split=2[bg0][fg0]`,
+      `${videoIn}split=2[bg0][fg0]`,
       `[bg0]scale=${bw}:${bh}:force_original_aspect_ratio=increase,crop=${bw}:${bh},boxblur=6:2,scale=${w}:${h},eq=brightness=-0.10[bg]`,
       `[fg0]scale=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos[fg]`,
       `[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]`,
@@ -178,6 +248,9 @@ export interface ArgsInput {
   durS: number;
   graph: string;
   hasAudio: boolean;
+  editedAudio?: boolean;
+  /** Clip ghép: mỗi đoạn một input `-ss startS -t durS -i src` theo thứ tự phát (thay cho `startS`); `durS` ở trên là tổng độ dài. */
+  inputs?: { startS: number; durS: number }[];
   out: string;
 }
 
@@ -185,9 +258,11 @@ const f3 = (x: number): string => (Math.round(x * 1000) / 1000).toFixed(3);
 
 /** Tham số ffmpeg đầy đủ: `-ss` TRƯỚC `-i` (mã hoá lại nên cắt chính xác), `-t`, afade 0.06 s hai đầu, x264 crf 18, aac 160k, faststart. */
 export function buildClipArgs(a: ArgsInput): string[] {
-  const args = ['-y', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-ss', f3(a.startS), '-i', a.src, '-t', f3(a.durS), '-filter_complex', a.graph, '-map', '[v]'];
+  const head = a.inputs && a.inputs.length > 1 ? a.inputs.flatMap((i) => ['-ss', f3(i.startS), '-t', f3(i.durS), '-i', a.src]) : ['-ss', f3(a.startS), '-i', a.src];
+  const args = ['-y', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', ...head, '-t', f3(a.durS), '-filter_complex', a.graph, '-map', '[v]'];
   if (a.hasAudio) {
-    args.push('-map', '0:a:0', '-af', `afade=t=in:st=0:d=${FADE_S},afade=t=out:st=${f3(Math.max(0, a.durS - FADE_S))}:d=${FADE_S}`);
+    if (a.editedAudio) args.push('-map', '[a]');
+    else args.push('-map', '0:a:0', '-af', `afade=t=in:st=0:d=${FADE_S},afade=t=out:st=${f3(Math.max(0, a.durS - FADE_S))}:d=${FADE_S}`);
   }
   args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p');
   if (a.hasAudio) args.push('-c:a', 'aac', '-b:a', '160k');
@@ -220,25 +295,33 @@ export function startClipRender(ctx: AppContext, clipId: number, body: RenderBod
     const project = getClipProject(ctx, clip.project_id);
     if (clip.status === 'rejected') throw conflict('INVALID_STATE', `Clip ${clip.code} đã bị bỏ; hãy duyệt lại trước khi dựng`);
     const source = getSourceRow(ctx, clip.source_id);
+    if (!cleanupOf(clip)) throw conflict('CLEANUP_REQUIRED', 'Clip đang chờ bước làm gọn bắt buộc; chờ xử lý xong trước khi dựng');
     if (!sourceFileOk(ctx, source)) throw conflict('SOURCE_DELETED', 'Video gốc đã bị xoá nên không dựng clip mới được (vẫn tải được các clip đã dựng)');
     if (!ffmpegOf(ctx.config)) throw conflict('NO_FFMPEG', 'Không tìm thấy ffmpeg trên máy chủ');
     if (body.captions_preset !== 'none' && !captionSupport(ctx).available) throw conflict('CAPTIONS_UNAVAILABLE', CAPTION_FFMPEG_MISSING);
     const busy = ctx.db.prepare("SELECT version FROM clip_cuts WHERE clip_id = ? AND status = 'rendering' LIMIT 1").get(clipId) as { version: number } | undefined;
     if (busy) throw conflict('CUT_ACTIVE', `Clip ${clip.code} đang dựng bản v${busy.version}; hãy đợi hoặc hủy trước`);
-    assertDiskRoom(ctx, Math.round((clip.end_s - clip.start_s) * 2_000_000), 1);
+    assertDiskRoom(ctx, Math.round(partsDuration(clipParts(clip)) * 2_000_000), 1);
     if (o.lan) assertLanQueueRoom(ctx);
     const sw = source.width ?? 1920;
     const sh = source.height ?? 1080;
     const { w, h } = targetSize(body.aspect, sw, sh);
     const resolved = resolveReframe(sw, sh, w, h, body.reframe_mode, body.aspect);
     const version = nextCutVersion(ctx, clip, project);
+    const cleanup = cleanupOf(clip);
+    const snapshot: EditSnapshot = {
+      start_word: clip.start_word, end_word: clip.end_word, caption_words: captionWordsOf(clip),
+      segments: cleanupSegmentsSpans(clipSpans(clip), cleanup?.proposals ?? [], cleanup?.selected_ids ?? []),
+      cleanup_ids: cleanup?.selected_ids ?? [],
+      ...(isMultiPart(clip) ? { parts: clipParts(clip).map(({ start_word, end_word, start_s, end_s }) => ({ start_word, end_word, start_s, end_s })) } : {}),
+    };
     const reframe = { mode: resolved === 'native' ? (body.reframe_mode ?? 'fit') : resolved, ...(resolved === 'native' ? { native: true } : {}) };
     const info = ctx.db
       .prepare(
-        `INSERT INTO clip_cuts (clip_id, project_id, version, status, stage, progress, aspect, reframe, captions, start_s, end_s, created_at)
-         VALUES (?, ?, ?, 'rendering', 'prepare', 0, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO clip_cuts (clip_id, project_id, version, status, stage, progress, aspect, reframe, captions, start_s, end_s, created_at, edit_snapshot)
+         VALUES (?, ?, ?, 'rendering', 'prepare', 0, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(clip.id, project.id, version, body.aspect, JSON.stringify(reframe), JSON.stringify({ preset: body.captions_preset }), clip.start_s, clip.end_s, ctx.now());
+      .run(clip.id, project.id, version, body.aspect, JSON.stringify(reframe), JSON.stringify({ preset: body.captions_preset }), clip.start_s, clip.end_s, ctx.now(), JSON.stringify(snapshot));
     const id = Number(info.lastInsertRowid);
     logEvent(ctx, { project_id: project.id, type: 'clip.render', message: `Clip ${clip.code}: dựng bản v${version} (${body.aspect}, ${resolved === 'native' ? 'đúng tỉ lệ nguồn' : resolved === 'fit' ? 'nền mờ' : 'cắt giữa'}, phụ đề ${body.captions_preset})` });
     emitCut(ctx, id, project.id);
@@ -319,8 +402,16 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
     const resolved = resolveReframe(srcW, srcH, w, h, reframeMode, aspect);
 
     // --- chuẩn bị phụ đề (.ass cho ffmpeg, .srt cho người dùng) ---
-    const words = displayWords(transcript, clip.start_word, clip.end_word, captionWordsOf(clip));
-    fs.writeFileSync(abs(ctx, rel.srt), buildClipSrt(words, cut.start_s, cut.end_s), { flag: 'wx' });
+    const snapshot = parseJson<EditSnapshot | null>(cut.edit_snapshot, null);
+    const segments = snapshot?.segments ?? [{ start: cut.start_s, end: cut.end_s }];
+    const multi = snapshot?.parts && snapshot.parts.length > 1 ? snapshot.parts : null;
+    const edited = !!snapshot?.cleanup_ids.length;
+    const durS = segmentDuration(segments);
+    const captionWords = snapshot ? snapshot.caption_words : captionWordsOf(clip);
+    // clip ghép: chữ của từng đoạn theo thứ tự phát (ẩn từ không lan sang đoạn khác); retimeWords không phụ thuộc thứ tự thời gian
+    const shown = multi ? multi.flatMap((p) => displayWords(transcript, p.start_word, p.end_word, captionWords)) : displayWords(transcript, snapshot?.start_word ?? clip.start_word, snapshot?.end_word ?? clip.end_word, captionWords);
+    const words = retimeWords(shown, segments, cut.end_s);
+    fs.writeFileSync(abs(ctx, rel.srt), buildClipSrt(words, 0, durS), { flag: 'wx' });
     created.push(rel.srt);
     let ass: { file: string; fontsDir: string | null } | null = null;
     let bin = ffmpegOf(ctx.config);
@@ -329,7 +420,7 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
       if (!sup.available || !sup.ffmpeg) throw new Error(CAPTION_FFMPEG_MISSING);
       bin = sup.ffmpeg;
       const fonts = captionFonts(ctx);
-      fs.writeFileSync(abs(ctx, rel.ass), buildAss(words, { preset, width: w, height: h, font: fonts.family, clipStart: cut.start_s, clipEnd: cut.end_s }), { flag: 'wx' });
+      fs.writeFileSync(abs(ctx, rel.ass), buildAss(words, { preset, width: w, height: h, font: fonts.family, clipStart: 0, clipEnd: durS }), { flag: 'wx' });
       created.push(rel.ass);
       ass = { file: abs(ctx, rel.ass), fontsDir: fonts.fontsDir };
     }
@@ -337,9 +428,17 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
     if (abort.signal.aborted) throw new RenderCancelled();
 
     // --- dựng một lượt ---
-    const durS = cut.end_s - cut.start_s;
-    const { graph } = buildFilterGraph({ srcW, srcH, aspect, reframe: resolved, ass });
-    const args = buildClipArgs({ src: abs(ctx, source.path!), startS: cut.start_s, durS, graph, hasAudio: info?.has_audio ?? true, out: tmpVideo });
+    const hasAudio = info?.has_audio ?? true;
+    const fps = info?.fps ?? source.fps;
+    let args: string[];
+    if (multi) {
+      const partGraph = splitByParts(multi, segments);
+      const { graph } = buildFilterGraph({ srcW, srcH, aspect, reframe: resolved, ass, hasAudio, fps, parts: partGraph });
+      args = buildClipArgs({ src: abs(ctx, source.path!), startS: multi[0]!.start_s, durS, graph, hasAudio, editedAudio: true, inputs: multi.map((p) => ({ startS: p.start_s, durS: p.end_s - p.start_s })), out: tmpVideo });
+    } else {
+      const { graph } = buildFilterGraph({ srcW, srcH, aspect, reframe: resolved, ass, hasAudio, fps, ...(edited ? { segments: segments.map((s) => ({ start: s.start - cut.start_s, end: s.end - cut.start_s })) } : {}) });
+      args = buildClipArgs({ src: abs(ctx, source.path!), startS: cut.start_s, durS, graph, hasAudio, editedAudio: edited, out: tmpVideo });
+    }
     patchCut(ctx, cutId, { stage: 'render', progress: 0 });
     const throttle = ctx.finalRender?.progressThrottleMs ?? 1000;
     let lastWrite = 0;
@@ -355,7 +454,8 @@ export async function runClipCut(ctx: AppContext, cutId: number, abort: AbortCon
     });
     if (abort.signal.aborted) throw new RenderCancelled();
     const out = probeMedia(ctx.config, tmpVideo);
-    if (!out?.duration_s || Math.abs(out.duration_s - durS) > 0.5) throw new Error(`Video dựng ra dài ${out?.duration_s?.toFixed(2) ?? '?'} giây, lệch so với ${durS.toFixed(2)} giây dự kiến`);
+    const tolerance = renderDurationTolerance(segments.length, info?.fps ?? source.fps);
+    if (!out?.duration_s || Math.abs(out.duration_s - durS) > tolerance) throw new Error(`Video dựng ra dài ${out?.duration_s?.toFixed(2) ?? '?'} giây, lệch so với ${durS.toFixed(2)} giây dự kiến`);
     if (!stillRendering(ctx, cutId)) throw new RenderCancelled();
     fs.renameSync(tmpVideo, abs(ctx, rel.video)); // nguyên tử: bản dựng chỉ xuất hiện khi đã đầy đủ và hợp lệ
     created.push(rel.video);
@@ -432,3 +532,26 @@ export function recoverClipCuts(ctx: AppContext): number {
   });
 }
 
+
+/**
+ * Chia các phần giữ lại (giây tuyệt đối, theo thứ tự phát như `cleanupSegmentsSpans` trả) về từng đoạn, đổi sang giây tương đối với đầu đoạn.
+ * Phần giữ phải nằm trọn trong đoạn hiện tại hoặc các đoạn sau (theo thứ tự); sai thì ném lỗi (snapshot hỏng).
+ */
+export function splitByParts(parts: { start_s: number; end_s: number }[], segments: Segment[]): { duration: number; segments: Segment[] }[] {
+  const out = parts.map((p) => ({ duration: Math.round((p.end_s - p.start_s) * 1000) / 1000, segments: [] as Segment[] }));
+  let k = 0;
+  for (const s of segments) {
+    while (k < parts.length && !(s.start >= parts[k]!.start_s - 0.001 && s.end <= parts[k]!.end_s + 0.001)) k++;
+    if (k >= parts.length) throw new Error('Phần giữ lại không khớp các đoạn của clip; hãy dựng lại');
+    const r3 = (x: number) => Math.round(x * 1000) / 1000;
+    out[k]!.segments.push({ start: Math.max(0, r3(s.start - parts[k]!.start_s)), end: Math.min(out[k]!.duration, r3(s.end - parts[k]!.start_s)) });
+  }
+  if (out.some((p) => !p.segments.length)) throw new Error('Có đoạn của clip không còn phần nào để dựng; hãy dựng lại');
+  return out;
+}
+
+/** Bounded allowance for source-frame quantization; keep gross duration mismatches invalid. */
+export function renderDurationTolerance(segments: number, fps: number | null | undefined): number {
+  const frameS = fps != null && Number.isFinite(fps) && fps > 0 ? 1 / fps : 1 / 25;
+  return 0.5 + (segments > 1 ? segments * frameS : 0);
+}

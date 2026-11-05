@@ -57,15 +57,6 @@ function RunTime({ job }: { job: Job }) {
   return <span className="text-muted">—</span>;
 }
 
-function CreditCell({ job }: { job: Job }) {
-  if (job.type !== 'video') return <span className="text-muted">—</span>;
-  if (isActive(job)) {
-    const expected = typeof job.payload?.credits_expected === 'number' ? job.payload.credits_expected : null;
-    return <span className="text-spend">{expected !== null ? `${expected} (đặt trước)` : 'đặt trước'}</span>;
-  }
-  return job.credits_cost > 0 ? <strong className="text-spend">{job.credits_cost}</strong> : <span className="text-muted">0</span>;
-}
-
 function Requeued({ job }: { job: Job }) {
   if (job.requeue_count <= 0) return null;
   return (
@@ -183,7 +174,6 @@ export default function QueuePage() {
                   <th className="px-3 py-2 font-semibold">Tạo lúc</th>
                   <th className="px-3 py-2 font-semibold">Nhận lúc</th>
                   <th className="px-3 py-2 font-semibold">Đã chạy</th>
-                  <th className="px-3 py-2 text-right font-semibold">Credit</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -219,9 +209,6 @@ export default function QueuePage() {
                     <td className="whitespace-nowrap px-3 py-2">
                       <RunTime job={j} />
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <CreditCell job={j} />
-                    </td>
                     <td className="px-3 py-2 text-right">
                       <JobActions job={j} size="sm" resuming={resumeJob.isPending && resumeJob.variables === j.id} onResume={() => resumeJob.mutate(j.id)} onReconcile={() => setReconcileTarget(j)} onCancel={() => { cancel.reset(); setTarget(j); }} />
                     </td>
@@ -251,11 +238,6 @@ export default function QueuePage() {
                   {j.claimed_at && (
                     <span>
                       Chạy <RunTime job={j} />
-                    </span>
-                  )}
-                  {j.type === 'video' && (
-                    <span>
-                      Credit <CreditCell job={j} />
                     </span>
                   )}
                 </div>
@@ -291,11 +273,11 @@ export default function QueuePage() {
         }
       >
         {target?.status === 'queued' ? (
-          <p>Job chưa được worker nhận.{target.type === 'video' ? ' Phần credit đã đặt trước sẽ được trả lại.' : ' Không mất credit.'}</p>
+          <p>Job chưa được worker nhận.{target.type === 'video' ? ' Lượt tạo video đã giữ cho job này được trả lại.' : ''}</p>
         ) : (
           <p>
             Worker đang xử lý job này và sẽ dừng ở lần báo tiếp theo.
-            {target?.type === 'video' ? ' Nếu Flow đã bắt đầu tạo video thì credit có thể đã bị tính.' : ''}
+            {target?.type === 'video' ? ' Nếu video đã bắt đầu được tạo thì lượt này có thể vẫn bị tính.' : ''}
           </p>
         )}
       </ConfirmDialog>

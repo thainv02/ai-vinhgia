@@ -89,7 +89,7 @@ run('điều kiện dựng của kế hoạch LAN', () => {
     expect((await c.get(`/lan/api/plans/${fx.plan.id}`)).body.final.block).toBeNull();
   });
 
-  it('bấm dựng: final_cut planning + job edit_plan (không duyệt, không tốn credit), payload có video LAN; dựng tiếp khi đang chạy → 409', async () => {
+  it('bấm dựng: final_cut planning + job edit_plan (không duyệt), payload có video LAN; dựng tiếp khi đang chạy → 409', async () => {
     await uploadAll();
     const r = await c.post(cutsUrl(), {});
     expect(r.status, r.raw).toBe(201);
@@ -111,7 +111,7 @@ run('điều kiện dựng của kế hoạch LAN', () => {
     expect([again.status, again.body.error.code]).toEqual([409, 'FINAL_CUT_ACTIVE']);
     expect(again.body.error.message).toContain('v1');
     expect((await c.get(`/lan/api/plans/${fx.plan.id}`)).body.final).toMatchObject({ active: true, block: { code: 'FINAL_CUT_ACTIVE' }, latest: { version: 1, status: 'planning' } });
-    // không tốn credit, không job storyboard/video
+    // không job storyboard/video, không ghi sổ
     expect((db().prepare("SELECT COUNT(*) AS n FROM jobs WHERE type IN ('storyboard','video')").get() as { n: number }).n).toBe(0);
     expect((db().prepare('SELECT COUNT(*) AS n FROM credit_ledger').get() as { n: number }).n).toBe(0);
   });

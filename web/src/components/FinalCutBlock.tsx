@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Scene } from '../api/types';
 import { useCreateFinalCut } from '../hooks/mutations';
 import { useFinalCuts, useWorkerStatus } from '../hooks/queries';
-import { aiQueueNote, cleanAction, finalBlockReason, finalStatusLabel, fmtSeconds, isWaitingToRender, renderQueueNote, stageProgressLabel } from '../lib/finalCut';
+import { aiQueueNote, cleanAction, cleanErrorText, finalBlockReason, finalStatusLabel, fmtSeconds, isWaitingToRender, renderQueueNote, stageProgressLabel } from '../lib/finalCut';
 import { FINAL_STATUS, TONE_CLASS } from '../lib/status';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
@@ -47,7 +47,7 @@ export function FinalCutBlock({ projectId, scenes, serverBlock, source }: { proj
   }
   else if (latest.status === 'ready') status = <>v{latest.version} sẵn sàng · {fmtSeconds(latest.duration_s)}{latest.watermark_removed ? ' · đã xoá logo Veo' : ''}{latest.grade_chips?.length ? ` · ${latest.grade_chips.join(', ')}` : ''}</>;
   else if (latest.status === 'failed')
-    status = latest.failed_stage === 'clean' ? <>v{latest.version}: {latest.error ?? 'xoá logo Veo không thành công'}. Bản render vẫn còn, bấm «Thử xoá logo lại».</> : <>v{latest.version} lỗi: {latest.error ?? 'không rõ lý do'}</>;
+    status = latest.failed_stage === 'clean' ? <>v{latest.version}: chưa xoá được logo Veo. {cleanErrorText(latest.error)} Bản render vẫn xem và tải được ở trang Bản hoàn chỉnh.</> : <>v{latest.version} lỗi: {latest.error ?? 'không rõ lý do'}</>;
   else status = <>v{latest.version} đã hủy{latest.failed_stage === 'clean' ? ' giữa bước xoá logo Veo' : ''}</>;
 
   return (

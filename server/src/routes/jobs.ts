@@ -66,7 +66,7 @@ export function registerJobRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/meta', async () => ({
     final_renderer: await ctx.finalRender!.status(),
     watermark_remover: await ctx.finalRender!.watermarkStatus(),
-    /** Cắt clip từ video dài: giới hạn video nguồn, nhận dạng lời nói và phụ đề có sẵn không (xem GET /api/clip-status). */
+    /** Highlight từ video dài: giới hạn video nguồn, nhận dạng lời nói và phụ đề có sẵn không (xem GET /api/clip-status). */
     clips: clipLimits(ctx, false),
     config: {
       max_concurrent_video_jobs: ctx.config.maxConcurrentVideoJobs,

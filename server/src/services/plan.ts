@@ -44,7 +44,6 @@ export interface PlanInput {
   name: string;
   created_by_name: string | null;
   style_lock: string;
-  credit_per_video: number;
   /** Mọi ảnh tham chiếu của dự án. */
   refs: PlanRef[];
   /** Các cảnh đã sắp theo thứ tự; cảnh đầu tiên là "cảnh đầu" cho use_prev_storyboard. */
@@ -79,7 +78,7 @@ export interface StoryboardStep {
 export interface VideoStep {
   prompt: string;
   attachments: Attachment[];
-  settings: { aspect: string; duration_s: number; count: number; resolution: string; estimated_credits: number };
+  settings: { aspect: string; duration_s: number; count: number; resolution: string };
   notes: string[];
   warnings: string[];
 }
@@ -171,7 +170,7 @@ export function buildStoryboardMessage(i: StoryboardMessageInput): string {
 // ------------------------------------------------------------------ dựng kế hoạch từng cảnh
 
 const VIDEO_NOTES = [
-  'Cài đặt nằm sau biểu tượng thanh trượt cạnh ô prompt: chọn khung 9:16, 10 giây, x1, 720p. Dòng credit hiển thị phải khớp ước tính.',
+  'Cài đặt nằm sau biểu tượng thanh trượt cạnh ô prompt: chọn khung 9:16, 10 giây, x1, 720p.',
   'Tải ảnh vào "Tệp tải lên" chưa đủ: giao diện Flow mới chỉ đưa ảnh vào thư viện dự án. Hãy ĐÍNH KÈM từng ảnh vào ô prompt đúng thứ tự bên dưới rồi đếm số ảnh trong ô prompt trước khi bấm "Bắt đầu tạo".',
   'Dán nguyên văn prompt, không thêm bớt chữ nào. Sau khi dán, đọc lại và đối chiếu từng chữ.',
   'Bấm tạo đúng một lần. Nếu sau 20 giây chưa thấy gì chạy, xem thư viện Flow trước khi bấm lại.',
@@ -232,7 +231,7 @@ function storyboardAttachment(
 export function buildScenePlans(input: PlanInput): ScenePlan[] {
   const byId = new Map(input.refs.map((r) => [r.id, r]));
   const first = input.scenes[0] ?? null;
-  const settings = { ...VIDEO_SETTINGS, estimated_credits: input.credit_per_video };
+  const settings = { ...VIDEO_SETTINGS };
 
   return input.scenes.map((scene, idx) => {
     const refs: PlanRef[] = [];
@@ -283,7 +282,7 @@ export function buildPlan(input: PlanInput): Plan {
     name: input.name,
     created_by_name: input.created_by_name,
     consistency_lock: input.style_lock.trim(),
-    settings: { ...VIDEO_SETTINGS, estimated_credits: input.credit_per_video },
+    settings: { ...VIDEO_SETTINGS },
     refs: input.refs,
     scenes: buildScenePlans(input),
   };
@@ -310,7 +309,7 @@ function attachmentLine(a: Attachment): string {
 }
 
 export const settingsLine = (s: VideoStep['settings']): string =>
-  `${s.aspect} · ${s.duration_s} giây · x${s.count} · ${s.resolution} · ước tính ${s.estimated_credits} credit mỗi video`;
+  `${s.aspect} · ${s.duration_s} giây · x${s.count} · ${s.resolution}`;
 
 /** Markdown gồm mọi cảnh, tin nhắn/prompt nguyên văn và danh sách ảnh đính kèm theo thứ tự. */
 export function planToMarkdown(plan: Plan): string {

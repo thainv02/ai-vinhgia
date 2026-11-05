@@ -87,7 +87,7 @@ run('góp ý cho AI: tạo phiên bản mới + job edit_plan có payload.revisi
     expect(r.status, r.raw).toBe(201);
     expect(r.body.final_cut).toMatchObject({ version: 2, status: 'planning', parent_id: v1.id, parent_version: 1, feedback: 'Màu ấm hơn, tương phản cao hơn', grade: null, revision: null, edl: null, base_path: null });
     expect(['claude', 'agent']).toContain(r.body.final_cut.created_by);
-    expect(r.body.job).toMatchObject({ type: 'edit_plan', status: 'queued', credits_cost: 0 });
+    expect(r.body.job).toMatchObject({ type: 'edit_plan', status: 'queued', attempt_used: false });
     // bản cũ không đổi
     expect(await get(v1.id)).toMatchObject({ status: 'ready', version: 1, parent_id: null, feedback: null });
     expect(sha(v1.video_path)).toBe(before.sha);

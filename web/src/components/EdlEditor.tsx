@@ -193,7 +193,7 @@ function SceneEditor({ scene, onChange, serverMessage, badSegment }: { scene: Dr
   );
 }
 
-/** Trình chỉnh EDL: sửa các đoạn giữ của từng cảnh, rồi "Render lại" tạo version mới (không tốn credit). */
+/** Trình chỉnh EDL: sửa các đoạn giữ của từng cảnh, rồi "Render lại" tạo version mới. */
 export function EdlEditor({ fc, onRendered, rerender }: { fc: FinalCut; onRendered: (fc: FinalCut) => void; rerender: RerenderApi }) {
   const [scenes, setScenes] = useState<DraftScene[]>(() => toDraft(fc));
   const [note, setNote] = useState('');
@@ -274,7 +274,7 @@ export function EdlEditor({ fc, onRendered, rerender }: { fc: FinalCut; onRender
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="primary" loading={rerender.isPending} icon={<Icon name="refresh" size={14} />} onClick={submit}>
-            Render lại (không tốn credit)
+            Render lại
           </Button>
           <span className="text-xs text-muted">Tạo một version mới, các bản cũ vẫn được giữ.</span>
         </div>

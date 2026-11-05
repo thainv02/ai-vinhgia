@@ -126,11 +126,12 @@ describe('importLegacy (ROOT tạm)', () => {
   const run = (opts: LegacyImportOptions = NO_PROBE) => importLegacy(env.ctx, opts);
   const q = <T = any>(sql: string, ...args: unknown[]): T[] => env.ctx.db.prepare(sql).all(...args) as T[];
 
-  it('nhập đúng 4 cảnh, prompt nguyên văn, 4 storyboard + 5 video + 5 lưới, 75 credit', () => {
+  it('nhập đúng 4 cảnh, prompt nguyên văn, 4 storyboard + 5 video + 5 lưới, không ghi sổ credit', () => {
     const s = run();
     expect(s.project).toMatchObject({ slug: 'cacao-smoothie', name: 'Cacao Actiso Plus', created: true });
-    expect(s.counts).toMatchObject({ scenes: 4, storyboards: 4, videos: 5, grids: 5, refs: 2, ledger_entries: 5, comments: 1 });
-    expect(s.credits).toEqual({ used: 75, reserved: 0, per_video: 15 });
+    expect(s.counts).toMatchObject({ scenes: 4, storyboards: 4, videos: 5, grids: 5, refs: 2, comments: 1 });
+    expect(s).not.toHaveProperty('credits');
+    expect(s.counts).not.toHaveProperty('ledger_entries');
     expect(s.prompts_verbatim).toBe(true);
 
     // prompt nguyên văn: so với cách cắt độc lập (tách theo ```), chỉ bỏ newline sát hai dấu ```
@@ -219,10 +220,7 @@ describe('importLegacy (ROOT tạm)', () => {
     const ver = q<any>('SELECT * FROM scene_prompt_versions');
     expect(ver).toHaveLength(4);
     expect(ver.every((v) => v.version === 1 && v.created_by === 'claude')).toBe(true);
-    const led = q<any>('SELECT * FROM credit_ledger ORDER BY id');
-    expect(led.map((l) => l.delta)).toEqual([-15, -15, -15, -15, -15]);
-    expect(led.map((l) => l.note)).toContain('Nhập từ log.md: C1 lượt 1');
-    expect(led.every((l) => l.job_id === null && l.scene_id !== null)).toBe(true);
+    expect(q<any>('SELECT * FROM credit_ledger')).toEqual([]);
   });
 
   it('events: tạo cảnh, chuyển trạng thái (force) có lý do "Nhập dữ liệu cũ"', () => {
@@ -253,7 +251,7 @@ describe('importLegacy (ROOT tạm)', () => {
 
   it('chạy lần hai: không tạo thêm bản ghi nào ở bất kỳ bảng nào', () => {
     const first = run();
-    expect(sum(first.created)).toBeGreaterThan(40);
+    expect(sum(first.created)).toBeGreaterThan(35); // không còn 5 dòng credit_ledger
     const before = tableCounts(env.ctx);
     const dump = () => JSON.stringify(['assets', 'scenes', 'credit_ledger', 'comments', 'events', 'scene_prompt_versions', 'project_refs', 'projects'].map((t) => q(`SELECT * FROM ${t} ORDER BY id`)));
     const snapshot = dump();
@@ -262,7 +260,6 @@ describe('importLegacy (ROOT tạm)', () => {
     expect(sum(second.created)).toBe(0);
     expect(second.project.created).toBe(false);
     expect(dump()).toBe(snapshot); // cả nội dung hàng cũng không đổi
-    expect(second.credits).toEqual(first.credits);
     expect(second.counts).toEqual(first.counts);
     expect(run().created).toEqual(second.created); // lần ba
     expect(fs.readdirSync(path.join(env.root, 'refs', String(first.project.id)))).toEqual(['2.png', 'MOCKUP-STICK.png']); // không sinh file -2
@@ -278,14 +275,15 @@ describe('importLegacy (ROOT tạm)', () => {
     expect(fs.readFileSync(path.join(env.root, 'cacao-smoothie-prompts.md'), 'utf8')).toBe(md);
   });
 
-  it('API nhất quán sau khi nhập: credit, scene detail, danh sách cảnh, dự án, ledger, /files có Range', async () => {
+  it('API nhất quán sau khi nhập: lượt, scene detail, danh sách cảnh, dự án, /files có Range', async () => {
     const s = run();
     const user = userClient(env.app);
     const pid = s.project.id;
 
     const b = (await user.get(`/api/projects/${pid}/budget`)).body;
-    expect(b).toMatchObject({ used: 75, reserved: 0, credit_per_video: 15, max_attempts: 2 });
-    expect(b).not.toHaveProperty('remaining');
+    expect(b).toMatchObject({ max_attempts: 2 });
+    expect(b).not.toHaveProperty('used');
+    expect(b).not.toHaveProperty('credit_per_video');
     expect(b.scenes.map((x: any) => [x.code, x.attempts_used, x.max_attempts])).toEqual([
       ['C1', 2, 2],
       ['C2', 1, 2],
@@ -310,22 +308,19 @@ describe('importLegacy (ROOT tạm)', () => {
     expect(c1.comments).toHaveLength(1);
     expect(c1.comments[0]).toMatchObject({ author: 'claude', action: 'note', resolved: false, asset_id: v2.id });
     expect(c1.video_block).toMatchObject({ code: 'ATTEMPTS_EXCEEDED', message: 'Cảnh C1 đã dùng 2/2 lượt' });
-    expect(c1.project).toMatchObject({ slug: 'cacao-smoothie', credit_per_video: 15, max_attempts_per_scene: 2 });
+    expect(c1.project).toMatchObject({ slug: 'cacao-smoothie', max_attempts_per_scene: 2 });
+    expect(c1.project).not.toHaveProperty('credit_per_video');
     expect(c1.upload_refs).toHaveLength(2);
     expect(c1.next_scene_id).toBe(list[1].id);
     const c2 = (await user.get(`/api/scenes/${list[1].id}`)).body;
     expect(c2.video_block).toBeNull(); // C2 còn 1 lượt
 
     const proj = (await user.get(`/api/projects/${pid}`)).body;
-    expect(proj).toMatchObject({ scene_count: 4, done_count: 4, status: 'active', credits_used: 75, credits_reserved: 0 });
+    expect(proj).toMatchObject({ scene_count: 4, done_count: 4, status: 'active' });
+    expect(proj).not.toHaveProperty('credits_used');
     expect(proj.refs.map((r: any) => r.label)).toEqual(['Hộp 3/4', 'Gói stick (2 mặt)']);
     expect((await user.get(proj.refs[0].url)).status).toBe(200);
 
-    const ledger = (await user.get(`/api/projects/${pid}/ledger`)).body;
-    expect(ledger.totals).toEqual({ used: 75, reserved: 0 });
-    expect(ledger.entries.map((e: any) => e.cumulative_used)).toEqual([15, 30, 45, 60, 75]);
-    const csv = (await user.get(`/api/projects/${pid}/ledger.csv`)).raw;
-    expect(csv).toContain('Nhập từ log.md: C1 lượt 2');
 
     // log.md sinh từ assets giữ nguyên chữ gốc của log cũ
     const logMd = (await user.get(`/api/projects/${pid}/log.md`)).raw;
@@ -353,7 +348,7 @@ describe('importLegacy (ROOT tạm)', () => {
 
     const ok = await user.post(`/api/scenes/${c2.id}/approve`, { stage: 'video' });
     expect(ok.status).toBe(200);
-    expect((await user.get(`/api/projects/${s.project.id}/budget`)).body).toMatchObject({ used: 75, reserved: 15 });
+    expect((await user.get(`/api/projects/${s.project.id}/budget`)).body.scenes.map((x: any) => x.attempts_used)).toEqual([2, 2, 1, 1]);
     const job = await claim({ worker } as any, 'w1');
     expect(job.type).toBe('video');
     expect(job.payload.attempt).toBe(2);
@@ -401,7 +396,7 @@ describe('importLegacy (ROOT tạm)', () => {
     expect(first.counts).toMatchObject({ prompt_versions: 4, comments: 1 });
     writeFile(env.root, 'legacy/C1_prompt_v2.txt', 'prompt v2 do người dùng dán\r\n');
     const second = run();
-    expect(second.created).toMatchObject({ scene_prompt_versions: 1, comments: 0, assets: 0, credit_ledger: 0, scenes: 0 });
+    expect(second.created).toMatchObject({ scene_prompt_versions: 1, comments: 0, assets: 0, scenes: 0 });
     const [c] = q<any>('SELECT resolved FROM comments');
     expect(c.resolved).toBe(1);
     const [sc] = q<any>("SELECT prompt FROM scenes WHERE code = 'C1'");
@@ -587,8 +582,7 @@ describe('importLegacy (ROOT tạm)', () => {
   it('formatSummary in đủ thông tin chính', () => {
     const text = formatSummary(run(), 'data/test.db');
     expect(text).toContain('4 cảnh, 4 storyboard, 5 video, 5 ảnh lưới');
-    expect(text).toContain('đã dùng 75');
-    expect(text).toContain('đặt trước 0 (15 credit/video)');
+    expect(text).not.toMatch(/credit/i);
     expect(text).not.toContain('còn lại');
     expect(text).toContain('C1: done, lượt 2/2, video chọn v2');
     expect(text).toContain('Cảnh báo (2)');
@@ -621,7 +615,7 @@ describe('CLI npm run import:legacy', () => {
     expect(a.status).toBe(0);
     expect(a.stdout).toContain('"Cacao Actiso Plus"');
     expect(a.stdout).toContain('4 cảnh, 4 storyboard, 5 video, 5 ảnh lưới, 2 ảnh tham chiếu');
-    expect(a.stdout).toContain('đã dùng 75, đặt trước 0 (15 credit/video)');
+    expect(a.stdout).not.toMatch(/credit/i);
     expect(a.stdout).not.toContain('còn lại');
     expect(a.stdout).not.toContain('ngân sách');
     expect(a.stdout).toContain('Cảnh báo');

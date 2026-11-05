@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { ApiError } from '../api/errors';
 import { useClipEnv } from './env';
 import { projectNeedsPolling } from './lib';
+import type { ClipCreateInput, ClipPatchInput } from './api';
 import type { Clip, ClipCut, ClipProjectDetail, SourceVideo, TranscriptSentence } from './types';
 
 export const clipKeys = {
@@ -64,7 +65,7 @@ export function patchSource(qc: QueryClient, scope: string, projectId: number, s
   qc.setQueryData<ClipProjectDetail>(clipKeys.project(scope, projectId), (old) => (old ? { ...old, source: { ...(old.source ?? {}), ...source } } : old));
 }
 
-/** Tập hợp các thao tác ghi của một dự án cắt clip. Lỗi hiện toast (mặc định của app), trừ khi nơi gọi tự xử lý. */
+/** Tập hợp các thao tác ghi của một dự án highlight. Lỗi hiện toast (mặc định của app), trừ khi nơi gọi tự xử lý. */
 export function useClipActions(projectId: number) {
   const { api, scope, refreshQuota } = useClipEnv();
   const qc = useQueryClient();
@@ -74,7 +75,7 @@ export function useClipActions(projectId: number) {
   };
 
   const patchClip = useMutation({
-    mutationFn: (v: { id: number; status?: Clip['status']; title?: string; start_word?: number; end_word?: number }) => {
+    mutationFn: (v: ClipPatchInput & { id: number }) => {
       const { id, ...rest } = v;
       return api.patchClip(id, rest);
     },
@@ -84,7 +85,7 @@ export function useClipActions(projectId: number) {
     },
   });
   const createClip = useMutation({
-    mutationFn: (v: { start_word: number; end_word: number; title?: string }) => api.createClip(projectId, v),
+    mutationFn: (v: ClipCreateInput) => api.createClip(projectId, v),
     onSuccess: (clip) => {
       if (clip && typeof clip === 'object' && 'id' in clip) upsertClip(qc, scope, projectId, clip);
       refresh();
@@ -108,6 +109,12 @@ export function useClipActions(projectId: number) {
       refresh();
     },
   });
+  const processClips = useMutation({ mutationFn: () => api.processClips(projectId), onSuccess: refresh });
+  const cleanupPlan = useMutation({ mutationFn: (id: number) => api.cleanupPlan(id), onSuccess: refresh, meta: { silent: true } });
+  const applyCleanup = useMutation({
+    mutationFn: (v: { id: number; job_id: number; revision: number; selected_ids: number[]; edits?: import('../../../server/src/lib/clip-cleanup').CleanupEdit[] }) => { const { id, ...body } = v; return api.applyCleanup(id, body); },
+    onSuccess: (clip) => { upsertClip(qc, scope, projectId, clip); refresh(); }, meta: { silent: true },
+  });
   const cancelCut = useMutation({ mutationFn: (id: number) => api.cancelCut(id), onSuccess: refresh });
   const plan = useMutation({ mutationFn: (v: Parameters<typeof api.clipPlan>[1]) => api.clipPlan(projectId, v), onSuccess: refresh });
   const transcribe = useMutation({
@@ -120,7 +127,7 @@ export function useClipActions(projectId: number) {
   const cancelSource = useMutation({ mutationFn: (sourceId: number) => api.cancelSource(sourceId), onSuccess: refresh });
   const patchProject = useMutation({ mutationFn: (v: { name?: string; stt_terms?: string }) => api.patchProject(projectId, v), onSuccess: refresh });
 
-  return { patchClip, createClip, putCaptions, render, cancelCut, plan, transcribe, cancelSource, patchProject, refresh };
+  return { patchClip, createClip, putCaptions, processClips, cleanupPlan, applyCleanup, render, cancelCut, plan, transcribe, cancelSource, patchProject, refresh };
 }
 
 // ---- transcript ----

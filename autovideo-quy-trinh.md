@@ -8,7 +8,7 @@ Ngày đối chiếu: 27/10/2026. Phạm vi: các tính năng đã có trong mã
 
 ## Các trang
 
-1. Tổng quan: app chủ máy, planner LAN và ba luồng tạo video theo cảnh, cắt clip từ video dài, xoá logo độc lập.
+1. Tổng quan: app chủ máy, planner LAN và ba luồng tạo video theo cảnh, highlight từ video dài, xoá logo độc lập.
 2. Video theo cảnh: yêu cầu → AI chia cảnh → duyệt storyboard → tạo/xem storyboard → duyệt credit → tạo/xem/chọn video → bản hoàn chỉnh. Có sửa prompt, ghi chú theo timecode và tạo lại sau duyệt.
 3. Planner LAN: AI lên kế hoạch, người dùng tự thao tác ChatGPT/Flow rồi tải ảnh/video lên; chỉ dựng bản hoàn chỉnh khi người dùng bấm. Không tạo job storyboard/video từ listener LAN.
 4. Bản hoàn chỉnh: edit_plan → EDL → render → xoá logo nếu bật → chỉnh màu nếu có → phiên bản MP4. Sửa điểm cắt, góp ý AI và chỉnh màu tay/ảnh mẫu/LUT có nhánh xử lý khác nhau.
@@ -24,7 +24,7 @@ Ngày đối chiếu: 27/10/2026. Phạm vi: các tính năng đã có trong mã
 | Cảnh, duyệt và sửa | `server/src/services/scenes.ts`, `server/src/services/rules.ts`, `server/API.md` mục 5.3–5.4 |
 | Planner LAN, ảnh/video tải lên | `server/src/services/lan-plans.ts`, `server/src/services/lan-video.ts`, `server/API.md` mục 13 |
 | Bản dựng, màu, phiên bản | `server/src/services/final-cuts.ts`, `server/src/services/final-revisions.ts`, `server/src/services/final-render/`, `server/API.md` mục 5.7, 5.9 |
-| Cắt clip, STT, phụ đề | `server/src/services/clips/`, `worker/src/clip-plan.ts`, `web/src/clips/`, `server/API.md` mục 14 |
+| Highlight, STT, phụ đề | `server/src/services/clips/`, `worker/src/clip-plan.ts`, `web/src/clips/`, `server/API.md` mục 14 |
 | Worker, account pool, hàng đợi | `worker/src/runner.ts`, `server/src/services/managed.ts`, `server/src/services/ai/`, `server/src/services/job-queue.ts`, `docs/ai/OPERATIONS.md` |
 | Xoá logo độc lập | `server/src/lan/routes-tools.ts`, `server/src/services/lan-tools.ts` |
 | Thùng rác | `server/src/services/trash.ts`, `web/src/pages/TrashPage.tsx` |

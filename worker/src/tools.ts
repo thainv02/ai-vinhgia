@@ -8,7 +8,7 @@ export const definitions = [
   ['browser_select', 'Chọn tab có sẵn theo chỉ số từ snapshot (đúng site của job).', { tab: { type: 'integer' } }, ['tab']],
   ['browser_snapshot', 'Đọc trang hiện tại và ảnh screenshot; lấy ref mới trước mỗi thao tác.', {}, []],
   ['browser_click', 'Bấm điều khiển UI không gửi/tạo nội dung (mở menu, chọn cài đặt, mở menu Download). Nút gửi/tạo phải dùng browser_submit.', { ref: { type: 'integer' } }, ['ref']],
-  ['browser_submit', 'Gửi prompt/tạo nội dung đúng một lần cho job; có kiểm tra cứng (upload đủ, cài đặt, credit, prompt) và action journal. Lỗi PRECHECK_FAILED nghĩa là chưa bấm gì.', { ref: { type: 'integer' } }, ['ref']],
+  ['browser_submit', 'Gửi prompt/tạo nội dung đúng một lần cho job; có kiểm tra cứng (upload đủ, cài đặt, prompt) và action journal. Lỗi PRECHECK_FAILED nghĩa là chưa bấm gì.', { ref: { type: 'integer' } }, ['ref']],
   ['browser_fill', 'Điền prompt nguyên văn; không được nhập phím Enter để gửi.', { ref: { type: 'integer' }, text: { type: 'string' } }, ['ref', 'text']],
   ['browser_upload', 'Upload đúng file trong payload.upload_files, đúng thứ tự (có thể từng file một). Không upload file output của job.', { ref: { type: 'integer' }, files: { type: 'array', items: { type: 'string' } } }, ['ref', 'files']],
   ['browser_download', 'Bấm nút/mục tải asset hoàn chỉnh (Download, hoặc mục 720p Original); lưu theo output path của job. Không chọn 1080p/4K/upscale/GIF.', { ref: { type: 'integer' } }, ['ref']],

@@ -28,7 +28,6 @@ export default function NewProjectPage() {
   const [name, setName] = useState('');
   const [brief, setBrief] = useState('');
   const [styleLock, setStyleLock] = useState('');
-  const [perVideo, setPerVideo] = useState('15');
   const [attempts, setAttempts] = useState('2');
   const [refs, setRefs] = useState<RefItem[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -37,11 +36,10 @@ export default function NewProjectPage() {
   const [createdId, setCreatedId] = useState<number | null>(null);
   const [refBatchesDone, setRefBatchesDone] = useState(0);
 
-  const perVideoN = Number(perVideo);
   const attemptsN = Number(attempts);
-  const numbersOk = Number.isInteger(perVideoN) && perVideoN >= 0 && Number.isInteger(attemptsN) && attemptsN >= 1 && attemptsN <= 20;
+  const numbersOk = Number.isInteger(attemptsN) && attemptsN >= 1 && attemptsN <= 20;
 
-  const reason = !name.trim() ? 'Nhập tên dự án' : !brief.trim() ? 'Nhập yêu cầu kịch bản' : !numbersOk ? 'Kiểm tra lại credit mỗi video và số lượt' : refs.some((r) => !r.label.trim()) ? 'Mỗi ảnh cần có nhãn' : null;
+  const reason = !name.trim() ? 'Nhập tên dự án' : !brief.trim() ? 'Nhập yêu cầu kịch bản' : !numbersOk ? 'Số lượt video tối đa mỗi cảnh phải từ 1 đến 20' : refs.some((r) => !r.label.trim()) ? 'Mỗi ảnh cần có nhãn' : null;
 
   const submit = async () => {
     if (reason) return;
@@ -54,7 +52,6 @@ export default function NewProjectPage() {
           name: name.trim(),
           brief: brief.trim(),
           style_lock: styleLock.trim(),
-          credit_per_video: perVideoN,
           max_attempts_per_scene: attemptsN,
         });
         id = p.id;
@@ -122,15 +119,12 @@ export default function NewProjectPage() {
         </Field>
 
         <fieldset className="grid gap-3 sm:grid-cols-2" disabled={!!busy}>
-          <legend className="mb-1 text-[13px] font-semibold">Credit và số lượt</legend>
-          <Field label="Credit mỗi video" htmlFor="p-per">
-            <input id="p-per" type="number" inputMode="numeric" min={0} step={1} value={perVideo} onChange={(e) => setPerVideo(e.target.value)} />
-          </Field>
+          <legend className="mb-1 text-[13px] font-semibold">Số lượt</legend>
           <Field label="Số lượt video tối đa mỗi cảnh" htmlFor="p-att">
             <input id="p-att" type="number" inputMode="numeric" min={1} max={20} step={1} value={attempts} onChange={(e) => setAttempts(e.target.value)} />
           </Field>
           <p className="text-xs text-muted sm:col-span-2">
-            Mỗi video tốn {numbersOk ? perVideoN : '...'} credit thật trên Google Flow. Không video nào được tạo nếu bạn chưa duyệt và xác nhận từng lượt.
+            Mỗi lần tạo video dùng một lượt của cảnh. Không video nào được tạo nếu bạn chưa duyệt và xác nhận từng lượt.
           </p>
         </fieldset>
 

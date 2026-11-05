@@ -10,7 +10,7 @@ import type { ClipProjectSummary } from './types';
 
 export type LinkComp = ComponentType<{ id: number; className?: string; children: ReactNode }>;
 
-/** Danh sách dự án cắt clip (thẻ). `Link` do nơi dùng cấp: react-router ở app chính, thẻ <a href="#/..."> ở trang LAN. */
+/** Danh sách dự án highlight (thẻ). `Link` do nơi dùng cấp: react-router ở app chính, thẻ <a href="#/..."> ở trang LAN. */
 export function ClipProjectList({ projects, loading, error, onRetry, onCreate, Link }: { projects: ClipProjectSummary[] | undefined; loading: boolean; error: unknown; onRetry: () => void; onCreate: () => void; Link: LinkComp }) {
   const now = useNow();
   if (loading) {
@@ -27,14 +27,14 @@ export function ClipProjectList({ projects, loading, error, onRetry, onCreate, L
     return (
       <EmptyState
         icon="film"
-        title="Chưa có dự án cắt clip nào"
+        title="Chưa có dự án highlight nào"
         action={
           <Button variant="primary" icon={<Icon name="plus" />} onClick={onCreate}>
             Tạo dự án đầu tiên
           </Button>
         }
       >
-        Tải lên một video dài (livestream, podcast, phỏng vấn...), AI chọn ra các đoạn hay, bạn duyệt rồi dựng thành clip 9:16 có phụ đề.
+        Tải lên một video dài (livestream, podcast, phỏng vấn...), AI đề xuất các đoạn highlight, bạn duyệt rồi dựng thành clip 9:16 có phụ đề.
       </EmptyState>
     );
   }
@@ -43,9 +43,10 @@ export function ClipProjectList({ projects, loading, error, onRetry, onCreate, L
       {projects.map((p) => (
         <li key={p.id}>
           <Link id={p.id} className="group flex h-full flex-col gap-2 rounded-lg border border-line bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-2">
+            {p.poster_url && <img src={p.poster_url} alt="" loading="lazy" className="h-28 w-full rounded-md border border-line object-cover" />}
             <div className="flex items-start justify-between gap-2">
               <h2 className="text-[15px] font-semibold leading-snug group-hover:underline">{p.name}</h2>
-              <Badge tone="violet">Cắt clip</Badge>
+              <Badge tone="violet">Highlight</Badge>
             </div>
             <p className="text-[13px] text-muted">
               {p.created_by_name ? `${p.created_by_name} · ` : ''}
@@ -59,7 +60,7 @@ export function ClipProjectList({ projects, loading, error, onRetry, onCreate, L
               ) : (
                 'Chưa tải video'
               )}
-              {p.clip_count !== undefined ? ` · ${p.clip_count} clip` : ''}
+              {p.clip_count !== undefined ? ` · ${p.clip_count} clip · ${p.ready_count ?? 0} đã dựng` : ''}
             </p>
           </Link>
         </li>

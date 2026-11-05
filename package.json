@@ -20,6 +20,7 @@
     "sim:worker": "npm run sim:worker -w server --",
     "import:legacy": "npm run import:legacy -w server --",
     "worker:start": "npm run start -w worker --",
+    "worker:media": "npm run media -w worker --",
     "ai:login": "npm run login -w worker --",
     "ai:proxy": "npm run proxy -w worker --",
     "ai:setup": "npm run setup -w worker",

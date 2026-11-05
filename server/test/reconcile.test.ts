@@ -113,28 +113,28 @@ describe('F4 POST /api/jobs/:id/reconcile', () => {
     expect((await user().post(`/api/jobs/${job.id}/cancel`)).status).toBe(200);
   });
 
-  it('charge_and_fail (video): job failed, credits_cost = credits_expected, ledger đúng một lần, tính một lượt', async () => {
+  it('charge_and_fail (video): job failed với attempt_used, không ghi sổ credit, tính đúng một lượt', async () => {
     const job = await waiting('video', 'submitted');
-    const expected = job.payload.credits_expected;
-    expect(expected).toBe(15);
+    expect(job.payload).not.toHaveProperty('credits_expected');
     expect((await user().get(`/api/scenes/${ms.sceneId}`)).body.attempts_used).toBe(1); // job video đang chờ cũng chiếm một lượt
-    const r = await reconcile(job, 'charge_and_fail', 'Flow trừ 15 credit nhưng không tải được');
+    const r = await reconcile(job, 'charge_and_fail', 'Đã tạo nhưng không tải được');
     expect(r.status).toBe(200);
-    expect(r.body.job).toMatchObject({ status: 'failed', credits_cost: expected, reconcile_required: false });
-    expect(ledger(job.id)).toEqual([{ delta: -expected }]);
+    expect(r.body.job).toMatchObject({ status: 'failed', attempt_used: true, result: { attempt_used: true }, reconcile_required: false });
+    expect(ledger(job.id)).toEqual([]);
     expect(sceneStatus()).toBe('failed');
-    expect((await user().get(`/api/scenes/${ms.sceneId}`)).body.attempts_used).toBe(1); // job failed có tốn credit vẫn chiếm đúng một lượt (không đếm hai lần)
-    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM jobs WHERE id=? AND credits_cost>0').get(job.id)).toEqual({ n: 1 });
+    expect((await user().get(`/api/scenes/${ms.sceneId}`)).body.attempts_used).toBe(1); // job failed attempt_used vẫn chiếm đúng một lượt (không đếm hai lần)
+    expect(jobRow(job.id)).toMatchObject({ credits_cost: 0 });
+    expect(env.ctx.db.prepare('SELECT credits FROM job_reconciliations WHERE job_id=?').get(job.id)).toEqual({ credits: 0 });
     expect(jobRow(job.id)).toMatchObject({ lease_id: null, claimed_by: null, wait_reason: null });
     expect(env.ctx.db.prepare("SELECT COUNT(*) n FROM events WHERE type='job.reconciled'").get()).toEqual({ n: 1 });
-    // idempotent: bấm lại cùng lựa chọn không ghi sổ lần hai
+    // idempotent: bấm lại cùng lựa chọn không tính lượt lần hai
     const again = await reconcile(job, 'charge_and_fail');
     expect(again.status).toBe(200);
     expect(again.body.replay).toBe(true);
-    expect(ledger(job.id)).toHaveLength(1);
+    expect((await user().get(`/api/scenes/${ms.sceneId}`)).body.attempts_used).toBe(1);
     // lựa chọn khác sau khi đã đối soát bị từ chối
     expect((await reconcile(job, 'nothing_created')).body.error.code).toBe('ALREADY_RECONCILED');
-    expect(ledger(job.id)).toHaveLength(1);
+    expect(ledger(job.id)).toEqual([]);
   });
   it('charge_and_fail chỉ cho job video', async () => {
     const job = await waiting('storyboard', 'submitted');

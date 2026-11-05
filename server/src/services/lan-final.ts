@@ -14,7 +14,7 @@ import { conflict, notFound } from '../lib/errors.js';
 import type { AssetRow, FinalCutRow, ProjectRow } from '../db/types.js';
 import { colorRefOfGrade } from './color-refs.js';
 import { assertLanQueueRoom } from './lan-queue.js';
-import { LAN_UPLOAD_SOURCE, lanFileUrl, scrubForLan } from './lan-common.js';
+import { LAN_UPLOAD_SOURCE, isLanAutoAsset, lanFileUrl, scrubForLan } from './lan-common.js';
 import {
   cancelFinalCut,
   cleanFinalCut,
@@ -42,10 +42,14 @@ export function lanFinalCutRow(ctx: AppContext, project: ProjectRow, cutId: numb
   return row;
 }
 
-/** URL qua LAN của video nguồn nếu là video người dùng LAN tải lên (video do chủ máy tạo không phục vụ qua LAN → null). */
+/**
+ * URL qua LAN của video nguồn nếu là video người dùng LAN tải lên, hoặc video worker tạo cho dự án Autovideo.
+ * Video chủ máy tạo cho dự án kế hoạch prompt không phục vụ qua LAN → null.
+ */
 function lanSourceUrl(ctx: AppContext, assetId: number): string | null {
   const a = ctx.db.prepare('SELECT file_path, meta FROM assets WHERE id = ?').get(assetId) as Pick<AssetRow, 'file_path' | 'meta'> | undefined;
-  return a && parseJson<{ source?: string }>(a.meta, {}).source === LAN_UPLOAD_SOURCE ? lanFileUrl(a.file_path) : null;
+  if (!a) return null;
+  return parseJson<{ source?: string }>(a.meta, {}).source === LAN_UPLOAD_SOURCE || isLanAutoAsset(ctx, a.file_path) ? lanFileUrl(a.file_path) : null;
 }
 
 /** JSON của một bản dựng cho người dùng LAN (cùng hình dạng với FinalCut của app chính để dùng lại EdlEditor/FinalTimeline). */
@@ -88,7 +92,7 @@ export function lanFinalBlock(ctx: AppContext, projectId: number): { code: strin
   if (sel.missing.length) return { code: 'SCENES_NOT_READY', message: `Còn ${sel.missing.join(', ')} chưa có video` };
   for (const it of sel.items) {
     const a = ctx.db.prepare('SELECT file_path FROM assets WHERE id = ?').get(it.asset_id) as { file_path: string } | undefined;
-    if (!a || !fs.existsSync(path.join(ctx.config.rootDir, a.file_path))) return { code: 'FILE_MISSING', message: `Video của cảnh ${it.code} không còn trên máy chủ, hãy tải lên lại` };
+    if (!a || !fs.existsSync(path.join(ctx.config.rootDir, a.file_path))) return { code: 'FILE_MISSING', message: `Video của cảnh ${it.code} không còn trên máy chủ, hãy tạo hoặc tải lên lại` };
   }
   const active = ctx.db.prepare("SELECT version, status FROM final_cuts WHERE project_id = ? AND status IN ('planning','rendering') ORDER BY version DESC LIMIT 1").get(projectId) as
     | { version: number; status: string }
@@ -128,7 +132,7 @@ export function createLanFinalCut(ctx: AppContext, project: ProjectRow): { cutId
   });
 }
 
-/** Render lại với EDL người dùng sửa (version mới, không qua worker, không tốn credit). */
+/** Render lại với EDL người dùng sửa (version mới, không qua worker). */
 export function rerenderLanFinalCut(ctx: AppContext, project: ProjectRow, cutId: number, input: { edl: unknown; note?: string }): number {
   return ctx.tx(() => {
     lanFinalCutRow(ctx, project, cutId);

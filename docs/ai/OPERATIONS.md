@@ -2,13 +2,32 @@
 
 ## Trạng thái và phạm vi
 
-Managed worker là workspace `worker/`. Server mặc định giữ `WORKER_MODE=legacy` để không tự thay cách chạy dự án hiện có. Màn hình `/accounts` dùng được trong cả hai chế độ. Chế độ **kết hợp** (managed cho một số loại job, legacy cho phần còn lại) cấu hình bằng `MANAGED_JOB_TYPES`, xem bên dưới.
+Managed worker là workspace `worker/`. Server mặc định giữ `WORKER_MODE=legacy` để không tự thay cách chạy dự án hiện có. Trang web `/accounts` đã bị bỏ (29/10/2026); account pool chỉ còn quản lý qua API `/api/ai/*`. Chế độ **kết hợp** (managed cho một số loại job, legacy cho phần còn lại) cấu hình bằng `MANAGED_JOB_TYPES`, xem bên dưới.
 
 Đã có account routing theo priority, cooldown bền vững, policy per project, claim có lease, checkpoint, action journal và complete idempotent. Chờ quota được biểu diễn bằng `jobs.status=queued` + `wait_reason/next_attempt_at`, thay vì thêm enum mới; scheduler claim chỉ lấy job tới hạn. Cách này giữ tương thích các màn hình/state machine cũ. Scene đang chạy được giữ để ngăn sửa prompt giữa một job đang chờ.
 
 Worker mặc định xử lý analyze_brief/revise_prompt/edit_plan; thêm storyboard/video khi có `BROWSER_CDP_URL`. Browser executor đang cần kiểm chứng UI thực tế ChatGPT/Flow; account pool inference không bảo đảm website automation luôn thành công.
 
-## Thêm Antigravity hoặc Codex
+## AI API dùng chung (mặc định hiện tại)
+
+Inference không còn xoay tài khoản/model qua proxy local. Đặt trong `.env` rồi restart server:
+
+```dotenv
+AI_API_URL=https://ai.int.syntra.vn/v1   # HTTPS; thiếu /v1 thì server tự thêm
+AI_API_KEY=...                           # chỉ trong .env, không commit/không in ra log
+AI_API_MODEL=gemini-3.8-flash-high       # một model cố định; xem GET $AI_API_URL/models
+# AI_API_TIMEOUT_MS=120000               # tối đa 125000 (worker hủy request sau 135 s)
+```
+
+- Có `AI_API_URL` → `POST /api/worker/jobs/:id/infer` gọi thẳng `$AI_API_URL/chat/completions` một lần với `AI_API_MODEL`. Account pool, policy provider/model theo dự án và cooldown không được dùng; không cần chạy `npm run ai:pool`/`ai:proxy`.
+- `429`/`5xx`/mất mạng/phản hồi hỏng → `AI_UNAVAILABLE` (job chờ theo Retry-After, mặc định 60 s/30 s). `401`/`403` → job chờ 5 phút, sửa `AI_API_KEY` rồi restart. `400`/`404` (sai model/định dạng) → `AI_INVALID_REQUEST`.
+- `ai_attempts.account_id = NULL` đánh dấu lượt gọi AI API; provenance ghi `provider='api'`. `/api/ai/status` trả `ai_api: { base_url, model }` (không trả key).
+- Giao diện không hiển thị URL/model/tài khoản. Khi job chờ `ai_quota` và lượt gọi gần nhất là `429` (hết token trên mọi tài khoản của server), banner toàn cục báo **"Đã hết token AI trên tất cả tài khoản"** kèm giờ tự thử lại; `401/403` báo **"Key AI bị từ chối"**. Key của app là key người dùng nên không đọc được số tài khoản/token còn lại trên server.
+- Sai cấu hình (URL không phải HTTPS, thiếu key) làm server không khởi động thay vì âm thầm quay về pool. Xóa `AI_API_URL` để quay lại account pool bên dưới.
+
+## Thêm Antigravity hoặc Codex (account pool, chỉ khi không đặt `AI_API_URL`)
+
+> Phần dưới mô tả account pool cũ. Trang web `/accounts` và CLIProxy trên máy đã bị gỡ; nếu cần quay lại phải chạy `npm run ai:setup` và gọi `/api/ai/*` trực tiếp (hoặc khôi phục trang từ git).
 
 1. Chạy server/web và mở `/accounts`. Thêm một dòng cho mỗi tài khoản; alias tùy chọn, priority số nhỏ được dùng trước. Model ID phải lấy từ gateway/tài khoản, không suy từ tên gói.
 2. `npm run ai:setup` cài proxy v8.0.37 từ GitHub release và xác minh SHA256. Trên máy hiện tại đã cài và chạy kiểm tra binary.
@@ -73,6 +92,24 @@ Browser tool chỉ mở ChatGPT/Google Flow, chỉ upload file được payload 
 
 Giao diện ChatGPT/Flow có thể thay đổi. Nếu tool không tìm được thao tác hoặc không có bằng chứng về kết quả, worker báo lỗi/chờ đối soát thay vì bấm Generate lại. Không dùng production video để test retry.
 
+### Worker nền ảnh/video qua API (`media-api-1`, 05/11/2026)
+
+Storyboard và video không cần mở Codex/Claude: tiến trình `npm run worker:media` (`worker/src/media/`) nhận job legacy `storyboard,video` (`?worker=media-api-1&types=storyboard,video`) và gọi Muse2API hoặc Flow2API theo `payload.generator.provider`, cùng luật với `WORKER-MUSE.md` / `WORKER-FLOW.md`.
+
+```sh
+nohup npm run worker:media > data/worker-media.log 2>&1 &   # một tiến trình mỗi máy (khóa ~/.local/share/autovideo/media-worker.lock)
+```
+
+- Cấu hình `.env`: `MUSE2API_URL`, `MUSE2API_KEY` hoặc `MUSE2API_KEY_FILE`, `FLOW2API_URL`, `FLOW2API_KEY`, `MEDIA_WORKER_ID` (mặc định `media-api-1`).
+- Làm tuần tự từng job (mỗi tài khoản Muse/Flow chạy một task một lúc), heartbeat 60 giây, poll 5 giây.
+- Video Muse gửi với `Idempotency-Key: autovideo-video-<job>` nên gửi lại an toàn. Ảnh Muse và mọi yêu cầu Flow không có idempotency: worker ghi nhật ký `data/media-worker/job-<id>.json` **trước** khi gửi; job bị trả về hàng đợi mà nhật ký cho thấy đã gửi nhưng chưa có kết quả thì worker báo lỗi "không rõ kết quả", không gửi lại.
+- Worker **không kết luận** chất lượng (không gửi `verdict`): storyboard/video về trạng thái chờ xem, `verdict_note` ghi "chưa đánh giá nội dung". Người dùng xem và kết luận trên web. Video vẫn có lưới khung hình.
+- Ảnh storyboard Google Flow được server xoá logo khi `complete` như mọi worker khác.
+- Lỗi dịch vụ theo bảng của WORKER-MUSE/WORKER-FLOW: `LOGIN_REQUIRED`, `CAPTCHA`, `FLOW_OUT_OF_CREDIT` tạm dừng hàng đợi (bật lại trên web sau khi sửa); key sai, Muse2API không đính được ảnh, hết hạn mức ảnh thì worker báo lỗi rồi nghỉ 15 phút.
+- **Tự xử lý lỗi tài khoản Flow2API (không cần bấm tay):** lỗi xảy ra TRƯỚC khi Google Flow nhận lệnh tạo ("没有可用的Token", hoặc cookie 401 ở bước tải ảnh `rpc=maseQ`, chưa có % tiến độ) thì worker giữ job, gửi lại sau 1, 2, 4, 6, 8 phút (≈ 21 phút, đủ để extension Token Updater tự đồng bộ cookie hoặc Flow2API chuyển tài khoản khác). Vẫn lỗi thì báo `LOGIN_REQUIRED` kèm `retryable: true` (hàng đợi dừng). Khi hàng đợi dừng vì lỗi Flow2API này, worker đợi 5 phút (gấp đôi sau mỗi lần bật lại mà lại dừng, tối đa 60 phút), kiểm tra `GET <FLOW2API_URL>/health` có tài khoản hoạt động rồi gọi `POST /api/worker/queue/auto-resume`: server bật lại hàng đợi và tạo lại các job `retryable` (job mới nhất của cảnh, cảnh vẫn `failed`; video giữ đúng dịch vụ). Lỗi sau khi Flow đã nhận lệnh (có tiến độ, mất stream) không bao giờ gửi lại. Dừng tay, CAPTCHA, hết credit, lỗi Muse vẫn chờ chủ máy.
+- Test: `server/test/media-worker.test.ts` (server thật qua inject, Muse/Flow giả, ffmpeg và tool xoá logo thật).
+- Codex/Claude vẫn có thể chạy vòng lặp `WORKER-MUSE.md` song song; server giao mỗi job cho đúng một worker.
+
 ## Quota và retry
 
 Trang `/accounts` có thanh **hạn mức còn lại**, thời điểm reset và thời điểm quan sát dữ liệu. Antigravity hiển thị theo model; Codex hiển thị các cửa sổ provider trả về, ví dụ 5 giờ/7 ngày khi có dữ liệu tương ứng. Đây là quota %, không phải số token còn lại hoặc context window.
@@ -83,10 +120,10 @@ Collector dùng management API của từng proxy local; provider OAuth vẫn do
 
 Antigravity đọc quotaInfo từ fetchAvailableModels. Codex ưu tiên tín hiệu quota quan sát gần đây, rồi thử usage qua gateway; adapter Codex chưa được xác nhận trên tài khoản thật trong phiên này. Claude/API gateway ngoài hiện không có nguồn quota subscription và hiển thị chưa có dữ liệu. Việc có quota của một model không chứng minh model đó được gateway hỗ trợ.
 
-Collector chỉ phục vụ hiển thị, không thay đổi policy chọn tài khoản, cooldown hay credit ledger. Nguồn tham khảo: [Codex rate-limit fields](https://learn.chatgpt.com/docs/app-server), [proxy management API](https://github.com/router-for-me/CLIProxyAPI/blob/ce07d189b3de2a39d37fd68ae093b102ce3aabee/internal/api/handlers/management/api_tools.go).
+Collector chỉ phục vụ hiển thị, không thay đổi policy chọn tài khoản hay cooldown. Nguồn tham khảo: [Codex rate-limit fields](https://learn.chatgpt.com/docs/app-server), [proxy management API](https://github.com/router-for-me/CLIProxyAPI/blob/ce07d189b3de2a39d37fd68ae093b102ce3aabee/internal/api/handlers/management/api_tools.go).
 
 - Theo priority, giữ cùng provider/model; mở fallback provider/model trên `/accounts` cho từng project nếu muốn.
-- Tối đa 3 lần thử inference ở một bước; retry nội bộ proxy tắt. Đây không phải giới hạn số token hay credit Flow.
+- Tối đa 3 lần thử inference ở một bước; retry nội bộ proxy tắt. Đây không phải giới hạn số token hay hạn mức tạo video.
 - `429` dùng Retry-After nếu có; thời điểm probe lại không được trình bày là thời điểm quota reset chắc chắn.
 - `401` sau khi proxy đã xử lý refresh cần đăng nhập lại. `403` loại account khỏi routing cho đến khi người dùng kiểm tra quyền.
 - `quota_scope_key` cấu hình qua API khi biết tài khoản cùng nhóm hạn mức; không mặc định các account có quota riêng.
@@ -114,14 +151,14 @@ Action journal: intent → submitted → downloaded → committed (`uncertain` k
 Trên web (Hàng đợi, thẻ cảnh, trang chi tiết cảnh) job chờ đối soát hiện huy hiệu **Cần đối soát** và nút **Đối soát**. Mở Flow/ChatGPT bằng profile media, kiểm tra dự án/hội thoại của cảnh, rồi chọn (API `POST /api/jobs/:id/reconcile`, một transaction, idempotent, ghi event):
 
 - **retry_download**: kết quả đã được tạo. Action `intent|uncertain` → `submitted`; worker resume (giữ checkpoint) tìm và tải kết quả, không submit lại.
-- **nothing_created**: không có gì được tạo. Action → `abandoned`, checkpoint bị xóa, job chạy lại từ đầu với action id mới (video có thể tốn thêm credit; nếu thực ra đã có lượt tạo, credit bị trừ hai lần).
-- **charge_and_fail** (video): đã tốn credit nhưng không lấy được kết quả. Job `failed` với `credits_cost = credits_expected`, ledger ghi một lần, tính một lượt.
+- **nothing_created**: không có gì được tạo. Action → `abandoned`, checkpoint bị xóa, job chạy lại từ đầu với action id mới (nếu thực ra đã có lượt tạo thì sẽ tạo hai lần).
+- **charge_and_fail** (video): đã tạo nhưng không lấy được kết quả. Job `failed` với `result.attempt_used = true`, tính đúng một lượt (không ghi sổ credit).
 
-`POST /api/jobs/:id/cancel` trên job managed đã có action `intent|uncertain|submitted|downloaded` trả `409 RECONCILIATION_REQUIRED` (giao diện chuyển sang đối soát) để không mất ghi sổ credit/lượt. Hàng đợi còn nút **Thử lại ngay** cho job chờ tài khoản AI (`/api/ai/jobs/:id/resume`).
+`POST /api/jobs/:id/cancel` trên job managed đã có action `intent|uncertain|submitted|downloaded` trả `409 RECONCILIATION_REQUIRED` (giao diện chuyển sang đối soát) để không mất ghi nhận lượt đã dùng. Hàng đợi còn nút **Thử lại ngay** cho job chờ tài khoản AI (`/api/ai/jobs/:id/resume`).
 
 ## Trang planner cho người dùng trong mạng LAN
 
-Đồng nghiệp trong cùng mạng (mặc định **không cần mã truy cập**, xem bên dưới) nhập yêu cầu kịch bản + ảnh tham chiếu; managed worker hiện có (`analyze_brief`) chia cảnh; trang hiển thị cho từng cảnh **tin nhắn dán vào ChatGPT** (storyboard), **prompt Google Flow nguyên văn**, ảnh nào đính kèm theo thứ tự nào và cài đặt (9:16, 10 giây, x1, 720p, ước tính `credit_per_video`). Họ tự tạo ảnh/video bằng tài khoản của mình. **Trang LAN không tạo job storyboard/video và không tốn credit Flow của máy này**; job AI duy nhất là `analyze_brief` (chia cảnh) và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh, xem bên dưới), cùng dùng quota AI của account pool như mọi job văn bản/EDL.
+Đồng nghiệp trong cùng mạng (mặc định **không cần mã truy cập**, xem bên dưới) nhập yêu cầu kịch bản + ảnh tham chiếu; managed worker hiện có (`analyze_brief`) chia cảnh; trang hiển thị cho từng cảnh **tin nhắn dán vào ChatGPT** (storyboard), **prompt Google Flow nguyên văn**, ảnh nào đính kèm theo thứ tự nào và cài đặt (9:16, 10 giây, x1, 720p). Họ tự tạo ảnh/video bằng tài khoản của mình. **Trang LAN không tạo job storyboard/video trên máy này**; job AI duy nhất là `analyze_brief` (chia cảnh) và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh, xem bên dưới), cùng dùng quota AI của account pool như mọi job văn bản/EDL.
 
 Bật (mặc định tắt) trong `.env` rồi restart server:
 
@@ -142,11 +179,20 @@ LAN_ENABLED=true
 - Worker chưa chạy: trang hiện "Máy chủ AI chưa sẵn sàng, yêu cầu đang xếp hàng" và job chờ như mọi job `analyze_brief`. Xem thêm mục **Hàng đợi** bên dưới (vị trí chờ AI và chờ render).
 - Log không ghi mã truy cập (nếu có), cookie hay nội dung ảnh (đăng nhập sai chỉ ghi IP). Lỗi mở cổng LAN (cổng bận) được ghi log và hiện ở nút Chia sẻ LAN; app chính vẫn chạy.
 - Dev: `LAN_ENABLED=true npm run dev` rồi mở `http://localhost:5173/planner.html` (Vite proxy `/lan` → `LAN_PORT`). Kiểm thử thủ công dùng ROOT/DB/cổng tạm (`AUTOVIDEO_ENV_FILE`, `ROOT_DIR`, `DB_PATH`, `PORT`, `LAN_PORT`), không dùng `.env`/`data/` thật.
+### LAN: tab Autovideo (05/11/2026)
+
+Đồng nghiệp làm như chủ máy: tạo dự án (kịch bản + ảnh) → AI chia cảnh → bấm **Tạo storyboard** (Muse hoặc Google Flow, chọn theo dự án) → **Tạo video** (Muse / Flow Veo Fast / Veo Lite / Omni, chọn mỗi lần bấm, nhớ trên trình duyệt) → **Dùng video lượt n** → tab Bản hoàn chỉnh như kế hoạch prompt. Có sửa prompt, hủy việc còn chờ, tạo hàng loạt (hộp xác nhận ghi số credit Flow ước tính).
+
+- **Tốn hạn mức của chủ máy**: job chạy bằng worker nền `media-api-1` (`npm run worker:media`) với Muse2API/Flow2API của máy này. Worker không chạy → việc xếp hàng, trang báo "Máy tạo ảnh/video chưa chạy". Hàng đợi tạm dừng (LOGIN_REQUIRED, CAPTCHA, hết credit) → trang LAN chỉ hiện câu chung; chủ máy xử lý rồi bấm tiếp tục hàng đợi.
+- **Giới hạn**: 5 lượt video mỗi cảnh (lượt đầu + tạo lại, từ 05/11/2026; dự án Autovideo cũ được nâng lên 5); theo IP mỗi giờ 40 cảnh storyboard, 20 cảnh video, 10 dự án; tổng 20 job ảnh/video LAN đang chờ/chạy. Việc của chủ máy luôn được nhận trước việc Autovideo (không ngắt việc đang chạy).
+- **Tắt**: `LAN_AUTOVIDEO=false` trong `.env` rồi restart: tab vẫn hiện, nút tạo bị khóa; video đã có vẫn dựng bản hoàn chỉnh được.
+- Trên app chính, dự án Autovideo là dự án LAN bình thường (`lan_mode='auto'`); chủ máy xem, duyệt, hủy như dự án khác. Migration `019_lan_autovideo` chỉ thêm cột `projects.lan_mode` (mặc định `'plan'`).
+
 ### LAN: video cảnh, bản hoàn chỉnh và công cụ Xoá logo Veo (22/10/2026)
 
 Dùng `FINAL_RENDERER`, `SHOTCUT_MCP_*`, `WATERMARK_REMOVER`, `GWR_CLI`, `RENDER_CONCURRENCY` (xem `server/API.md` mục 2); cần managed worker nhận `edit_plan` (đã có trong `WORKER_TYPES` mặc định).
 
-- **Bước 3 (tải video đã tạo):** mỗi thẻ cảnh có khối tải video Flow lên (mp4/mov ≤ 200 MB, 1–60 giây, tối đa 5 bản mỗi cảnh, video mới tải tự thành video của cảnh). Server ghi **thẳng xuống đĩa theo luồng** (không giữ cả file trong RAM) vào `output/<slug>/video/<code>_v<n>.mp4`, ffprobe rồi gắn tên nguyên tử. Không đổi trạng thái cảnh, không tạo job, không tốn credit.
+- **Bước 3 (tải video đã tạo):** mỗi thẻ cảnh có khối tải video Flow lên (mp4/mov ≤ 200 MB, 1–60 giây, tối đa 5 bản mỗi cảnh, video mới tải tự thành video của cảnh). Server ghi **thẳng xuống đĩa theo luồng** (không giữ cả file trong RAM) vào `output/<slug>/video/<code>_v<n>.mp4`, ffprobe rồi gắn tên nguyên tử. Không đổi trạng thái cảnh, không tạo job.
 - **Bản hoàn chỉnh:** khi mọi cảnh có video, người LAN bấm **Dựng bản hoàn chỉnh** (không tự chạy khi upload). `edit_plan` → AI chọn điểm cắt → server render (Shotcut hoặc ffmpeg) → xoá logo Veo → sẵn sàng. Họ xem/tải bản sạch, tải bản gốc còn logo, xem timeline cắt kèm lý do, chỉnh điểm cắt và render lại (version mới). Không có "Mở trong Shotcut" cho LAN. Trên app chính đây là bản dựng bình thường ở trang **Bản hoàn chỉnh** của dự án (nhãn LAN); điều kiện dựng của dự án LAN chỉ là "mọi cảnh có video được chọn", dự án `app` giữ nguyên (cảnh `done`).
 - **Xoá logo Veo (tab riêng):** tải một video bất kỳ (mp4/mov ≤ 200 MB, 1–120 giây), chạy tool xoá logo, tải bản sạch. Việc xếp vào **cùng hàng đợi render chung** (chạy song song tối đa `RENDER_CONCURRENCY` việc, mặc định 2, xem mục Hàng đợi); chỉ trình duyệt tạo việc (cookie `autovideo_lan_client`, 400 ngày, DB chỉ lưu băm) thấy/tải/hủy được việc đó. File ở `output/lan-tools/<id>/`, tự xoá sau 7 ngày. Server khởi động lại giữa lúc xử lý → **mọi** việc đang xử lý hoặc chờ đều `failed`, giữ input để **Thử lại**. Tool tắt hoặc lỗi (`WATERMARK_REMOVER=off`, thiếu `GWR_CLI`) → nút bị khóa kèm lý do.
 - **Tài nguyên:** trần **6 việc từ LAN** cùng lúc trong hàng đợi (bản dựng LAN + việc công cụ; vượt → "Hàng đợi đang đầy, thử lại sau"); tối đa 2 luồng tải video đồng thời mỗi IP và 4 toàn listener. Việc của **app chính** (chủ máy) luôn được lấy trước việc LAN đang chờ trong hàng đợi render (việc đang chạy không bị ngắt). Khối **Chia sẻ LAN** trên app chính hiện số việc xoá logo trong 24 giờ và số việc LAN đang trong hàng đợi.
@@ -172,7 +218,7 @@ Chọn `RENDER_CONCURRENCY`: máy hiện tại Apple M4 10 nhân, 16 GB RAM → 
 
 ### Màu theo ảnh mẫu và file LUT (26/10/2026)
 
-Trong panel **Chỉnh màu** có mục **Màu theo ảnh mẫu**: chọn/tải một ảnh (kéo thả, dán, chọn file, hoặc chép từ ảnh tham chiếu/storyboard của dự án) hoặc tải file LUT `.cube`; video được kéo về tông màu đó rồi vẫn chỉnh thêm bằng thanh trượt hoặc góp ý "ấm hơn". **Tất định, không dùng AI, không tốn credit, không biến môi trường mới.**
+Trong panel **Chỉnh màu** có mục **Màu theo ảnh mẫu**: chọn/tải một ảnh (kéo thả, dán, chọn file, hoặc chép từ ảnh tham chiếu/storyboard của dự án) hoặc tải file LUT `.cube`; video được kéo về tông màu đó rồi vẫn chỉnh thêm bằng thanh trượt hoặc góp ý "ấm hơn". **Tất định, không dùng AI, không biến môi trường mới.**
 
 - **Cách tính:** thống kê trong không gian lαβ (log-LMS, Reinhard) của ảnh mẫu và của bản sạch chưa chỉnh màu (12 khung), chuyển màu kiểu Reinhard (tỉ lệ σ kênh sắc kẹp 0,8–1,25, kênh sáng 0,6–1,6; bỏ pixel L*<3 hoặc >97), sinh LUT 3D 33³ và áp bằng `lut3d` TRƯỚC `eq/colortemperature/vibrance`. lαβ giữ vùng trắng/xám ở trung tính (CIELAB làm chúng ngả hồng/vàng). Chế độ mặc định chỉ lấy tông màu (giữ độ chói Y ⇔ L*), "giống cả độ sáng" chuyển luôn L*; cường độ mặc định 70%; tuỳ chọn khớp riêng từng cảnh (mỗi cảnh một LUT, áp theo `enable between(t,a,b)`).
 - **File ở đâu:** ảnh mẫu/LUT đã tải ở `output/<slug>/final/color-refs/` (đặt tên theo hash nội dung; LUT là bản **chuẩn hoá do server ghi lại**, không giữ file gốc); LUT sinh ra ở `output/<slug>/final/luts/<hash>.cube` (bộ nhớ đệm: tính lại theo hash khi cần, giữ ≤ 80 file mỗi dự án, chỉ xoá file cũ hơn 1 giờ). Grade của phiên bản chỉ lưu `match {kind, ref_id, strength, mode, per_scene}`, không lưu đường dẫn LUT. Bảng mới `color_refs` (migration 013, chỉ thêm bảng/index). Các file này nằm trong `output/<slug>/` nên đi theo dự án vào/ra thùng rác và bị xoá khi xoá vĩnh viễn (dòng `color_refs` CASCADE).
@@ -183,19 +229,19 @@ Trong panel **Chỉnh màu** có mục **Màu theo ảnh mẫu**: chọn/tải m
 
 ## Thùng rác dự án (xoá 30 ngày, khôi phục được) — 22/10/2026
 
-Video trong dự án tốn credit thật nên xoá dự án luôn là **xoá mềm**, không có xoá cứng tức thì.
+Video trong dự án là kết quả tạo thật nên xoá dự án luôn là **xoá mềm**, không có xoá cứng tức thì.
 
 - **Xoá** (`DELETE /api/projects/:id`, gõ đúng tên; hoặc người tạo kế hoạch LAN bấm "Xoá kế hoạch"): hủy job `queued`, đặt `projects.deleted_at/deleted_by/trash_path`, rồi sau commit `rename` `output/<slug>/` và `refs/<id>/` vào `output/.trash/<id>-<slug>-<mốc>/{output,refs}/` (cùng ổ). Lỗi chuyển file thì hoàn tác file và `deleted_at=NULL`. Dự án biến khỏi mọi API/danh sách/`/files`/`/lan/files`/worker; slug vẫn bị giữ.
 - **Bị chặn (409)** khi: có job `claimed`/`running`; có bản dựng `planning`/`rendering` hoặc còn trong hàng đợi render; có job managed với thao tác Flow/ChatGPT còn sống (`intent`/`uncertain`/`submitted`/`downloaded`, cần đối soát ở trang Hàng đợi trước); đang có video LAN được tải lên.
 - **Khôi phục** (trang "Thùng rác" ở app chính): chuyển file về đúng chỗ cũ, **không ghi đè**; nếu `output/<slug>/` hay `refs/<id>/` đã có nội dung thì 409 và chủ máy phải tự dời thư mục đó đi. LAN không khôi phục được.
-- **Xoá vĩnh viễn** (gõ lại tên, hoặc tự động): xoá thư mục thùng rác rồi `DELETE FROM projects` (cascade; sổ credit và nhật ký của dự án mất theo). `TRASH_RETENTION_DAYS` (mặc định 30) quyết định hạn; bộ dọn chạy lúc khởi động và mỗi giờ, đồng thời hoàn tất việc chuyển file bị gián đoạn nếu tiến trình chết giữa commit và `rename`.
+- **Xoá vĩnh viễn** (gõ lại tên, hoặc tự động): xoá thư mục thùng rác rồi `DELETE FROM projects` (cascade; nhật ký của dự án mất theo). `TRASH_RETENTION_DAYS` (mặc định 30) quyết định hạn; bộ dọn chạy lúc khởi động và mỗi giờ, đồng thời hoàn tất việc chuyển file bị gián đoạn nếu tiến trình chết giữa commit và `rename`.
 - **Dung lượng:** thư mục thùng rác nằm trong `output/.trash/` và vẫn chiếm đĩa tới khi xoá vĩnh viễn; trang Thùng rác hiện dung lượng từng dự án. Đừng xoá tay `output/.trash/` khi còn dự án trong thùng rác (khôi phục sẽ không còn file).
 - **Quyền LAN:** kế hoạch tạo từ giờ lưu SHA-256 của cookie client `autovideo_lan_client` (`projects.lan_client_hash`); chỉ trình duyệt đó xoá được từ trang LAN (10 lần/giờ/IP). Kế hoạch cũ chỉ xoá được từ app chính. Xoá cookie hoặc đổi trình duyệt thì mất quyền xoá.
 - **Rollback/DB cũ:** migration `011_project_trash.sql` chỉ thêm 4 cột + 1 index vào `projects`. Chạy code cũ trên DB đã lên 011 vẫn đọc được nhưng thấy cả dự án trong thùng rác (không biết `deleted_at`): restore backup tương ứng trước khi quay lại.
 
-## Cắt clip từ video dài (27/10/2026)
+## Highlight từ video dài (27/10/2026)
 
-Tải video dài (livestream, podcast, review… tiếng Việt) lên mục "Cắt clip" của web (hoặc tab "Cắt clip" của trang LAN): server nhận dạng lời nói, AI chọn đoạn hay, người dùng duyệt/sửa điểm cắt trên lời thoại, server dựng clip 9:16 có phụ đề chạy theo từng từ. Không tốn credit Flow. Hợp đồng API: `server/API.md` mục 14; kế hoạch gốc: `PLAN-long-video-to-shorts.md`.
+Tải video dài (livestream, podcast, review… tiếng Việt) lên mục "Highlight" của web (hoặc tab "Highlight" của trang LAN): server nhận dạng lời nói, AI chọn đoạn hay, người dùng duyệt/sửa điểm cắt trên lời thoại, server dựng clip 9:16 có phụ đề chạy theo từng từ. Hợp đồng API: `server/API.md` mục 14; kế hoạch gốc: `PLAN-long-video-to-shorts.md`.
 
 - **Nhận dạng lời nói = dịch vụ STT nội bộ** (Omnix, chuẩn OpenAI), không chạy model trên máy này. `.env`: `STT_URL=http://10.0.3.214:18085/v1/audio/transcriptions` (chỉ HTTP; HTTPS của dịch vụ không chạy), `STT_TENANT_ID=s-omnix-studio`; `STT_PROVIDER` để trống = `omnix` nếu có `STT_URL`. Không có `STT_URL` thì tải lên vẫn nhận file nhưng video báo "Chưa cấu hình nhận dạng lời nói". Kiểm tra dịch vụ: `curl http://10.0.3.214:18085/health`; thử tích hợp thật bằng audio tổng hợp ngắn (`say -v Linh -o a.aiff "…"`): `npx tsx server/src/scripts/stt-smoke.ts a.aiff "Tên riêng, thuật ngữ"` (in job id, văn bản, số từ và hình dạng phản hồi của `GET /v1/stt/jobs/{id}`; KHÔNG chạy trong `npm test`).
 - Dịch vụ xử lý **một file một lúc** (~20× thời gian thực: video 1 giờ ≈ 3 phút), nên server xếp hàng đợi một việc một lúc cho nhận dạng (app chính trước LAN) và hiện vị trí. Tiến độ là ƯỚC TÍNH theo thời gian (`duration/20 s + 5 s`, kẹp 95% tới khi xong). Lỗi tạm (502/503 `no_capacity`, `fetch_failed`, `runtime_*`, lỗi mạng) thử lại 10 s / 30 s / 90 s; timeout 504 hoặc đứt kết nối sau khi có `X-Job-Id` thì hỏi lại `GET /v1/stt/jobs/{id}` (header `X-Tenant-ID`). Lưu ý đã đo: phản hồi của endpoint này **không có mốc từng từ**, nên server gửi lại file thay vì dùng kết quả đó. Khởi động lại giữa chừng: video `transcribing` được xếp lại tự động.
@@ -205,9 +251,13 @@ Tải video dài (livestream, podcast, review… tiếng Việt) lên mục "C�
 - **Hàng đợi**: AI chọn đoạn là job `clip_plan` trong hàng đợi AI chung (managed worker, hoặc worker legacy theo WORKER.md 4.6; `WORKER_TYPES` mặc định của managed worker đã có `clip_plan`; với `MANAGED_JOB_TYPES` có liệt kê thì thêm `clip_plan`). Dựng clip dùng chung hàng đợi render (`RENDER_CONCURRENCY`, app trước LAN, hiện vị trí); bản xem thử 480p của video LAN cũng nằm trong hàng đợi đó. Trần hàng đợi LAN (6) tính cả nhận dạng/AI/dựng của LAN (`/lan/api/status` → `queue.clips`).
 - **Sửa lỗi AI chọn 0 clip (27/10/2026)**: nhận dạng mới đo khoảng lặng thật trong audio, không dựa vào các segment ~20 s hoặc mốc từ liền nhau của STT. Câu trích đầu/cuối xác định điểm cắt tới từng từ; kết quả và checkpoint có `diagnostics` (số đề xuất thô/lý do loại). Inference timeout/mạng lỗi thử lại tối đa 2 lần (1/2 s), giữ cơ chế chờ quota/lease hiện có. Transcript cũ vẫn đọc được; chỉ bản cache dùng cho dự án mới được nâng cấp khoảng lặng, không đổi ID của clip cũ. Cập nhật worker cần lần khởi động worker tiếp theo; việc sửa mã không tự chạy worker hay tạo job.
 - **Khởi động lại**: bản dựng clip đang `rendering` → `failed` ("Server khởi động lại trong lúc dựng", dọn file dở); video đang nhận dạng được xếp lại; job `clip_plan` do cơ chế lease/checkpoint chung xử lý (resume hoặc trả về hàng đợi).
-- **LAN**: tab "Cắt clip" cùng bộ endpoint `/lan/api/...`; hạn mức/giờ/IP: tạo dự án 10, video nguồn 3 (1 lượt tải đồng thời mỗi IP), AI chọn đoạn 6, dựng 30, sửa 120. Video gốc KHÔNG được phục vụ qua LAN (chỉ bản xem thử 480p, poster, ảnh clip, clip `ready`).
-- **Triển khai**: migration `014_clips.sql` thêm `projects.kind/stt_terms`, dựng lại bảng `jobs` (loại `clip_plan`, đúng quy trình 003; đã thử trên bản sao DB thật: `foreign_key_check` rỗng, `integrity_check=ok`, số dòng mọi bảng và `sqlite_sequence` của `jobs` không đổi) và tạo `source_videos`, `clips`, `clip_cuts`. Server tự sao lưu DB trước khi migrate (`data/backup/`). **Rollback**: code cũ không biết loại `clip_plan`/bảng mới nhưng đọc được DB đã lên 014; dự án cắt clip sẽ hiện lẫn trong danh sách dự án (không có `kind`) — restore bản sao lưu DB tương ứng trước khi quay lại. Triển khai khi máy rảnh (không có render/job đang chạy).
+- **LAN**: tab "Highlight" cùng bộ endpoint `/lan/api/...`; hạn mức/giờ/IP: tạo dự án 10, video nguồn 3 (1 lượt tải đồng thời mỗi IP), AI chọn đoạn 6, dựng 30, sửa 120. Video gốc KHÔNG được phục vụ qua LAN (chỉ bản xem thử 480p, poster, ảnh clip, clip `ready`).
+- **Triển khai**: migration `014_clips.sql` thêm `projects.kind/stt_terms`, dựng lại bảng `jobs` (loại `clip_plan`, đúng quy trình 003; đã thử trên bản sao DB thật: `foreign_key_check` rỗng, `integrity_check=ok`, số dòng mọi bảng và `sqlite_sequence` của `jobs` không đổi) và tạo `source_videos`, `clips`, `clip_cuts`. Server tự sao lưu DB trước khi migrate (`data/backup/`). **Rollback**: code cũ không biết loại `clip_plan`/bảng mới nhưng đọc được DB đã lên 014; dự án highlight sẽ hiện lẫn trong danh sách dự án (không có `kind`) — restore bản sao lưu DB tương ứng trước khi quay lại. Triển khai khi máy rảnh (không có render/job đang chạy).
 - **Quy ước chung**: thời gian cắt không bao giờ lấy từ giây do AI viết (AI chỉ trả ID câu; server tự bám khoảng lặng: −0.15 s đầu, +0.30 s cuối, không cắt vào từ); phụ đề lấy chữ ASR (chữ thường, số đọc thành chữ) hoặc bản đã khôi phục dấu câu/sửa tay.
+
+## Bỏ credit khỏi hệ thống (04/11/2026)
+
+Video tạo qua API (Muse2API) không tốn credit Flow, nên web/server không còn khái niệm credit: không còn `credit_per_video` khi tạo/sửa dự án, không còn xác nhận tổng credit khi duyệt (approve-all bỏ qua `expectedCredits` của client cũ), không còn `credits_expected` trong payload video, không ghi `credit_ledger`, `jobs.credits_cost` luôn 0 với job mới, đã bỏ `GET /ledger` và `/ledger.csv` (trang "Nhật ký" chỉ còn dòng thời gian). Cột/bảng credit vẫn giữ trong DB, không có migration. Giới hạn duy nhất vẫn là số lượt mỗi cảnh: job video lỗi chỉ chiếm lượt khi worker `fail` kèm `attempt_used: true` (worker cũ gửi `credits_cost > 0` cũng được hiểu như vậy) hoặc khi đối soát `charge_and_fail`; hàng cũ có `credits_cost > 0` vẫn được tính. Mã lỗi `FLOW_OUT_OF_CREDIT` giữ nguyên, web hiện "Hết hạn mức tạo video". Managed worker (Flow) bỏ bước đối chiếu dòng credit trong precheck.
 
 ## Kiểm chứng và rollback
 
@@ -216,3 +266,26 @@ Tải video dài (livestream, podcast, review… tiếng Việt) lên mục "C�
 `npm run ai:smoke -- <id>` chạy một job phân tích inference thật trên API/DB tạm riêng (không tạo ảnh/video). Thêm `--fallback` để giả lập gateway A trả quota rồi chuyển sang account được chọn để inference thật. Lệnh này sử dụng quota AI; không nằm trong bộ test mặc định. Test gateway dùng HTTP local giả lập quota; không sử dụng token/tài khoản thật. Xem `docs/ai/VALIDATION.md` để phân biệt phần đã kiểm tra với phần còn cần chạy thật.
 
 Rollback: `docs/ai/ROLLBACK.md`. Không chạy code baseline trên DB đã migrate mà chưa restore backup tương ứng.
+
+## Làm gọn lời nói của clip
+
+- Migration `015_clip_cleanup.sql` chỉ thêm `clips.cleanup`, `clips.edit_revision` (mặc định 0), `clip_cuts.edit_snapshot`; không đổi migration cũ, không sửa source/bản dựng cũ. Triển khai khi rảnh; server sao lưu DB trước khi migrate như cũ.
+- Dùng managed `clip_plan` với `payload.mode=cleanup`; `WORKER_MODE=managed`, `MANAGED_JOB_TYPES` trống hoặc có `clip_plan`, `WORKER_TYPES` phải có `clip_plan`. **Worker cần khởi động lại để nạp mã mới**; worker mới gửi `features=clip_cleanup` khi nhận việc. Worker cũ bị bỏ qua cho yêu cầu làm gọn để không nhầm với việc chọn clip. Không tự chạy worker khi chỉ sửa mã; chờ yêu cầu sản xuất của người dùng.
+- Làm gọn là bước bắt buộc sau khi tạo clip (AI hoặc thủ công). Server tự xếp từng job, tự áp dụng điểm bỏ hợp lệ, chỉ hiện clip sau khi xong; kết quả rỗng vẫn hợp lệ. Lỗi giữ clip chờ, không tự retry vô hạn. Không tự bỏ câu vì cho rằng sai kiến thức; chỉ đề xuất phần nói vấp/lặp hoặc tự sửa có phần nói lại rõ ràng. Có thể bỏ sót khi STT không ghi tiếng đệm. Không cần model STT khác để dùng chức năng này.
+- Thanh thời gian hiển thị vùng giữ/bỏ, danh sách lý do và vị trí trên video dài; kéo hai đầu bám từ, nghe thử, khôi phục đoạn sai rồi lưu. Chỉnh sửa không tự render. Lần dựng sau dùng các đoạn giữ và tính lại đồng hồ phụ đề. Mỗi bản dựng chụp lựa chọn/phụ đề lúc xếp hàng; hoàn tác sau đó không làm đổi bản đang dựng. Lưu lựa chọn rỗng để khôi phục toàn bộ; đổi điểm đầu/cuối tự xếp lại bước làm gọn. Bản dựng cũ không còn khớp bị đánh dấu stale và không đưa vào ZIP.
+- Clip cũ chưa làm gọn: `POST /api/projects/:id/process-clips {}` tiếp tục; `{reprocess:true}` chạy lại tất cả clip chưa bỏ trong dự án (từ chối khi đang có job). Nút “Tiếp tục xử lý clip” phục hồi lỗi/clip cũ. API không render clip chưa làm gọn (`409 CLEANUP_REQUIRED`).
+- Kiểm thử bằng DB/video tạm, inference giả; không chạy inference/Flow thật hoặc worker sản xuất từ bộ test. Xem API mục 14.9.
+
+### Bản sửa sau review làm gọn (2026-10-28)
+
+- Triển khai migration 016 mới (capability worker + index cleanup/discovery); không sửa migration 015 đã áp dụng. Khởi động lại server khi hàng đợi rảnh, có DB backup. Worker hiện tại đã gửi `features=clip_cleanup`, không cần chạy inference để đăng ký capability.
+- Job không được worker phù hợp nhận trong 5 phút chuyển failed để không khóa dự án mãi; quota wait/backlog của worker phù hợp/hàng đợi tạm dừng vẫn giữ. Cập nhật worker rồi bấm tiếp tục để retry có chủ ý.
+- Lưu chỉnh sửa bị chặn ở UI/API khi cùng clip đang chạy lại AI; không làm mất revision hoặc dấu job mới. Hạn mức nút tiếp tục lấy `plan`, độc lập `render`.
+- Nguồn/transcript làm gọn gắn với source_id của clip. Timeline dùng retained_segments từ server; phụ đề giữ từ ASR zero-duration ở vùng giữ. Bản dựng cũ thiếu snapshot và có phụ đề người dùng sửa được đánh dấu cần dựng lại cả sau reload/máy khác.
+
+## Clip ghép nhiều đoạn (montage)
+
+- Migration `017_clip_parts.sql` chỉ thêm cột `clips.parts` (NULL cho mọi clip cũ = clip một đoạn); không sửa dữ liệu hay migration cũ. Server sao lưu DB trước khi migrate như cũ; triển khai khi hàng đợi rảnh. Rollback: code cũ bỏ qua cột này nên clip ghép sẽ bị hiểu thành một đoạn liền theo khung bao — restore bản sao lưu nếu đã có clip ghép.
+- Clip 2–6 đoạn, phát theo thứ tự do người dùng/AI chọn; hợp đồng ở `server/API.md` 14.10. Dựng bằng nhiều input `-ss/-t` + `concat` (đã kiểm chứng bằng ffmpeg thật: 2 đoạn đảo thứ tự, có/không tiếng, độ dài khớp tổng phần giữ). Clip một đoạn dựng y như trước.
+- AI chỉ đề xuất ghép khi `allow_multi` (mặc định bật; tắt bằng ô "Cho phép AI ghép nhiều đoạn" khi nhờ AI đề xuất). **Worker managed cần khởi động lại** để nạp prompt/kiểm tra mới (cả làm gọn theo từng đoạn); worker cũ vẫn chạy được: không đề xuất clip ghép, còn làm gọn clip ghép thì server kiểm tra lại theo từng đoạn và từ chối chỗ bỏ vắt qua ranh giới.
+- Video ánh xạ PTS lên đồng hồ đoạn giữ trong một nhánh streaming, audio concat riêng. Không xếp đệm toàn bộ các đoạn video tương lai; tránh sai số cộng dồn ở nguồn im lặng và giữ đồng hồ phụ đề.

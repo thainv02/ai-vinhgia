@@ -1,9 +1,11 @@
 /**
- * Các endpoint cắt clip, dùng chung cho app chính (`/api/...`) và listener LAN (`/lan/api/...`): cùng đường dẫn con, cùng hình dạng JSON (hợp đồng mục 5 của đặc tả).
+ * Các endpoint highlight, dùng chung cho app chính (`/api/...`) và listener LAN (`/lan/api/...`): cùng đường dẫn con, cùng hình dạng JSON (hợp đồng mục 5 của đặc tả).
  * Khác nhau do `ClipHttpEnv` quyết định: phạm vi dự án (LAN chỉ thấy dự án LAN), JSON (URL `/lan/files`, lỗi không lộ đường dẫn), hạn mức/giới hạn đồng thời (LAN).
  * Hàm này CHỈ đăng ký route khi được gọi: listener LAN không import route nào của app chính.
  */
 import fs from 'node:fs';
+import { z } from 'zod';
+import { isManagedJobType } from '../../config.js';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../../context.js';
@@ -15,15 +17,16 @@ import { assertLanQueueRoom } from '../lan-queue.js';
 import { probeUploadedVideo } from '../media.js';
 import { getJobRow } from '../repo.js';
 import { zipChunks } from '../zip.js';
-import { captionsBody, clipsZipEntries, createClipBody, createManualClip, patchClip, patchClipBody, putCaptions } from './clips.js';
+import { captionsBody, clipsZipEntries, createClipBody, createManualClip, patchClip, patchClipBody, putCaptions, requireTranscript } from './clips.js';
 import { clipLimits } from './lan.js';
+import { applyCleanup, cleanupApplyBody, createCleanup, queueRequiredCleanup } from './cleanup.js';
 import { clipPlanBody, createClipPlan } from './plan.js';
 import { cancelClipCut, renderBody, startClipRender } from './render.js';
 import { getClipProject, getClipRow, getCutRow, getSourceRow, projectClips, projectSource, readTranscript } from './repo.js';
-import { assertDiskRoom, assertSourceProbe, createClipProject, createClipProjectBody, makePoster, patchClipProject, patchClipProjectBody, queuePreview, registerSource, sourceLimits, sourceTmpDir } from './source.js';
+import { assertDiskRoom, assertSourceProbe, createClipProject, createClipProjectBody, makePoster, patchClipProject, patchClipProjectBody, queuePreview, registerSource, sourceFileOk, sourceLimits, sourceTmpDir } from './source.js';
 import { startTranscription, sttConfigured, STT_NOT_CONFIGURED } from './stt.js';
 import { transcriptPage, transcriptSrt, transcriptTxt } from './transcript.js';
-import { clipJson, clipProjectDetail, cutJson, planJobJson, sourceJson, type ViewOpts } from './view.js';
+import { clipJson, clipProjectDetail, cutJson, planJobJson, projectCleanupJobs, sourceJson, type ViewOpts } from './view.js';
 
 /** `upload`: tải video nguồn (hạn mức giờ + cổng đồng thời); `source`: nhận dạng lại (cùng hạn mức giờ, không có cổng). */
 export type LimitKind = 'project' | 'upload' | 'source' | 'plan' | 'render' | 'edit';
@@ -40,7 +43,7 @@ export interface ClipHttpEnv {
   /** `/api` hoặc `/lan/api`. */
   prefix: string;
   view(req: FastifyRequest): ViewOpts;
-  /** Phạm vi dự án: app thấy mọi dự án cắt clip; LAN chỉ thấy dự án LAN (còn lại 404). */
+  /** Phạm vi dự án: app thấy mọi dự án highlight; LAN chỉ thấy dự án LAN (còn lại 404). */
   scope(project: ProjectRow): void;
   /** Kiểm tra hạn mức TRƯỚC khi làm (ném 429 nếu hết) và trả tay cầm ghi nhận/nhả. Chỉ LAN có. */
   limit?(kind: LimitKind, req: FastifyRequest, reply: FastifyReply): LimitHandle;
@@ -210,7 +213,8 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     const project = projectOf(asId(req));
     const src = projectSource(ctx, project.id);
     const transcript = src ? readTranscript(ctx, src) : null;
-    return projectClips(ctx, project.id).map((c) => clipJson(ctx, c, env.view(req), { transcript }));
+    const cleanupJobs = projectCleanupJobs(ctx, project.id);
+    return projectClips(ctx, project.id).map((c) => clipJson(ctx, c, env.view(req), { transcript, transcriptSourceId: src?.id, cleanupJobs }));
   });
 
   app.get(`${p}/clips/:id`, async (req) => ({ clip: clipJson(ctx, clipOf(asId(req)).clip, env.view(req)) }));
@@ -230,7 +234,10 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
   app.post(`${p}/projects/:id/clips`, async (req, reply) => {
     const project = projectOf(asId(req));
     const body = parse(createClipBody, req.body ?? {});
-    const row = await limited(env, 'edit', req, reply, () => createManualClip(ctx, project.id, body));
+    const row = await limited(env, 'edit', req, reply, () => {
+      if (env.lan) assertLanQueueRoom(ctx);
+      return createManualClip(ctx, project.id, body);
+    });
     return reply.code(201).send({ clip: clipJson(ctx, row, env.view(req)) });
   });
 
@@ -238,6 +245,38 @@ export function registerClipEndpoints(app: FastifyInstance, ctx: AppContext, env
     const { clip } = clipOf(asId(req));
     const body = parse(captionsBody, req.body ?? {});
     return limited(env, 'edit', req, reply, () => ({ clip: clipJson(ctx, putCaptions(ctx, clip.id, body), env.view(req)) }));
+  });
+
+  // Làm gọn là bước bắt buộc; PUT chỉ dùng chỉnh lại kết quả tự động. Dùng cùng hạn mức plan/edit và hàng đợi LAN.
+  app.post(`${p}/projects/:id/process-clips`, async (req, reply) => {
+    const project = projectOf(asId(req));
+    const body = parse(z.object({ reprocess: z.boolean().default(false) }), req.body ?? {});
+    const jobId = await limited(env, 'plan', req, reply, () => ctx.tx(() => {
+      if (!isManagedJobType(ctx.config, 'clip_plan')) throw conflict('MANAGED_REQUIRED', 'Bước làm gọn cần managed worker nhận clip_plan');
+      const active = ctx.db.prepare("SELECT id FROM jobs WHERE project_id = ? AND type='clip_plan' AND status IN ('queued','claimed','running') LIMIT 1").get(project.id);
+      if (body.reprocess && active) throw conflict('JOB_ACTIVE', 'Đợi xử lý hiện tại xong trước khi chạy lại');
+      if (env.lan) assertLanQueueRoom(ctx);
+      const { source } = requireTranscript(ctx, project.id);
+      if (!sourceFileOk(ctx, source)) throw conflict('SOURCE_DELETED', 'Video gốc không còn để làm gọn');
+      if (body.reprocess) {
+        ctx.db.prepare("UPDATE clips SET cleanup=NULL, edit_revision=edit_revision+1, updated_at=? WHERE project_id=? AND status!='rejected'").run(ctx.now(), project.id);
+      }
+      return queueRequiredCleanup(ctx, project.id, true);
+    }));
+    return reply.code(jobId ? 201 : 200).send({ job: jobId ? planJobJson(ctx, getJobRow(ctx, jobId), env.view(req)) : null });
+  });
+  app.post(`${p}/clips/:id/cleanup-plan`, async (req, reply) => {
+    const { clip } = clipOf(asId(req));
+    const jobId = await limited(env, 'plan', req, reply, () => {
+      if (env.lan) assertLanQueueRoom(ctx);
+      return createCleanup(ctx, clip.id);
+    });
+    return reply.code(201).send({ job: planJobJson(ctx, getJobRow(ctx, jobId), env.view(req)) });
+  });
+  app.put(`${p}/clips/:id/cleanup`, async (req, reply) => {
+    const { clip } = clipOf(asId(req));
+    const body = parse(cleanupApplyBody, req.body ?? {});
+    return limited(env, 'edit', req, reply, () => ({ clip: clipJson(ctx, applyCleanup(ctx, clip.id, body), env.view(req)) }));
   });
 
   // ---------------------------------------------------------------- dựng

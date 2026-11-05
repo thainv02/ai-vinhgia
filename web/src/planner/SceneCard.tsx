@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../api/errors';
 import { buttonClass, Button } from '../components/Button';
@@ -20,9 +20,6 @@ function AttachmentList({ items, onZoom, emptyText }: { items: Attachment[]; onZ
     <ol className="space-y-1.5">
       {items.map((a) => (
         <li key={`${a.order}-${a.kind}`} className="flex items-center gap-2.5 rounded-md border border-line bg-surface p-1.5">
-          <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-ink text-xs font-bold text-ink-fg">
-            {a.order}
-          </span>
           {a.available && a.url ? (
             <button type="button" onClick={() => onZoom(a.url!, a.label)} aria-label={`Xem lớn: ${a.label}`} className="shrink-0 rounded-md focus-visible:outline-offset-1">
               <img src={a.url} alt="" className="size-12 rounded-md border border-line object-cover" loading="lazy" />
@@ -33,12 +30,7 @@ function AttachmentList({ items, onZoom, emptyText }: { items: Attachment[]; onZ
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 text-[13px] font-semibold">
-              <span className="truncate" title={a.label}>{a.label}</span>
-              {a.prompt_label && <span className="rounded bg-surface-3 px-1.5 text-[11px] font-semibold text-muted">{a.prompt_label}</span>}
-              {!a.prompt_label && a.kind !== 'ref' && <span className="rounded bg-surface-3 px-1.5 text-[11px] font-semibold text-muted">không đánh số trong prompt</span>}
-            </div>
-            <p className="truncate text-[11px] text-muted" title={a.file_name ?? undefined}>{a.file_name ?? 'Chưa có file'}</p>
+            <p className="text-[13px] font-semibold" title={a.label}>{a.prompt_label ? a.prompt_label.replace(/^ảnh/i, 'Ảnh') : a.kind === 'ref' ? `Ảnh ${a.order}` : `Storyboard ${a.scene_code ?? ''}`}{a.file_name ? ` (${a.file_name})` : ' · chưa có file'}</p>
             {a.note && <p className="mt-0.5 text-[11.5px] text-warn-fg">{a.note}</p>}
           </div>
           {a.available && a.url && (
@@ -116,10 +108,11 @@ function StoryboardUpload({ planId, scene, maxUploads, onZoom }: { planId: numbe
   );
 }
 
-export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { planId: number; scene: ScenePlanView; maxUploads: number; videoLimits: SceneVideoLimits; onZoom: (src: string, title: string) => void }) {
+export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom, focus }: { focus?: { step: string; request: number }; planId: number; scene: ScenePlanView; maxUploads: number; videoLimits: SceneVideoLimits; onZoom: (src: string, title: string) => void }) {
   const { step1, step2 } = scene;
   const s = step2.settings;
   const [step, setStep] = useState(() => scene.videos.selected_id !== null ? 'upload' : scene.storyboard ? 'flow' : 'storyboard');
+  useEffect(() => { if (focus) setStep(focus.step); }, [focus?.step, focus?.request]);
   const steps = [
     { value: 'storyboard', label: '1. Storyboard', icon: 'image' as const, done: !!scene.storyboard && !scene.storyboard.stale },
     { value: 'flow', label: '2. Prompt video', icon: 'film' as const },
@@ -147,7 +140,7 @@ export function SceneCard({ planId, scene, maxUploads, videoLimits, onZoom }: { 
         <div className="step-intro"><div><h3>Tạo video trên Google Flow</h3><p>Sao chép prompt, đính kèm đủ ảnh và kiểm tra cài đặt trước khi tạo.</p></div><a href="https://flow.google.com" target="_blank" rel="noreferrer" className={buttonClass('secondary', 'sm')}><Icon name="link" size={14} />Mở Google Flow</a></div>
         <div className="scene-step-grid">
           <div className="min-w-0"><TextBlock title="Prompt Google Flow" text={step2.prompt} copyLabel="Sao chép prompt" />{step2.warnings.map((w) => <p key={w} className="scene-warning">{w}</p>)}{step2.notes.length > 0 && <details className="flow-instructions"><summary><Icon name="alert" size={14} />Lưu ý trước khi tạo video <Icon name="chevronDown" size={14} /></summary><ul className="list-disc space-y-2 pl-5">{step2.notes.map((n) => <li key={n}>{n}</li>)}</ul></details>}</div>
-          <div className="min-w-0 space-y-5"><div className="flow-settings"><h4 className="section-label">Cài đặt video</h4><div className="flex flex-wrap gap-2" aria-label="Cài đặt Flow"><Chip>{s.aspect}</Chip><Chip>{s.duration_s} giây</Chip><Chip>x{s.count}</Chip><Chip>{s.resolution}</Chip><Chip tone="spend">Ước tính {s.estimated_credits} credit</Chip></div></div><div><h4 className="section-label">Ảnh đính kèm <span>Theo thứ tự</span></h4><AttachmentList items={step2.attachments} onZoom={onZoom} emptyText="Không có ảnh để đính kèm." /></div><p className="scene-tip"><Icon name="image" size={16} /><span>Đính kèm ảnh trực tiếp vào ô prompt của Flow. Chỉ tải vào thư viện dự án là chưa đủ.</span></p></div>
+          <div className="min-w-0 space-y-5"><div className="flow-settings"><h4 className="section-label">Cài đặt video</h4><div className="flex flex-wrap gap-2" aria-label="Cài đặt Flow"><Chip>{s.aspect}</Chip><Chip>{s.duration_s} giây</Chip><Chip>x{s.count}</Chip><Chip>{s.resolution}</Chip></div></div><div><h4 className="section-label">Ảnh đính kèm <span>Theo thứ tự</span></h4><AttachmentList items={step2.attachments} onZoom={onZoom} emptyText="Không có ảnh để đính kèm." /></div><p className="scene-tip"><Icon name="image" size={16} /><span>Đính kèm ảnh trực tiếp vào ô prompt của Flow. Chỉ tải vào thư viện dự án là chưa đủ.</span></p></div>
         </div>
       </section>
 

@@ -7,6 +7,14 @@ import { JOB_TYPES, type JobType } from './db/types.js';
 /** Thư mục gốc repo (autovideo/). config.ts nằm ở server/src nên đi lên 2 cấp. */
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+export interface AiApiConfig {
+  /** Base URL chuẩn OpenAI, kết thúc bằng /v1, không có dấu / cuối. */
+  baseUrl: string;
+  key: string;
+  model: string;
+  timeoutMs: number;
+}
+
 export interface Config {
   workerMode: 'legacy' | 'managed';
   /**
@@ -14,6 +22,11 @@ export interface Config {
    * Loại còn lại do worker legacy (WORKER.md, curl) nhận. Luôn dùng `managedJobTypes()` để đọc giá trị hiệu lực.
    */
   managedJobTypes: JobType[] | null;
+  /**
+   * AI API dùng chung trên server (`AI_API_URL`, `AI_API_KEY`, `AI_API_MODEL`). Có cấu hình → mọi `/infer` của managed worker
+   * gọi thẳng API này với một model cố định; account pool/proxy local không được dùng. null = dùng account pool như cũ.
+   */
+  aiApi: AiApiConfig | null;
   aiHome: string;
   port: number;
   host: string;
@@ -64,13 +77,18 @@ export interface Config {
   /** Dung lượng tối đa của một video LAN tải lên (video cảnh và công cụ xoá logo). Mặc định 200 MB; chỉ test đổi. */
   lanVideoMaxBytes: number;
   /**
+   * Tab Autovideo của trang LAN: người dùng LAN bấm tạo storyboard/video, job vào hàng đợi chung và worker nền (`npm run worker:media`)
+   * tạo bằng Muse2API/Flow2API của chủ máy (tốn hạn mức/credit của chủ máy). Mặc định bật; `LAN_AUTOVIDEO=false` tắt (tab vẫn hiện, nút bị khóa).
+   */
+  lanAutovideo: boolean;
+  /**
    * Số việc render/xoá logo chạy CÙNG LÚC trong hàng đợi render (bản dựng của app + LAN và việc công cụ xoá logo LAN). Mặc định 2, kẹp 1–4.
    * Việc của dự án `app` vẫn được lấy trước việc LAN đang chờ; việc đang chạy không bị ngắt.
    */
   renderConcurrency: number;
   /** Số ngày dự án nằm trong thùng rác trước khi tự xoá vĩnh viễn (`TRASH_RETENTION_DAYS`, mặc định 30, tối thiểu 1). */
   trashRetentionDays: number;
-  // ---- Cắt clip từ video dài ----
+  // ---- Highlight từ video dài ----
   /** `omnix`: dịch vụ nhận dạng lời nói nội bộ (chuẩn OpenAI); `none`: chưa cấu hình (báo "chưa cấu hình nhận dạng lời nói"). Mặc định `omnix` nếu có STT_URL. */
   sttProvider: 'omnix' | 'none';
   /** URL đầy đủ của `POST .../v1/audio/transcriptions` (vd http://10.0.3.214:18085/v1/audio/transcriptions). Rỗng = chưa cấu hình. */
@@ -120,6 +138,7 @@ export function defaultConfig(rootDir: string, dbPath: string): Config {
   return {
     workerMode: 'legacy',
     managedJobTypes: null,
+    aiApi: null,
     aiHome: path.join(os.homedir(), '.local/share/autovideo/accounts', crypto.createHash('sha256').update(dbPath).digest('hex').slice(0, 12)),
     port: 8787,
     host: '127.0.0.1',
@@ -150,6 +169,7 @@ export function defaultConfig(rootDir: string, dbPath: string): Config {
     lanAllowedHosts: [],
     lanDistDir: path.join(REPO_ROOT, 'web', 'dist'),
     lanVideoMaxBytes: 200 * 1024 * 1024,
+    lanAutovideo: true,
     renderConcurrency: RENDER_CONCURRENCY_DEFAULT,
     trashRetentionDays: TRASH_RETENTION_DAYS_DEFAULT,
     sttProvider: 'none',
@@ -238,6 +258,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...base,
     workerMode: env.WORKER_MODE === 'managed' ? 'managed' : 'legacy',
     managedJobTypes: parseManagedJobTypes(env.MANAGED_JOB_TYPES),
+    aiApi: parseAiApi(env),
     aiHome: env.AI_HOME ? path.resolve(env.AI_HOME) : base.aiHome,
     port: num(env.PORT, base.port),
     host: env.HOST || base.host,
@@ -272,13 +293,39 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
     lanDistDir: path.join(REPO_ROOT, 'web', 'dist'),
+    lanAutovideo: bool(env.LAN_AUTOVIDEO, base.lanAutovideo),
     renderConcurrency: parseRenderConcurrency(env.RENDER_CONCURRENCY),
     trashRetentionDays: parseTrashRetentionDays(env.TRASH_RETENTION_DAYS),
     ...parseClipConfig(env),
   };
 }
 
-/** Cấu hình cắt clip (STT_*, CLIP_*, LAN_CLIP_*). `STT_PROVIDER` mặc định `omnix` nếu có `STT_URL`, ngược lại `none`; giá trị lạ → `none`. */
+export const AI_API_DEFAULT_MODEL = 'gemini-3.8-flash-high';
+/** Provenance của lượt gọi AI API: ai_attempts.account_id = NULL (tài khoản pool không bao giờ bị xóa cứng, chỉ bị tắt). */
+export const AI_API_PROVIDER = 'api';
+export const AI_API_ALIAS = 'AI API';
+
+/**
+ * `AI_API_URL` rỗng → null (dùng account pool). Có URL thì bắt buộc `AI_API_KEY`; URL phải HTTPS (HTTP chỉ cho loopback, dùng khi test),
+ * không chứa credential/query. Thiếu `/v1` thì tự thêm. Sai cấu hình làm server không khởi động thay vì âm thầm quay về pool.
+ */
+export function parseAiApi(env: NodeJS.ProcessEnv): AiApiConfig | null {
+  const raw = (env.AI_API_URL ?? '').trim();
+  if (!raw) return null;
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new Error('AI_API_URL không phải URL hợp lệ'); }
+  const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname);
+  if (!(u.protocol === 'https:' || (u.protocol === 'http:' && loopback)) || u.username || u.password || u.search || u.hash) {
+    throw new Error('AI_API_URL phải là HTTPS (HTTP chỉ cho loopback) và không chứa credential/query');
+  }
+  const key = (env.AI_API_KEY ?? '').trim();
+  if (!key) throw new Error('AI_API_URL đã đặt nhưng thiếu AI_API_KEY');
+  let baseUrl = u.toString().replace(/\/+$/, '');
+  if (!/\/v1$/.test(baseUrl)) baseUrl += '/v1';
+  return { baseUrl, key, model: (env.AI_API_MODEL ?? '').trim() || AI_API_DEFAULT_MODEL, timeoutMs: Math.min(num(env.AI_API_TIMEOUT_MS, 120_000), 125_000) };
+}
+
+/** Cấu hình highlight (STT_*, CLIP_*, LAN_CLIP_*). `STT_PROVIDER` mặc định `omnix` nếu có `STT_URL`, ngược lại `none`; giá trị lạ → `none`. */
 export function parseClipConfig(env: NodeJS.ProcessEnv): Pick<Config, 'sttProvider' | 'sttUrl' | 'sttTenantId' | 'sttTimeoutMs' | 'sttMaxRetries' | 'clipSourceMaxBytes' | 'clipSourceMaxS' | 'lanClipSourceMaxBytes' | 'lanClipSourceMaxS' | 'clipMinFreeGb' | 'lanClipSourceRetentionDays' | 'clipCaptionFont' | 'clipFontsDir' | 'clipFfmpegPath'> {
   const base = defaultConfig('', '');
   const sttUrl = (env.STT_URL ?? '').trim();

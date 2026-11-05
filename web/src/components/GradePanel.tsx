@@ -194,7 +194,7 @@ export function GradePanel({ fc, api, blockReason, onCreated }: { fc: FinalCut; 
             <Button variant="primary" loading={create.isPending} disabledReason={createReason} onClick={() => create.mutate(draft)} icon={<Icon name="plus" size={14} />}>
               Tạo phiên bản
             </Button>
-            <span className="text-xs text-muted">Chỉ chạy bước chỉnh màu trên bản sạch (không render, không tốn AI hay credit). Bản hiện tại được giữ.</span>
+            <span className="text-xs text-muted">Chỉ chạy bước chỉnh màu trên bản sạch (không render, không gọi AI). Bản hiện tại được giữ.</span>
           </div>
           {blockReason && (
             <p className="flex items-start gap-1 text-xs text-warn-fg">

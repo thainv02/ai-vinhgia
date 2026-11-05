@@ -1,5 +1,5 @@
 /**
- * Dự án cắt clip và video nguồn: tạo/sửa dự án, nhận video tải lên (đã stream xuống file tạm), kiểm tra ffprobe/dung lượng, dùng lại theo content_hash,
+ * Dự án highlight và video nguồn: tạo/sửa dự án, nhận video tải lên (đã stream xuống file tạm), kiểm tra ffprobe/dung lượng, dùng lại theo content_hash,
  * ảnh đại diện và bản xem thử 480p, hạn lưu video nguồn của LAN.
  */
 import fs from 'node:fs';
@@ -52,7 +52,7 @@ export function createClipProject(ctx: AppContext, body: CreateClipProjectBody, 
     logEvent(ctx, {
       project_id: project.id,
       type: 'project.created',
-      message: source === 'lan' ? `Tạo dự án cắt clip "${project.name}" từ trang LAN (người tạo: ${project.created_by_name ?? 'không rõ'})` : `Tạo dự án cắt clip "${project.name}"`,
+      message: source === 'lan' ? `Tạo dự án highlight "${project.name}" từ trang LAN (người tạo: ${project.created_by_name ?? 'không rõ'})` : `Tạo dự án highlight "${project.name}"`,
     });
     return project;
   });
@@ -73,7 +73,7 @@ export function patchClipProject(ctx: AppContext, id: number, patch: PatchClipPr
     }
     if (!sets.length) return p;
     ctx.db.prepare(`UPDATE projects SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ctx.now(), id);
-    logEvent(ctx, { project_id: id, type: 'project.updated', message: `Cập nhật dự án cắt clip: ${Object.keys(patch).join(', ')}` });
+    logEvent(ctx, { project_id: id, type: 'project.updated', message: `Cập nhật dự án highlight: ${Object.keys(patch).join(', ')}` });
     emitProject(ctx, id);
     return getProject(ctx, id);
   });

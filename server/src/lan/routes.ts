@@ -44,6 +44,8 @@ import { registerLanClipRoutes } from './routes-clips.js';
 import { registerLanColorRoutes } from './routes-color.js';
 import { registerLanMediaRoutes } from './routes-media.js';
 import { registerLanToolRoutes } from './routes-tools.js';
+import { registerLanAutoRoutes } from './routes-auto.js';
+import { mediaStatus } from '../services/lan-auto.js';
 
 export { LAN_RATE };
 
@@ -135,14 +137,20 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
         grade: L.grade.check(lanIp(req)).remaining,
         grade_preview: L.gradePreview.check(lanIp(req)).remaining,
         color_ref: L.colorRef.check(lanIp(req)).remaining,
-        // cắt clip từ video dài
+        // highlight từ video dài
         clip_project: L.clipProject.check(lanIp(req)).remaining,
         clip_source: Math.max(0, L.clipSource.check(lanIp(req)).remaining - L.clipGate.inflight(lanIp(req))),
         clip_plan: L.clipPlan.check(lanIp(req)).remaining,
         clip_render: L.clipRender.check(lanIp(req)).remaining,
         clip_edit: L.clipEdit.check(lanIp(req)).remaining,
+        // Autovideo (tạo storyboard/video tự động)
+        auto_project: L.autoProject.check(lanIp(req)).remaining,
+        auto_storyboard: L.autoStoryboard.check(lanIp(req)).remaining,
+        auto_video: L.autoVideo.check(lanIp(req)).remaining,
       },
-      /** Giới hạn cắt clip: dung lượng/thời lượng video nguồn, hạn lưu, nhận dạng lời nói và phụ đề có sẵn không. */
+      /** Autovideo: chủ máy có bật không, máy tạo ảnh/video có đang chạy không, hàng đợi tạm dừng (lý do đã viết lại), số việc LAN đang chờ/chạy / trần. */
+      autovideo: mediaStatus(ctx),
+      /** Giới hạn highlight: dung lượng/thời lượng video nguồn, hạn lưu, nhận dạng lời nói và phụ đề có sẵn không. */
       clip: clipLimits(ctx, true),
       // việc từ LAN đang trong hàng đợi / trần toàn cục
       queue: lanQueueLoad(ctx),
@@ -181,7 +189,7 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
     const ip = lanIp(req);
     const lim = L.deletePlan.check(ip);
     if (!lim.allowed) throw tooMany(reply, `Mỗi người chỉ được xoá tối đa ${LAN_RATE.deletePlan.max} kế hoạch mỗi giờ.`, lim.retryAfterMs);
-    const p = lanProjectAny(ctx, planId(req)); // 404 nếu không có / đã xoá / không phải dự án LAN (kế hoạch prompt hoặc cắt clip)
+    const p = lanProjectAny(ctx, planId(req)); // 404 nếu không có / đã xoá / không phải dự án LAN (kế hoạch prompt hoặc highlight)
     L.deletePlan.record(ip);
     if (!ownsLanPlan(p, peekClientHash(req))) {
       throw new AppError('NOT_PLAN_OWNER', 'Chỉ người tạo (trình duyệt đã tạo kế hoạch) mới xoá được; nhờ chủ máy xoá', 403);
@@ -289,6 +297,7 @@ export async function registerLanRoutes(app: FastifyInstance, ctx: AppContext, s
   registerLanColorRoutes(app, ctx, L);
   registerLanToolRoutes(app, ctx, L);
   registerLanClipRoutes(app, ctx, L);
+  registerLanAutoRoutes(app, ctx, L);
 
   app.setNotFoundHandler(() => {
     throw new AppError('NOT_FOUND', 'Không tìm thấy đường dẫn', 404);

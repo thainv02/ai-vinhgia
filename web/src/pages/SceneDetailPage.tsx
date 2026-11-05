@@ -9,6 +9,7 @@ import { Icon } from '../components/Icon';
 import { ImageLightbox } from '../components/ImageLightbox';
 import { PromptPanel } from '../components/PromptPanel';
 import { SceneActions } from '../components/SceneActions';
+import { StoryboardLogoBadge } from '../components/StoryboardLogo';
 import { Alert, ErrorState, Skeleton } from '../components/States';
 import { Badge, JobStatusBadge, SceneStatusBadge } from '../components/StatusBadge';
 import { VerdictPanel } from '../components/VerdictPanel';
@@ -45,7 +46,7 @@ function VersionStrip({ scene, videos, active, onPick }: { scene: SceneDetail; v
             role="tab"
             aria-selected={isActive}
             onClick={() => onPick(v.id)}
-            title={v.verdict ? `Kết luận: ${VERDICT[v.verdict].label}` : 'Chưa đánh giá'}
+            title={`${v.verdict ? `Kết luận: ${VERDICT[v.verdict].label}` : 'Chưa đánh giá'}${typeof v.meta?.generator === 'string' ? ` · tạo bằng ${v.meta.generator}` : ''}`}
             className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-semibold ${
               isActive ? 'border-fg bg-ink text-ink-fg' : 'border-line-strong bg-surface hover:bg-surface-2'
             }`}
@@ -204,7 +205,7 @@ export default function SceneDetailPage() {
                   </strong>{' '}
                   {lastFailed.error ?? 'Không có chi tiết.'}
                   {scene.status === 'blocked_budget' && (
-                    <span className="mt-1 block text-xs">Tài khoản Google Flow đã hết credit thật. Nạp thêm credit trên Flow rồi bấm «Về chờ duyệt» để duyệt lại.</span>
+                    <span className="mt-1 block text-xs">Tài khoản tạo video đã hết hạn mức. Kiểm tra tài khoản tạo video rồi bấm «Về chờ duyệt» để duyệt lại.</span>
                   )}
                   <span className="block text-xs opacity-80">{fmtDateTime(lastFailed.finished_at)}</span>
                 </Alert>
@@ -219,7 +220,6 @@ export default function SceneDetailPage() {
             )}
             <SceneActions
               scene={scene}
-              creditPerVideo={scene.project.credit_per_video}
               variant="detail"
               lastJobType={lastJob?.type}
               viewingVideoId={active?.id}
@@ -254,6 +254,7 @@ export default function SceneDetailPage() {
                         <span className="mt-0.5 block text-center text-[11px] text-muted" title={s.verdict_note ?? undefined}>
                           Lượt {s.attempt}
                         </span>
+                        <StoryboardLogoBadge asset={s} />
                       </li>
                     ))}
                   </ul>
@@ -299,7 +300,7 @@ export default function SceneDetailPage() {
                     <span className="text-muted">#{j.id}</span>
                     <strong>{JOB_TYPE_LABEL[j.type]}</strong>
                     <JobStatusBadge status={j.status} />
-                    {j.credits_cost > 0 && <span className="text-spend">{j.credits_cost} credit</span>}
+                    {j.attempt_used && <span className="text-warn-fg">tính 1 lượt</span>}
                     <span className="ml-auto text-xs text-muted">{fmtDateTime(j.created_at)}</span>
                     {j.error && <p className="basis-full text-xs text-danger-fg">{j.error}</p>}
                   </li>

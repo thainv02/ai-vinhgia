@@ -100,7 +100,7 @@ describe('trạng thái online của worker', () => {
 describe('claim nguyên tử', () => {
   async function queueStoryboards(n: number) {
     const sc = await setupProject(env, { scenes: n });
-    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'storyboard', expectedCredits: 0 });
+    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'storyboard' });
     return sc;
   }
 
@@ -189,7 +189,7 @@ describe('MAX_CONCURRENT_VIDEO_JOBS', () => {
     env = await makeEnv({ config: { maxConcurrentVideoJobs: 2 } });
     const sc = await setupProject(env, { scenes: 4 });
     for (const s of sc.scenes) await toStoryboardReview(sc, s.id);
-    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'video', expectedCredits: 60 });
+    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'video' });
     const j1 = await claim(sc, 'a');
     const j2 = await claim(sc, 'b');
     expect([j1.type, j2.type]).toEqual(['video', 'video']);
@@ -285,8 +285,8 @@ describe('job mất heartbeat', () => {
     expect(requeued.last_requeued_at).toBe(env.ctx.now());
     const s = await scene(sc, id);
     expect(s.status).toBe('video_queued');
-    // credit vẫn được đặt trước (job còn trong hàng đợi) và có cảnh báo trong dòng thời gian + project detail
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.reserved).toBe(15);
+    // lượt vẫn bị chiếm (job còn trong hàng đợi) và có cảnh báo trong dòng thời gian + project detail
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.scenes[0].attempts_used).toBe(1);
     const events = (await sc.user.get(`/api/projects/${sc.project.id}/events?sceneId=${id}`)).body;
     expect(events.find((e: any) => e.type === 'job.requeued').message).toContain('mất heartbeat');
     expect((await sc.user.get(`/api/projects/${sc.project.id}`)).body.requeued_jobs.map((x: any) => x.id)).toEqual([j.id]);
@@ -302,8 +302,8 @@ describe('job mất heartbeat', () => {
     expect((await scene(sc, id)).status).toBe('video_running');
     expect((await finish(sc, j2)).status).toBe(200);
     expect((await scene(sc, id)).status).toBe('video_review');
-    // chỉ một video được tạo, một khoản credit bị trừ
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body).toMatchObject({ used: 15, reserved: 0 });
+    // chỉ một video được tạo, đúng một lượt
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.scenes[0].attempts_used).toBe(1);
   });
 
   it('heartbeat đều đặn giữ job không bị trả về; heartbeat đầu tiên đổi claimed → running', async () => {
@@ -348,7 +348,7 @@ describe('hủy job', () => {
       expect(r.status, url).toBe(409);
       expect(r.body.error.code, url).toBe('JOB_CANCELLED');
     }
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.reserved).toBe(0);
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.scenes[0].attempts_used).toBe(0);
     // không có asset nào được tạo
     expect((await scene(sc, id)).assets).toHaveLength(0);
   });
@@ -381,7 +381,7 @@ describe('hủy job', () => {
 describe('fail và tạm dừng hàng đợi', () => {
   it('CAPTCHA tạm dừng hàng đợi: next trả 503 QUEUE_PAUSED cho tới khi resume', async () => {
     const sc = await setupProject(env, { scenes: 2 });
-    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'storyboard', expectedCredits: 0 });
+    await sc.user.post(`/api/projects/${sc.project.id}/approve-all`, { stage: 'storyboard' });
     const j = await claim(sc);
     const f = await sc.worker.post(`/api/worker/jobs/${j.id}/fail`, { error: 'Gặp CAPTCHA', code: 'CAPTCHA' });
     expect(f.status).toBe(200);
@@ -466,7 +466,7 @@ describe('complete: kiểm tra file và kết quả', () => {
     expect((await complete(sc, job, [{ kind: 'storyboard', file_path: job.payload.output.storyboard_path }])).status).toBe(400);
   });
 
-  it('video: verdict không hợp lệ → 400; không có asset video → 400; credits_cost=0 không ghi sổ cái', async () => {
+  it('video: verdict không hợp lệ → 400; không có asset video → 400; không ghi sổ credit', async () => {
     const sc = await setupProject(env, { scenes: 1 });
     const id = sc.scenes[0].id;
     await toStoryboardReview(sc, id);
@@ -480,7 +480,7 @@ describe('complete: kiểm tra file và kết quả', () => {
     expect(only.body.error.code).toBe('ASSET_REQUIRED');
     const ok = await sc.worker.post(`/api/worker/jobs/${job.id}/complete`, { result: {}, assets: [{ kind: 'video', file_path: v }], credits_cost: 0 });
     expect(ok.status).toBe(200);
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/ledger`)).body.entries).toHaveLength(0);
+    expect(env.ctx.db.prepare('SELECT COUNT(*) AS n FROM credit_ledger').get()).toEqual({ n: 0 });
     expect((await scene(sc, id)).video.verdict).toBeNull();
   });
 

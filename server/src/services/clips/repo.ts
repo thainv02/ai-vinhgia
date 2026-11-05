@@ -1,5 +1,5 @@
 /**
- * Truy cập dữ liệu dự án cắt clip: getter (404 nếu không có / dự án vào thùng rác / không phải dự án `clips`), đường dẫn file, đọc transcript (có cache).
+ * Truy cập dữ liệu dự án highlight: getter (404 nếu không có / dự án vào thùng rác / không phải dự án `clips`), đường dẫn file, đọc transcript (có cache).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,10 +24,10 @@ export const exists = (ctx: AppContext, rel: string | null | undefined): boolean
 
 // ---------------------------------------------------------------- getter
 
-/** Dự án cắt clip (kind='clips', chưa vào thùng rác). Dự án kind khác → 404 như không tồn tại. */
+/** Dự án highlight (kind='clips', chưa vào thùng rác). Dự án kind khác → 404 như không tồn tại. */
 export function getClipProject(ctx: AppContext, id: number): ProjectRow {
   const p = getProject(ctx, id);
-  if (p.kind !== 'clips') throw notFound('dự án cắt clip');
+  if (p.kind !== 'clips') throw notFound('dự án highlight');
   return p;
 }
 

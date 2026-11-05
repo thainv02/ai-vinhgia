@@ -101,7 +101,8 @@ export interface Job {
   heartbeat_at: string | null;
   created_at: string;
   finished_at: string | null;
-  credits_cost: number;
+  /** true: job video lỗi nhưng vẫn tính một lượt tạo của cảnh. */
+  attempt_used: boolean;
   requires_approval: boolean;
   approved_at: string | null;
   requeue_count: number;
@@ -170,7 +171,6 @@ export interface SceneDetail extends Scene {
     slug: string;
     name: string;
     style_lock: string;
-    credit_per_video: number;
     max_attempts_per_scene: number;
   };
   assets: Asset[];
@@ -182,9 +182,6 @@ export interface SceneDetail extends Scene {
 }
 
 export interface Budget {
-  used: number;
-  reserved: number;
-  credit_per_video: number;
   max_attempts: number;
   scenes: { scene_id: number; code: string; attempts_used: number; max_attempts: number }[];
 }
@@ -196,9 +193,10 @@ export interface ProjectSummary {
   brief: string;
   style_lock: string;
   max_attempts_per_scene: number;
-  credit_per_video: number;
+  /** Dịch vụ tạo ảnh storyboard của dự án: 'muse' | 'flow-image'. Vắng (server cũ) = 'muse'. */
+  storyboard_generator?: string;
   status: ProjectStatus;
-  /** 'clips': dự án cắt clip từ video dài (mở ở /clips/:id). Vắng = 'scenes'. */
+  /** 'clips': dự án highlight từ video dài (mở ở /clips/:id). Vắng = 'scenes'. */
   kind?: 'scenes' | 'clips';
   /** 'lan': kế hoạch do người dùng LAN tạo qua trang planner. Vắng = 'app'. */
   source?: 'app' | 'lan';
@@ -209,8 +207,6 @@ export interface ProjectSummary {
   scene_count: number;
   done_count: number;
   status_counts: Partial<Record<SceneStatus, number>>;
-  credits_used: number;
-  credits_reserved: number;
   /** Bản hoàn chỉnh mới nhất (gọn). null/vắng nếu chưa có. */
   latest_final_cut?: LatestFinalCut | null;
   /** Lý do chưa bấm được "Dựng bản mới" (null = bấm được). */
@@ -248,27 +244,8 @@ export interface TrashItem {
   size_bytes: number | null;
   scene_count: number;
   done_count: number;
-  credits_used: number;
   /** Lý do chưa khôi phục được (chỗ cũ bị chiếm); null = khôi phục được. */
   restore_block: string | null;
-}
-
-export interface LedgerEntry {
-  id: number;
-  project_id: number;
-  scene_id: number | null;
-  scene_code: string | null;
-  job_id: number | null;
-  delta: number;
-  note: string | null;
-  created_at: string;
-  /** Tổng credit đã tiêu lũy kế tới dòng này. */
-  cumulative_used: number;
-}
-
-export interface Ledger {
-  totals: { used: number; reserved: number };
-  entries: LedgerEntry[];
 }
 
 export interface WorkerStatus {
@@ -282,19 +259,46 @@ export interface WorkerStatus {
   server_time?: string;
 }
 
+/** Dịch vụ tạo video người dùng chọn khi bấm «Tạo video» (GET /api/video-generators). */
+export interface VideoGenerator {
+  id: string;
+  provider: 'muse' | 'flow';
+  model: string;
+  label: string;
+  duration_s: number;
+  max_images: number;
+  flow_credits: number | null;
+  note: string;
+}
+
+/** Dịch vụ tạo ảnh storyboard (chọn theo dự án). `remove_logo`: server tự xoá logo Gemini trên ảnh. */
+export interface StoryboardGenerator {
+  id: string;
+  provider: 'muse' | 'flow';
+  model: string;
+  label: string;
+  max_images: number;
+  remove_logo: boolean;
+  note: string;
+}
+
+/** Kết quả bước xoá logo trên ảnh storyboard Google Flow (`asset.meta.logo`). */
+export interface LogoInfo {
+  status: 'removed' | 'none' | 'failed' | 'skipped';
+  detail: string;
+  raw_path: string;
+}
+
 export interface ApprovePreview {
   stage: Stage;
   count: number;
-  scenes: { scene_id: number; code: string; title: string; status: SceneStatus; credits: number }[];
+  scenes: { scene_id: number; code: string; title: string; status: SceneStatus }[];
   skipped: { scene_id: number; code: string; reason_code: string; message: string }[];
-  total_credits: number;
-  credit_per_video: number;
 }
 
 export interface ApproveAllResult {
   stage: Stage;
   count: number;
-  total_credits: number;
   jobs: { scene_id: number; code: string; job_id: number }[];
 }
 

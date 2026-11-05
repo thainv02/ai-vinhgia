@@ -57,7 +57,7 @@ function PurgeDialog({ item, onClose }: { item: TrashItem; onClose: () => void }
     >
       <div className="space-y-3 text-sm">
         <p>
-          Xoá hẳn <strong>{item.name}</strong>: toàn bộ video, ảnh, bản hoàn chỉnh, nhật ký và sổ credit ({item.credits_used} credit đã dùng) của dự án mất vĩnh viễn, <strong>không khôi phục được</strong>.
+          Xoá hẳn <strong>{item.name}</strong>: toàn bộ video, ảnh, bản hoàn chỉnh, và nhật ký của dự án mất vĩnh viễn, <strong>không khôi phục được</strong>.
         </p>
         <div>
           <label htmlFor="purge-name" className="mb-1 block text-[13px] font-semibold">
@@ -124,7 +124,7 @@ function TrashRow({ item, onPurge }: { item: TrashItem; onPurge: () => void }) {
         <div>
           <dt className="text-muted">Nội dung</dt>
           <dd className="text-sm font-semibold">
-            {item.done_count}/{item.scene_count} cảnh xong · {item.credits_used} credit
+            {item.done_count}/{item.scene_count} cảnh xong
           </dd>
         </div>
       </dl>

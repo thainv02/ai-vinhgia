@@ -33,7 +33,7 @@ export function ProgressBar({ counts, total }: { counts: Partial<Record<SceneSta
   );
 }
 
-/** Thẻ dự án cắt clip: mở /clips/:id, nhãn loại "Cắt clip", không có tiến độ cảnh/credit. */
+/** Thẻ dự án highlight: mở /clips/:id, nhãn loại "Highlight", không có tiến độ cảnh. */
 function ClipProjectCard({ project: p }: { project: ProjectSummary }) {
   return (
     <Link
@@ -42,14 +42,14 @@ function ClipProjectCard({ project: p }: { project: ProjectSummary }) {
     >
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-[15px] font-semibold leading-snug group-hover:underline">{p.name}</h2>
-        <Badge tone="violet">Cắt clip</Badge>
+        <Badge tone="violet">Highlight</Badge>
       </div>
       {p.source === 'lan' && (
         <div className="-mt-1.5">
           <LanBadge name={p.created_by_name} />
         </div>
       )}
-      <p className="text-xs text-muted">Cắt clip 9:16 từ video dài · tạo {fmtRelative(p.created_at)}</p>
+      <p className="text-xs text-muted">Highlight 9:16 từ video dài · tạo {fmtRelative(p.created_at)}</p>
     </Link>
   );
 }
@@ -106,18 +106,12 @@ export function ProjectCard({ project: p }: { project: ProjectSummary }) {
           <dd className="text-sm font-semibold">{total}</dd>
         </div>
         <div>
-          <dt className="text-muted">Đã dùng</dt>
-          <dd className="text-sm font-semibold">{p.credits_used} credit</dd>
+          <dt className="text-muted">Đã xong</dt>
+          <dd className="text-sm font-semibold">{p.done_count}</dd>
         </div>
-        {p.credits_reserved > 0 && (
-          <div>
-            <dt className="text-muted">Đặt trước</dt>
-            <dd className="text-sm font-semibold text-spend">{p.credits_reserved} credit</dd>
-          </div>
-        )}
         <div className="ml-auto text-right">
-          <dt className="text-muted">Mỗi video</dt>
-          <dd className="text-sm font-semibold">{p.credit_per_video} credit</dd>
+          <dt className="text-muted">Lượt mỗi cảnh</dt>
+          <dd className="text-sm font-semibold">tối đa {p.max_attempts_per_scene}</dd>
         </div>
       </dl>
     </Link>

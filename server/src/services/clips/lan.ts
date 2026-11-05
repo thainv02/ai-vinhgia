@@ -1,7 +1,8 @@
 /**
- * Phần riêng của trang LAN cho dự án cắt clip: tìm dự án, danh sách, giới hạn hiển thị, và danh sách file được phục vụ qua `/lan/files`.
+ * Phần riêng của trang LAN cho dự án highlight: tìm dự án, danh sách, giới hạn hiển thị, và danh sách file được phục vụ qua `/lan/files`.
  * KHÔNG BAO GIỜ phục vụ video nguồn gốc (chỉ bản xem thử 480p, poster, ảnh đại diện clip và clip đã dựng `ready` dạng mp4/srt).
  */
+import { isManagedJobType } from '../../config.js';
 import type { AppContext } from '../../context.js';
 import type { ProjectRow } from '../../db/types.js';
 import { notFound } from '../../lib/errors.js';
@@ -10,10 +11,10 @@ import { clipProjectSummary, type ViewOpts } from './view.js';
 import { captionSupport } from './render.js';
 import { sttConfigured } from './stt.js';
 
-/** Dự án cắt clip của LAN; dự án app hoặc kế hoạch prompt → 404 như không tồn tại. */
+/** Dự án highlight của LAN; dự án app hoặc kế hoạch prompt → 404 như không tồn tại. */
 export function lanClipProject(ctx: AppContext, id: number): ProjectRow {
   const p = getProject(ctx, id);
-  if (p.source !== 'lan' || p.kind !== 'clips') throw notFound('dự án cắt clip');
+  if (p.source !== 'lan' || p.kind !== 'clips') throw notFound('dự án highlight');
   return p;
 }
 
@@ -22,7 +23,7 @@ export function listLanClipProjects(ctx: AppContext, o: ViewOpts) {
   return rows.map((p) => clipProjectSummary(ctx, p, o));
 }
 
-/** `rel` có được phục vụ qua listener LAN như một file của dự án cắt clip LAN không. */
+/** `rel` có được phục vụ qua listener LAN như một file của dự án highlight LAN không. */
 export function isLanClipServable(ctx: AppContext, rel: string): boolean {
   const m = /^output\/([^/]+)\/clips\/(.+)$/.exec(rel);
   if (!m) return false;
@@ -50,5 +51,6 @@ export function clipLimits(ctx: AppContext, lan: boolean) {
     stt: { configured: sttConfigured(ctx) },
     captions: { available: cap.available, reason: lan ? (cap.available ? null : 'Máy chủ chưa hỗ trợ phụ đề; hãy chọn "Không phụ đề" hoặc báo chủ máy') : cap.reason, font: c.clipCaptionFont },
     plan: { min_count: 1, max_count: 15 },
+    cleanup: { required: true, configured: isManagedJobType(c, 'clip_plan') },
   };
 }

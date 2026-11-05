@@ -11,9 +11,8 @@ export const qk = {
   scenes: (projectId: number) => ['scenes', projectId] as const,
   scene: (id: number) => ['scene', id] as const,
   budget: (projectId: number) => ['budget', projectId] as const,
-  preview: (projectId: number, stage: Stage) => ['approve-preview', projectId, stage] as const,
+  preview: (projectId: number, stage: Stage, generator?: string) => ['approve-preview', projectId, stage, generator ?? ''] as const,
   jobs: (filter: object) => ['jobs', filter] as const,
-  ledger: (projectId: number) => ['ledger', projectId] as const,
   events: (projectId: number, sceneId?: number) => ['events', projectId, sceneId ?? 'all'] as const,
   finalCuts: (projectId: number) => ['final-cuts', projectId] as const,
   finalCut: (id: number) => ['final-cut', id] as const,
@@ -50,11 +49,21 @@ export function useBudget(projectId: number) {
   });
 }
 
-export function useApprovePreview(projectId: number, stage: Stage, enabled = true) {
+export function useApprovePreview(projectId: number, stage: Stage, enabled = true, generator?: string) {
   return useQuery<Awaited<ReturnType<typeof api.approvePreview>>, ApiError>({
-    queryKey: qk.preview(projectId, stage),
-    queryFn: () => api.approvePreview(projectId, stage),
+    queryKey: qk.preview(projectId, stage, generator),
+    queryFn: () => api.approvePreview(projectId, stage, generator),
+    placeholderData: keepPreviousData,
     enabled: enabled && projectId > 0,
+  });
+}
+
+/** Danh sách dịch vụ tạo video cố định theo phiên bản server: tải một lần. */
+export function useVideoGenerators() {
+  return useQuery<Awaited<ReturnType<typeof api.videoGenerators>>, ApiError>({
+    queryKey: ['video-generators'],
+    queryFn: api.videoGenerators,
+    staleTime: Infinity,
   });
 }
 
@@ -63,14 +72,6 @@ export function useJobs(filter: { projectId?: number; status?: string; limit?: n
     queryKey: qk.jobs(filter),
     queryFn: () => api.listJobs(filter),
     placeholderData: keepPreviousData,
-  });
-}
-
-export function useLedger(projectId: number) {
-  return useQuery<Awaited<ReturnType<typeof api.ledger>>, ApiError>({
-    queryKey: qk.ledger(projectId),
-    queryFn: () => api.ledger(projectId),
-    enabled: projectId > 0,
   });
 }
 

@@ -2,11 +2,12 @@ import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { badRequest, conflict } from '../lib/errors.js';
 import { slugify } from '../lib/paths.js';
-import type { JobRow, ProjectRow, ProjectSource } from '../db/types.js';
+import type { JobRow, LanMode, ProjectRow, ProjectSource } from '../db/types.js';
 import { budgetSummary } from './budget.js';
 import { insertJob } from './jobs.js';
 import { emitProject, projectSummary } from './project-view.js';
 import { getJobJson, getProject, logEvent, projectRefs, refJson } from './repo.js';
+import { STORYBOARD_GENERATOR_IDS, getStoryboardGenerator } from './generators.js';
 import { projectDeleteBlocks } from './trash.js';
 
 export const createProjectBody = z.object({
@@ -14,7 +15,7 @@ export const createProjectBody = z.object({
   brief: z.string().max(50_000).default(''),
   style_lock: z.string().max(20_000).default(''),
   max_attempts_per_scene: z.number().int().min(1).max(20).default(2),
-  credit_per_video: z.number().int().min(0).default(15),
+  // credit_per_video (client cũ) bị bỏ qua: zod loại khóa lạ. Cột DB giữ giá trị mặc định, không còn dùng.
 });
 export type CreateProjectBody = z.infer<typeof createProjectBody>;
 
@@ -24,7 +25,7 @@ export const patchProjectBody = z
     brief: z.string().max(50_000),
     style_lock: z.string().max(20_000),
     max_attempts_per_scene: z.number().int().min(1).max(20),
-    credit_per_video: z.number().int().min(0),
+    storyboard_generator: z.enum(STORYBOARD_GENERATOR_IDS),
   })
   .partial();
 export type PatchProjectBody = z.infer<typeof patchProjectBody>;
@@ -43,6 +44,10 @@ export interface CreateProjectOrigin {
   created_by_name?: string | null;
   /** sha256 của cookie client LAN của trình duyệt tạo kế hoạch (chỉ dự án 'lan' tạo từ khi có tính năng xoá); NULL = không ai ngoài chủ máy xoá được. */
   lan_client_hash?: string | null;
+  /** Chỉ dự án 'lan': 'auto' = dự án của tab Autovideo. Mặc định 'plan'. */
+  lan_mode?: LanMode;
+  /** Dịch vụ tạo storyboard ban đầu (services/generators.ts); mặc định của cột (muse). */
+  storyboard_generator?: string;
 }
 
 export function createProject(ctx: AppContext, body: CreateProjectBody, origin: CreateProjectOrigin = {}): ProjectRow {
@@ -51,8 +56,8 @@ export function createProject(ctx: AppContext, body: CreateProjectBody, origin: 
     const source = origin.source ?? 'app';
     const info = ctx.db
       .prepare(
-        `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, credit_per_video, status, source, created_by_name, lan_client_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, status, source, created_by_name, lan_client_hash, lan_mode, storyboard_generator, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         uniqueSlug(ctx, body.name),
@@ -60,10 +65,11 @@ export function createProject(ctx: AppContext, body: CreateProjectBody, origin: 
         body.brief,
         body.style_lock,
         body.max_attempts_per_scene,
-        body.credit_per_video,
         source,
         origin.created_by_name ?? null,
         source === 'lan' ? (origin.lan_client_hash ?? null) : null,
+        source === 'lan' ? (origin.lan_mode ?? 'plan') : 'plan',
+        getStoryboardGenerator(origin.storyboard_generator).id,
         now,
         now,
       );
@@ -71,7 +77,7 @@ export function createProject(ctx: AppContext, body: CreateProjectBody, origin: 
     logEvent(ctx, {
       project_id: project.id,
       type: 'project.created',
-      message: source === 'lan' ? `Tạo kế hoạch "${project.name}" từ trang LAN (người tạo: ${project.created_by_name ?? 'không rõ'})` : `Tạo dự án "${project.name}"`,
+      message: source === 'lan' ? `Tạo ${project.lan_mode === 'auto' ? 'dự án Autovideo' : 'kế hoạch'} "${project.name}" từ trang LAN (người tạo: ${project.created_by_name ?? 'không rõ'})` : `Tạo dự án "${project.name}"`,
     });
     return project;
   });

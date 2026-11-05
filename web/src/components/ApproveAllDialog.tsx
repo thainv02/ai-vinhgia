@@ -3,6 +3,7 @@ import { errorMessage } from '../api/client';
 import type { Stage } from '../api/types';
 import { useApproveAll } from '../hooks/mutations';
 import { useApprovePreview } from '../hooks/queries';
+import { GeneratorPicker, useGeneratorChoice } from './GeneratorPicker';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
 import { Modal } from './Modal';
@@ -19,10 +20,11 @@ const STAGE_LABEL: Record<Stage, string> = {
   video: 'Tạo video',
 };
 
-/** Duyệt hàng loạt: ghi rõ tổng credit, gửi kèm expectedCredits để server từ chối nếu số liệu đã đổi. */
+/** Duyệt hàng loạt: liệt kê các cảnh sẽ được duyệt và số video sẽ tạo (mỗi cảnh dùng một lượt). */
 export function ApproveAllDialog({ projectId, open, onClose }: Props) {
   const sb = useApprovePreview(projectId, 'storyboard', open);
-  const vd = useApprovePreview(projectId, 'video', open);
+  const [generator, setGenerator] = useGeneratorChoice();
+  const vd = useApprovePreview(projectId, 'video', open, generator);
   const approve = useApproveAll();
   const [stage, setStage] = useState<Stage | null>(null);
 
@@ -49,10 +51,10 @@ export function ApproveAllDialog({ projectId, open, onClose }: Props) {
   const confirm = () => {
     if (!data || reason) return;
     approve.mutate(
-      { projectId, stage: effectiveStage, expectedCredits: data.total_credits },
+      { projectId, stage: effectiveStage, generator: effectiveStage === 'video' ? generator : undefined },
       {
         onSuccess: (r) => {
-          toast.success(`Đã duyệt ${r.count} cảnh${r.total_credits > 0 ? `, đặt trước ${r.total_credits} credit` : ''}`);
+          toast.success(`Đã duyệt ${r.count} cảnh`);
           onClose();
         },
       },
@@ -74,7 +76,6 @@ export function ApproveAllDialog({ projectId, open, onClose }: Props) {
             variant="primary"
             loading={approve.isPending}
             disabledReason={reason}
-            credit={data && data.total_credits > 0 ? data.total_credits : undefined}
             onClick={confirm}
           >
             {data ? `Duyệt ${data.count} cảnh` : 'Duyệt'}
@@ -98,12 +99,22 @@ export function ApproveAllDialog({ projectId, open, onClose }: Props) {
               >
                 {STAGE_LABEL[s]}
                 <span className="block text-xs font-normal text-muted">
-                  {q.data ? `${q.data.count} cảnh${s === 'video' && q.data.count > 0 ? `, ${q.data.total_credits} credit` : s === 'storyboard' ? ', miễn phí' : ''}` : '...'}
+                  {q.data ? `${q.data.count} cảnh` : '...'}
                 </span>
               </button>
             );
           })}
         </div>
+
+        {effectiveStage === 'video' && (
+          <GeneratorPicker
+            value={generator}
+            onChange={(id) => {
+              setGenerator(id);
+              approve.reset();
+            }}
+          />
+        )}
 
         {preview.isLoading ? (
           <LoadingBlock />
@@ -122,7 +133,7 @@ export function ApproveAllDialog({ projectId, open, onClose }: Props) {
                     <span className="min-w-0">
                       <strong>{s.code}</strong> <span className="text-muted">{s.title}</span>
                     </span>
-                    <span className="shrink-0 text-[13px] font-semibold">{s.credits > 0 ? <span className="text-spend">{s.credits} credit</span> : <span className="text-muted">miễn phí</span>}</span>
+                    <span className="shrink-0 text-[13px] text-muted">{effectiveStage === 'video' ? '1 lượt tạo video' : 'Tạo storyboard'}</span>
                   </li>
                 ))}
               </ul>
@@ -141,15 +152,13 @@ export function ApproveAllDialog({ projectId, open, onClose }: Props) {
 
             {data.count > 0 && (
               <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 rounded-md bg-surface-2 px-3 py-2.5">
-                <dt className="font-semibold">Tổng credit sắp tốn</dt>
-                <dd className="text-right text-base font-bold text-spend">{data.total_credits} credit</dd>
-                <dt className="text-muted">Số video sẽ tạo</dt>
-                <dd className="text-right">{effectiveStage === 'video' ? data.count : 0}</dd>
+                <dt className="font-semibold">Số video sẽ tạo</dt>
+                <dd className="text-right text-base font-bold">{effectiveStage === 'video' ? data.count : 0}</dd>
               </dl>
             )}
             {effectiveStage === 'video' && data.count > 0 && (
               <p className="text-[13px] text-muted">
-                Tất cả hoặc không cảnh nào: nếu số credit thay đổi trong lúc bạn xem hộp này, việc duyệt bị từ chối để bạn kiểm tra lại.
+                Mỗi cảnh dùng một lượt tạo video. Cảnh có nhiều ảnh hơn mức dịch vụ nhận được sẽ bị bỏ qua. Tất cả hoặc không cảnh nào: nếu có cảnh không còn đủ điều kiện, việc duyệt bị từ chối để bạn kiểm tra lại.
               </p>
             )}
           </>

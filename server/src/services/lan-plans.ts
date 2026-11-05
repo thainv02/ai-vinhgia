@@ -3,6 +3,8 @@
  * KHÔNG tạo job storyboard/video ở bất kỳ đâu trong file này (chỉ job analyze_brief qua `submitBrief`).
  */
 import crypto from 'node:crypto';
+import { nextPlanAction } from '../lib/plan-progress.js';
+import { currentSelection } from './final-cuts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -16,7 +18,7 @@ import { createProject, submitBrief } from './projects.js';
 import { aiQueueInfoById, type AiQueueInfo } from './job-queue.js';
 import { nextStoryboardAttempt } from './payload.js';
 import { refLibrary, type ImageType } from './refs.js';
-import { LAN_UPLOAD_SOURCE, lanFileUrl, storyboardUploadBlock } from './lan-common.js';
+import { LAN_UPLOAD_SOURCE, isLanAutoAsset, lanFileUrl, storyboardUploadBlock } from './lan-common.js';
 import { LAN_VIDEO_MAX_S, LAN_VIDEO_MIN_S, MAX_VIDEOS_PER_SCENE, sceneVideosJson } from './lan-video.js';
 import { emitScene } from './scene-view.js';
 import { projectDeleteBlocks } from './trash.js';
@@ -43,14 +45,14 @@ export const analyzeBody = z.object({
 });
 export type AnalyzeBody = z.infer<typeof analyzeBody>;
 
-/** Dự án LAN theo id (kế hoạch prompt); dự án thường (source='app') và dự án cắt clip trả 404 như thể không tồn tại. */
+/** Dự án LAN theo id (kế hoạch prompt); dự án thường (source='app') và dự án highlight trả 404 như thể không tồn tại. */
 export function lanProject(ctx: AppContext, id: number): ProjectRow {
   const p = getProject(ctx, id);
   if (p.source !== 'lan' || p.kind !== 'scenes') throw notFound('kế hoạch');
   return p;
 }
 
-/** Dự án LAN bất kể loại (kế hoạch prompt hoặc cắt clip): dùng cho thao tác chung như xoá. */
+/** Dự án LAN bất kể loại (kế hoạch prompt hoặc highlight): dùng cho thao tác chung như xoá. */
 export function lanProjectAny(ctx: AppContext, id: number): ProjectRow {
   const p = getProject(ctx, id);
   if (p.source !== 'lan') throw notFound('kế hoạch');
@@ -61,7 +63,7 @@ export function lanProjectAny(ctx: AppContext, id: number): ProjectRow {
 export function createLanPlan(ctx: AppContext, body: CreatePlanBody, clientHash: string | null = null): ProjectRow {
   return createProject(
     ctx,
-    { name: body.name, brief: body.brief, style_lock: body.style_lock, max_attempts_per_scene: 2, credit_per_video: 15 },
+    { name: body.name, brief: body.brief, style_lock: body.style_lock, max_attempts_per_scene: 2 },
     { source: 'lan', created_by_name: body.created_by_name, lan_client_hash: clientHash },
   );
 }
@@ -93,7 +95,7 @@ export interface AnalysisInfo {
 
 type AnalyzeJobRow = Pick<JobRow, 'id' | 'status' | 'wait_reason' | 'created_at' | 'finished_at'>;
 
-function analysisInfo(ctx: AppContext, projectId: number): AnalysisInfo {
+export function analysisInfo(ctx: AppContext, projectId: number): AnalysisInfo {
   const job = ctx.db
     .prepare("SELECT id, status, wait_reason, created_at, finished_at FROM jobs WHERE project_id = ? AND type = 'analyze_brief' ORDER BY id DESC LIMIT 1")
     .get(projectId) as AnalyzeJobRow | undefined;
@@ -120,7 +122,7 @@ function analysisInfo(ctx: AppContext, projectId: number): AnalysisInfo {
   };
 }
 
-function planStatus(analysis: AnalysisInfo, sceneCount: number): PlanStatus {
+export function planStatus(analysis: AnalysisInfo, sceneCount: number): PlanStatus {
   if (analysis.state === 'queued' || analysis.state === 'running') return 'analyzing';
   if (analysis.state === 'failed') return 'failed';
   return sceneCount > 0 ? 'ready' : 'draft';
@@ -128,15 +130,31 @@ function planStatus(analysis: AnalysisInfo, sceneCount: number): PlanStatus {
 
 // ------------------------------------------------------------------ tóm tắt / danh sách
 
-function counts(ctx: AppContext, projectId: number): { scene_count: number; ref_count: number } {
-  return ctx.db
-    .prepare('SELECT (SELECT COUNT(*) FROM scenes WHERE project_id = @id) AS scene_count, (SELECT COUNT(*) FROM project_refs WHERE project_id = @id) AS ref_count')
-    .get({ id: projectId }) as { scene_count: number; ref_count: number };
+/** Summary data comes only from LAN uploads, never assets belonging to the app's production worker. */
+function planProgress(ctx: AppContext, projectId: number) {
+  const rows = ctx.db.prepare(`SELECT s.id,s.code,s.prompt,b.file_path AS storyboard_path,
+    json_extract(b.meta,'$.prompt_version') AS storyboard_version,
+    (SELECT COALESCE(MAX(version),0) FROM scene_prompt_versions WHERE scene_id=s.id) AS prompt_version,
+    v.id AS video_id FROM scenes s
+    LEFT JOIN assets b ON b.id=(SELECT id FROM assets WHERE scene_id=s.id AND kind='storyboard' AND json_extract(meta,'$.source')=@source ORDER BY id DESC LIMIT 1)
+    LEFT JOIN assets v ON v.id=s.selected_video_id AND v.scene_id=s.id AND v.kind='video' AND json_extract(v.meta,'$.source')=@source
+    WHERE s.project_id=@id ORDER BY s.order_index,s.id`).all({ id: projectId, source: LAN_UPLOAD_SOURCE }) as { id: number; code: string; prompt: string | null; storyboard_path: string | null; storyboard_version: number | null; prompt_version: number; video_id: number | null }[];
+  const scenes = rows.map((r) => ({ id: r.id, code: r.code, storyboard: !!r.storyboard_path && (r.storyboard_version === null || r.storyboard_version >= r.prompt_version), prompt: !!r.prompt?.trim(), video: r.video_id !== null }));
+  const last = ctx.db.prepare('SELECT status,selection_signature FROM final_cuts WHERE project_id=? ORDER BY version DESC LIMIT 1').get(projectId) as { status: string; selection_signature: string } | undefined;
+  const current = last?.status === 'ready' ? last.selection_signature === currentSelection(ctx, projectId).signature : false;
+  const thumb = rows.find((r) => r.storyboard_path && fs.existsSync(path.join(ctx.config.rootDir, r.storyboard_path)));
+  return {
+    scene_count: rows.length,
+    ref_count: (ctx.db.prepare('SELECT COUNT(*) AS n FROM project_refs WHERE project_id=?').get(projectId) as { n: number }).n,
+    thumbnail_url: thumb?.storyboard_path ? lanFileUrl(thumb.storyboard_path) : null,
+    progress: { storyboards: scenes.filter((s) => s.storyboard).length, prompts: scenes.filter((s) => s.prompt).length, videos: scenes.filter((s) => s.video).length, final_status: last?.status ?? null, final_current: current },
+    next_action: nextPlanAction(scenes, { status: last?.status, current }),
+  };
 }
 
 export function planSummary(ctx: AppContext, p: ProjectRow, clientHash: string | null = null) {
   const analysis = analysisInfo(ctx, p.id);
-  const c = counts(ctx, p.id);
+  const c = planProgress(ctx, p.id);
   const canDelete = ownsLanPlan(p, clientHash);
   return {
     id: p.id,
@@ -145,6 +163,9 @@ export function planSummary(ctx: AppContext, p: ProjectRow, clientHash: string |
     status: planStatus(analysis, c.scene_count),
     scene_count: c.scene_count,
     ref_count: c.ref_count,
+    thumbnail_url: c.thumbnail_url,
+    progress: c.progress,
+    next_action: c.next_action,
     created_at: p.created_at,
     updated_at: p.updated_at,
     analysis,
@@ -156,7 +177,8 @@ export function planSummary(ctx: AppContext, p: ProjectRow, clientHash: string |
 }
 
 export function listLanPlans(ctx: AppContext, clientHash: string | null = null) {
-  const rows = ctx.db.prepare("SELECT * FROM projects WHERE source = 'lan' AND kind = 'scenes' AND deleted_at IS NULL ORDER BY id DESC LIMIT 200").all() as ProjectRow[];
+  // dự án Autovideo (`lan_mode='auto'`) có danh sách riêng ở tab Autovideo
+  const rows = ctx.db.prepare("SELECT * FROM projects WHERE source = 'lan' AND kind = 'scenes' AND lan_mode = 'plan' AND deleted_at IS NULL ORDER BY id DESC LIMIT 200").all() as ProjectRow[];
   return rows.map((p) => planSummary(ctx, p, clientHash));
 }
 
@@ -219,7 +241,6 @@ export function planDetail(ctx: AppContext, p: ProjectRow, clientHash: string | 
     name: p.name,
     created_by_name: p.created_by_name,
     style_lock: p.style_lock,
-    credit_per_video: p.credit_per_video,
     refs: refRows.map(planRef),
     scenes: sceneInputs,
   });
@@ -231,7 +252,6 @@ export function planDetail(ctx: AppContext, p: ProjectRow, clientHash: string | 
       ...planSummary(ctx, p, clientHash),
       brief: p.brief,
       style_lock: p.style_lock,
-      credit_per_video: p.credit_per_video,
     },
     refs: refRows.map((r) => ({ ...planRef(r), order_index: r.order_index })),
     settings: plan.settings,
@@ -305,6 +325,7 @@ export interface StoryboardUpload {
 export function addLanStoryboard(ctx: AppContext, p: ProjectRow, sceneId: number, up: StoryboardUpload): AssetRow {
   const scene = getScene(ctx, sceneId);
   if (scene.project_id !== p.id) throw notFound('cảnh');
+  assertPlanMode(p);
   let rel: string | null = null;
   try {
     return ctx.tx(() => {
@@ -335,6 +356,11 @@ export function addLanStoryboard(ctx: AppContext, p: ProjectRow, sceneId: number
     if (rel) fs.rmSync(path.join(ctx.config.rootDir, rel), { force: true }); // giao dịch lỗi: không để file mồ côi
     throw err;
   }
+}
+
+/** Dự án Autovideo do worker nền tạo storyboard/video: không nhận ảnh/video tải lên tay (tránh lẫn hai cách làm trong một cảnh). */
+export function assertPlanMode(p: Pick<ProjectRow, 'lan_mode'>): void {
+  if (p.lan_mode === 'auto') throw conflict('AUTO_PROJECT', 'Dự án Autovideo tạo storyboard/video tự động, không nhận file tải lên tay');
 }
 
 // ------------------------------------------------------------------ thư viện ảnh (chỉ dự án LAN) và gói ảnh
@@ -387,6 +413,7 @@ export function refsZipEntries(ctx: AppContext, p: ProjectRow): ZipEntry[] {
  * Đường dẫn tương đối `rel` có được phục vụ qua listener LAN không. CHỈ:
  * - ảnh tham chiếu (`project_refs.file_path`) của dự án source='lan';
  * - storyboard và VIDEO người dùng LAN tự tải lên (`assets.meta.source='lan_upload'`) của cảnh thuộc dự án source='lan';
+ * - storyboard/video/lưới khung hình worker tạo cho dự án Autovideo (`lan_mode='auto'`);
  * - file bản dựng của dự án source='lan': video sạch, bản raw còn logo, lưới khung hình (KHÔNG BAO GIỜ file dự án .mlt);
  * - bản sạch của việc công cụ (xoá logo) `ready` nếu `clientHash` là chủ của việc đó (cookie client).
  * Mọi thứ khác (output/video của dự án app, storyboard/video do worker tạo, file mồ côi, input của việc công cụ) → false.
@@ -424,6 +451,8 @@ export function isLanServable(ctx: AppContext, rel: string, opts: { clientHash?:
     const proj = ctx.db.prepare("SELECT 1 FROM projects WHERE slug = ? AND source = 'lan' AND deleted_at IS NULL LIMIT 1").get(pv[1]);
     if (proj) return true;
   }
+  // storyboard/video/lưới khung hình worker tạo cho dự án Autovideo
+  if (isLanAutoAsset(ctx, rel)) return true;
   if (isLanClipServable(ctx, rel)) return true;
   if (opts.clientHash) {
     const tool = ctx.db.prepare("SELECT 1 FROM lan_tool_jobs WHERE output_path = ? AND status = 'ready' AND client_id_hash = ? LIMIT 1").get(rel, opts.clientHash);

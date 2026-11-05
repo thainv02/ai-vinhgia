@@ -16,7 +16,7 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 - [11. Quy tắc nghiệp vụ quan trọng](#11-quy-tắc-nghiệp-vụ-quan-trọng)
 - [12. Bố cục file, script, chạy thử](#12-bố-cục-file-script-chạy-thử)
 - [13. Trang planner LAN (listener riêng)](#13-trang-planner-lan-listener-riêng)
-- Cắt clip từ video dài (long video → shorts): [14](#14-cắt-clip-từ-video-dài-long-video--shorts), [SSE `source.updated`/`clip.updated`/`clip_cut.updated`](#7-sse-get-apistream)
+- Highlight từ video dài (long video → shorts): [14](#14-highlight-từ-video-dài-long-video--shorts), [SSE `source.updated`/`clip.updated`/`clip_cut.updated`](#7-sse-get-apistream)
 - Bản dựng hoàn chỉnh (final cut): [4.12](#412-finalcut-bản-dựng-hoàn-chỉnh), [5.7](#57-bản-dựng-hoàn-chỉnh-final-cut), [6.5](#65-job-edit_plan), [SSE `final_cut.updated`](#7-sse-get-apistream)
 
 ---
@@ -33,7 +33,7 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
   ```json
   { "error": { "code": "ATTEMPTS_EXCEEDED", "message": "Cảnh C1 đã dùng 2/2 lượt", "details": { } } }
   ```
-  `details` chỉ có ở một số lỗi (`CREDITS_CHANGED`, `QUEUE_PAUSED`, `INVALID_TRANSITION`, `VALIDATION_ERROR`). Bảng mã lỗi ở [mục 9](#9-bảng-mã-lỗi).
+  `details` chỉ có ở một số lỗi (`QUEUE_PAUSED`, `INVALID_TRANSITION`, `VALIDATION_ERROR`). Bảng mã lỗi ở [mục 9](#9-bảng-mã-lỗi).
 - **Bảo vệ API cục bộ** (áp dụng cho mọi route, kể cả `/files` và SSE):
   - Header `Host` phải là `localhost`, `127.0.0.1` hoặc `[::1]` (có hoặc không kèm cổng), không thì `403 FORBIDDEN_HOST`.
   - Request ghi (`POST/PUT/PATCH/DELETE`) mà **có** header `Origin` thì Origin phải là một trong `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:8787`, `http://127.0.0.1:8787` (+ `EXTRA_ALLOWED_ORIGINS`), không thì `403 FORBIDDEN_ORIGIN`. Không có Origin (curl, Node fetch, worker) thì cho qua. Nghĩa là UI phải chạy ở cổng 5173 hoặc 8787 (Vite đặt `strictPort`).
@@ -76,7 +76,7 @@ Tất cả thông báo lỗi cho người dùng bằng tiếng Việt.
 | `LAN_REQUIRE_CODE` | `false` | `false` (mặc định): trang planner **mở ngay, không có màn đăng nhập và không có phiên** (mọi route LAN dùng được; Host, Origin, cross-site, CSP, giới hạn theo IP, trần hàng đợi, danh sách file được phép vẫn giữ). `true`: đòi mã truy cập chung như trước (mục 13). `false/0/no/off` hoặc trống = không đòi; **giá trị khác (kể cả gõ sai như `treu`) = đòi mã** để lỗi chính tả không âm thầm mở trang ra mạng. Đổi giá trị cần khởi động lại |
 | `LAN_ACCESS_CODE` | tự sinh khi cần | Mã truy cập chung của trang planner (≥ 6 ký tự, không phân biệt hoa thường). **Chỉ bắt buộc khi `LAN_REQUIRE_CODE=true`**; khi đó nếu để trống và `LAN_ENABLED=true`, server sinh mã ngẫu nhiên 8 ký tự dễ đọc (bỏ I/O/0/1) và ghi vào `.env` (quyền 0600) như `WORKER_TOKEN`. Khi `LAN_REQUIRE_CODE=false` không sinh, không đòi, không kiểm tra độ dài. Không bao giờ ghi vào log |
 | `LAN_ALLOWED_HOSTS` | rỗng | Hostname bổ sung (cách nhau dấu phẩy) mà listener LAN chấp nhận trong header `Host`, ngoài IP, `localhost`, `*.local`, `*.lan`, `*.internal`, `*.home.arpa` và tên một nhãn |
-| `STT_PROVIDER` · `STT_URL` · `STT_TENANT_ID` · `STT_TIMEOUT_MS` · `STT_MAX_RETRIES` | `omnix` nếu có `STT_URL` (ngược lại `none`) · rỗng · `s-omnix-studio` · `3600000` · `3` | Nhận dạng lời nói cho cắt clip (mục 14.5). `STT_URL` = URL đầy đủ `…/v1/audio/transcriptions` (chỉ HTTP). `none`/thiếu URL: báo "Chưa cấu hình nhận dạng lời nói" |
+| `STT_PROVIDER` · `STT_URL` · `STT_TENANT_ID` · `STT_TIMEOUT_MS` · `STT_MAX_RETRIES` | `omnix` nếu có `STT_URL` (ngược lại `none`) · rỗng · `s-omnix-studio` · `3600000` · `3` | Nhận dạng lời nói cho highlight (mục 14.5). `STT_URL` = URL đầy đủ `…/v1/audio/transcriptions` (chỉ HTTP). `none`/thiếu URL: báo "Chưa cấu hình nhận dạng lời nói" |
 | `CLIP_SOURCE_MAX_BYTES` · `CLIP_SOURCE_MAX_S` | 4 GiB · `10800` (3 giờ) | Giới hạn video nguồn ở app chính |
 | `LAN_CLIP_SOURCE_MAX_BYTES` · `LAN_CLIP_SOURCE_MAX_S` · `LAN_CLIP_SOURCE_RETENTION_DAYS` | 2 GiB · `10800` (3 giờ) · `7` | Giới hạn video nguồn ở trang LAN và hạn lưu video gốc (giữ transcript, bản xem thử, clip) |
 | `CLIP_MIN_FREE_GB` | `10` | Ổ đĩa phải còn trống ≥ giá trị này + 3 × dung lượng file khi tải lên (và + ước tính clip khi dựng), không thì `507 INSUFFICIENT_STORAGE` |
@@ -103,13 +103,13 @@ Server làm gì khi khởi động / định kỳ: chạy migration (`server/mig
 | `storyboard_queued` | Storyboard đang chờ | Có job storyboard `queued` |
 | `storyboard_running` | Đang tạo storyboard | Job storyboard `claimed/running` |
 | `storyboard_review` | Xem storyboard | Đã có storyboard, chờ người dùng quyết định |
-| `video_queued` | Video đang chờ | Có job video `queued` (đã đặt trước credit) |
+| `video_queued` | Video đang chờ | Có job video `queued` (đã chiếm một lượt) |
 | `video_running` | Đang tạo video | Job video `claimed/running` |
 | `video_review` | Xem video | Có video mới, chờ người dùng chọn / comment |
 | `done` | Hoàn tất | Người dùng đã chọn video (`selected_video_id`) |
 | `needs_revision` | Cần sửa prompt | Có job `revise_prompt` đang chờ/chạy |
 | `failed` | Lỗi | Job gần nhất lỗi (xem `jobs[0].error`) |
-| `blocked_budget` | Flow hết credit | Job video lỗi `FLOW_OUT_OF_CREDIT` (tài khoản Flow hết credit thật; KHÔNG liên quan hạn mức của web — web không còn hạn mức credit) |
+| `blocked_budget` | Hết hạn mức tạo video | Job video lỗi `FLOW_OUT_OF_CREDIT` (tài khoản tạo video hết hạn mức; tên mã giữ nguyên vì worker vẫn gửi) |
 | `cancelled` | Đã hủy | Dành sẵn, chưa có API tạo ra trạng thái này |
 
 ### 3.2 Bảng chuyển hợp lệ (`transition()` — nơi DUY NHẤT đổi `scenes.status`)
@@ -132,13 +132,13 @@ Ngoài bảng → `409 INVALID_TRANSITION`. Mỗi lần chuyển ghi `events` (t
 | `failed` | `storyboard_queued` · `video_queued` · `awaiting_approval` · `needs_revision` |
 | `blocked_budget` | `storyboard_queued` · `video_queued` · `awaiting_approval` |
 
-Điều kiện đi kèm (do endpoint kiểm tra, không chỉ bảng): đi `video_queued` luôn cần có asset storyboard, đủ lượt, đủ credit, cảnh không có job đang chạy.
+Điều kiện đi kèm (do endpoint kiểm tra, không chỉ bảng): đi `video_queued` luôn cần có asset storyboard, đủ lượt, cảnh không có job đang chạy.
 
 ### 3.3 Enum khác
 
 | Tên | Giá trị |
 |---|---|
-| `job.type` | `analyze_brief` · `storyboard` · `video` · `revise_prompt` · `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh; không có cảnh, không tốn credit) · `clip_plan` (AI chọn đoạn clip từ video dài, mục 14.4; không có cảnh, không tốn credit) |
+| `job.type` | `analyze_brief` · `storyboard` · `video` · `revise_prompt` · `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh; không có cảnh) · `clip_plan` (AI chọn đoạn clip từ video dài, mục 14.4; không có cảnh) |
 | `job.status` | `queued` · `claimed` · `running` · `done` · `failed` · `cancelled` |
 | `job.requires_approval` | storyboard=true, video=true, analyze_brief=false, revise_prompt=false, edit_plan=false, clip_plan=false |
 | `asset.kind` | `storyboard` · `video` · `grid` |
@@ -152,7 +152,7 @@ Ngoài bảng → `409 INVALID_TRANSITION`. Mỗi lần chuyển ghi `events` (t
 | `final_cut.renderer` | `shotcut` · `ffmpeg` · `null` (chưa render) |
 | `final_cut.stage` | khi `status="rendering"`: `render` (đang dựng) · `clean` (đang xoá logo Veo); `null` ở mọi trạng thái khác |
 | `final_cut.failed_stage` | khi `failed` (hoặc `cancelled` giữa bước xoá logo): `render` · `clean`; `null` nếu không lỗi/hủy ở bước nào |
-| mã lỗi worker `fail.code` | `CAPTCHA` · `LOGIN_REQUIRED` · `FLOW_OUT_OF_CREDIT` · `UI_CHANGED` (4 mã này tạm dừng hàng đợi) · `OTHER` |
+| mã lỗi worker `fail.code` | `CAPTCHA` · `LOGIN_REQUIRED` · `FLOW_OUT_OF_CREDIT` (hết hạn mức tạo video) · `UI_CHANGED` (4 mã này tạm dừng hàng đợi) · `OTHER` |
 
 ---
 
@@ -163,24 +163,23 @@ Ngoài bảng → `409 INVALID_TRANSITION`. Mỗi lần chuyển ghi `events` (t
 {
   "id": 1, "slug": "cacao-actiso-plus", "name": "Cacao Actiso Plus",
   "brief": "…", "style_lock": "…",
-  "max_attempts_per_scene": 2, "credit_per_video": 15,
+  "max_attempts_per_scene": 2,
   "status": "active", "source": "app", "created_by_name": null,
   "created_at": "…", "updated_at": "…",
   "scene_count": 4, "done_count": 1,
   "status_counts": { "done": 1, "awaiting_approval": 3 },
-  "credits_used": 15, "credits_reserved": 0,
   "latest_final_cut": { "id": 3, "version": 2, "status": "ready", "progress": 100, "stage": null, "failed_stage": null, "watermark_removed": true, "url": "/files/output/…/<slug>_final_v2.mp4", "duration_s": 38.2, "outdated": false, "error": null },
   "final_cut_block": null
 }
 ```
-`status_counts` chỉ có các trạng thái hiện có (khóa vắng = 0). `credits_used` = credit đã tiêu (−SUM ledger.delta); `credits_reserved` = `credit_per_video` × số job video queued/claimed/running. **Không còn** `credit_budget` / `credits_remaining` (đã bỏ hạn mức credit; cột `projects.credit_budget` vẫn nằm trong DB nhưng server không đọc/hiển thị/nhận nữa). `latest_final_cut` = bản dựng hoàn chỉnh có version cao nhất (gọn; `null` nếu chưa có; `url` = bản đã xoá logo, chỉ có khi `status="ready"`; `stage`/`failed_stage`/`watermark_removed` như ở 4.12; `outdated`: lựa chọn video của dự án đã khác lúc dựng). `final_cut_block` = lý do chưa bấm được "Dựng bản mới" (`null` = được): `{code:"SCENES_NOT_READY", message:"Còn C2, C3 chưa chọn video"}` hoặc `{code:"FINAL_CUT_ACTIVE", message:"Đang chọn điểm cắt cho bản hoàn chỉnh v2"}`. `slug` sinh từ tên lúc tạo (bỏ dấu, `a-z0-9-`, thêm `-2`, `-3` nếu trùng) và **không đổi** khi đổi tên. `source` = `"app"` (tạo từ app chính) hoặc `"lan"` (kế hoạch do người dùng LAN tạo qua trang planner, mục 13); `created_by_name` = tên người tạo do chính người dùng LAN tự nhập (không xác thực), `null` với dự án `app`. Web hiện nhãn **LAN · tên người tạo** ở thẻ dự án và tiêu đề bảng cảnh; chủ máy sản xuất từ dự án `lan` như dự án thường.
+`status_counts` chỉ có các trạng thái hiện có (khóa vắng = 0). **Không còn credit** (video tạo qua API không tốn credit Flow): không có `credit_per_video`, `credits_used`, `credits_reserved`, `credit_budget`; các cột `projects.credit_per_video`/`credit_budget`, `jobs.credits_cost` và bảng `credit_ledger` vẫn nằm trong DB (không migration phá huỷ) nhưng server không đọc/hiển thị/ghi mới nữa. `latest_final_cut` = bản dựng hoàn chỉnh có version cao nhất (gọn; `null` nếu chưa có; `url` = bản đã xoá logo, chỉ có khi `status="ready"`; `stage`/`failed_stage`/`watermark_removed` như ở 4.12; `outdated`: lựa chọn video của dự án đã khác lúc dựng). `final_cut_block` = lý do chưa bấm được "Dựng bản mới" (`null` = được): `{code:"SCENES_NOT_READY", message:"Còn C2, C3 chưa chọn video"}` hoặc `{code:"FINAL_CUT_ACTIVE", message:"Đang chọn điểm cắt cho bản hoàn chỉnh v2"}`. `slug` sinh từ tên lúc tạo (bỏ dấu, `a-z0-9-`, thêm `-2`, `-3` nếu trùng) và **không đổi** khi đổi tên. `source` = `"app"` (tạo từ app chính) hoặc `"lan"` (kế hoạch do người dùng LAN tạo qua trang planner, mục 13); `created_by_name` = tên người tạo do chính người dùng LAN tự nhập (không xác thực), `null` với dự án `app`. Web hiện nhãn **LAN · tên người tạo** ở thẻ dự án và tiêu đề bảng cảnh; chủ máy sản xuất từ dự án `lan` như dự án thường.
 
 ### 4.2 Project detail (`GET /api/projects/:id`, `POST`/`PATCH /api/projects`)
 Project summary + 
 ```json
 {
   "refs": [ /* Ref[] theo order_index */ ],
-  "budget": { /* Credit đã dùng/đặt trước + lượt, xem 4.9 */ },
+  "budget": { /* Lượt theo cảnh, xem 4.9 */ },
   "requeued_jobs": [ /* Job[]: job queued/claimed/running đã từng bị trả về do mất heartbeat (banner cảnh báo) */ ]
 }
 ```
@@ -208,7 +207,7 @@ Project summary +
   "type": "video", "status": "claimed",
   "payload": { }, "result": null, "error": null, "error_code": null,
   "claimed_by": "w1", "claimed_at": "…", "heartbeat_at": "…", "created_at": "…", "finished_at": null,
-  "credits_cost": 0, "requires_approval": true, "approved_at": "…",
+  "attempt_used": false, "requires_approval": true, "approved_at": "…",
   "requeue_count": 0, "last_requeued_at": null,
   "worker_mode": "legacy", "wait_reason": null, "action_state": null, "reconcile_required": false
 }
@@ -235,7 +234,7 @@ Project summary +
   "video_block": null
 }
 ```
-- `attempts_used`: số asset video + job video đang queued/claimed/running + job video failed có `credits_cost>0`. UI hiển thị `attempts_used/max_attempts` ("Cảnh C1 đã dùng 2/2 lượt").
+- `attempts_used`: số asset video + job video đang queued/claimed/running + job video failed vẫn tính lượt (`attempt_used`, xem 4.9). UI hiển thị `attempts_used/max_attempts` ("Cảnh C1 đã dùng 2/2 lượt").
 - `waiting_reason` (chuỗi | null): lý do job `queued` của cảnh chưa được worker nhận, vd `"Đang chờ storyboard của C1"`, `"Đã có 4/4 video chạy cùng lúc"`, `"Hàng đợi đang tạm dừng"`.
 - `storyboard_block` / `video_block`: `null` nếu bây giờ gọi `approve` stage tương ứng sẽ qua; nếu không là `{ "code": "...", "message": "..." }` đúng với lỗi server sẽ trả (`JOB_ACTIVE`, `INVALID_STATE`, `ATTEMPTS_EXCEEDED`; không còn `BUDGET_EXCEEDED`). **Dùng `message` làm lý do vô hiệu hóa nút**. Lưu ý `video_block` cũng khác `null` khi trạng thái chưa hợp lệ (vd cảnh `awaiting_approval` chưa có storyboard) — UI chỉ hiện nút "Tạo video" ở các trạng thái phù hợp (xem [mục 10](#10-nút-giao-diện--endpoint)) và dùng `video_block` để biết bật/tắt.
 - `upload_refs`: mảng id `project_refs` theo thứ tự upload.
@@ -244,7 +243,7 @@ Project summary +
 Scene summary + 
 ```json
 {
-  "project": { "id": 1, "slug": "…", "name": "…", "style_lock": "…", "credit_per_video": 15, "max_attempts_per_scene": 2 },
+  "project": { "id": 1, "slug": "…", "name": "…", "style_lock": "…", "max_attempts_per_scene": 2 },
   "assets": [ /* Asset[] theo id tăng, gồm storyboard/video/grid mọi lượt */ ],
   "comments": [ /* Comment[] theo id tăng */ ],
   "prompt_versions": [ /* PromptVersion[] theo version tăng */ ],
@@ -259,18 +258,19 @@ PromptVersion: `{ "id", "scene_id", "version", "prompt", "reason", "created_by":
 `{ "id", "project_id", "scene_id" (null|số), "scene_code" (null|"C1"), "type", "message", "created_at" }`.
 `type` gồm: `scene.status` (message `"C1: storyboard_review → video_queued (lý do)"`), `scene.created`, `scene.prompt`, `scene.video_selected`, `comment.created`, `asset.verdict`, `job.failed`, `job.cancelled`, `job.requeued` (cảnh báo mất heartbeat), `queue.paused`, `queue.resumed`, `project.created`, `project.updated`, `project.brief`, `project.analyzed`.
 
-### 4.9 Budget (`GET /api/projects/:id/budget`) — chỉ còn credit đã dùng/đặt trước và lượt
+### 4.9 Budget (`GET /api/projects/:id/budget`) — chỉ còn lượt
 ```json
 {
-  "used": 15, "reserved": 15,
-  "credit_per_video": 15, "max_attempts": 2,
+  "max_attempts": 2,
   "scenes": [ { "scene_id": 1, "code": "C1", "attempts_used": 1, "max_attempts": 2 } ]
 }
 ```
-`used = −SUM(credit_ledger.delta)`; `reserved = credit_per_video × số job video đang queued/claimed/running`. **Không còn** `budget`, `remaining` (đã bỏ hạn mức credit; server không chặn theo credit ở bất cứ đâu, không còn lỗi `BUDGET_EXCEEDED`). Giới hạn duy nhất khi tạo video là số lượt mỗi cảnh (`ATTEMPTS_EXCEEDED`).
+**Không còn** `used`/`reserved`/`credit_per_video` (đã bỏ credit). Giới hạn duy nhất khi tạo video là số lượt mỗi cảnh (`ATTEMPTS_EXCEEDED`).
 
-### 4.10 Ledger entry (`credit_ledger`)
-`{ "id", "project_id", "scene_id", "scene_code", "job_id", "delta" (âm khi tốn), "note", "created_at" }` (+ `cumulative_used` trong `GET /ledger`: tổng credit đã tiêu lũy kế tới dòng đó, theo thứ tự `created_at, id`; không còn `balance`).
+**Cách đếm lượt** (`attemptsUsed`, `nextVideoAttempt`): asset video (trừ video LAN tự tải lên) + job video `queued/claimed/running` + job video `failed` *vẫn tính lượt*. Job video failed tính lượt khi `jobs.result.attempt_used = true` (worker `fail` với `attempt_used: true`, worker cũ gửi `credits_cost > 0`, hoặc đối soát `charge_and_fail`), hoặc hàng cũ có `jobs.credits_cost > 0` (dữ liệu thời còn credit). Job JSON có `attempt_used: boolean` phản ánh đúng điều kiện này.
+
+### 4.10 (đã bỏ) Ledger entry
+Sổ cái credit đã bỏ: `GET /ledger` và `GET /ledger.csv` không còn (404). Bảng `credit_ledger` giữ nguyên trong DB (dữ liệu cũ), không ghi thêm.
 
 ### 4.11 WorkerStatus
 ```json
@@ -330,14 +330,14 @@ Không cần token. Lỗi chung: `400 VALIDATION_ERROR`, `404 NOT_FOUND`, `403 F
 
 ### 5.1 Dự án
 
-**`POST /api/projects`** → `201` Project detail. Trường `credit_budget` (nếu client cũ còn gửi) bị **bỏ qua**.
-Body: `{ "name": string (bắt buộc), "brief"?: string, "style_lock"?: string, "max_attempts_per_scene"?: int 1–20 (mặc định 2), "credit_per_video"?: int ≥0 (mặc định 15) }`.
+**`POST /api/projects`** → `201` Project detail. Trường `credit_budget`/`credit_per_video` (nếu client cũ còn gửi) bị **bỏ qua**.
+Body: `{ "name": string (bắt buộc), "brief"?: string, "style_lock"?: string, "max_attempts_per_scene"?: int 1–20 (mặc định 2) }`.
 
 **`GET /api/projects`** → `Project summary[]`, mới tạo trước.
 
 **`GET /api/projects/:id`** → Project detail.
 
-**`PATCH /api/projects/:id`** → Project detail. Body (mọi trường tùy chọn): `name, brief, style_lock, max_attempts_per_scene, credit_per_video` (`credit_budget` nếu gửi thì bị bỏ qua). Không đổi `slug`. Nâng `max_attempts_per_scene` để mở khóa cảnh bị `ATTEMPTS_EXCEEDED`.
+**`PATCH /api/projects/:id`** → Project detail. Body (mọi trường tùy chọn): `name, brief, style_lock, max_attempts_per_scene, storyboard_generator` (`credit_budget`/`credit_per_video` nếu gửi thì bị bỏ qua). `storyboard_generator` ∈ id trong `GET /api/video-generators` → `storyboard` (`muse` mặc định, `flow-image`); áp dụng cho job storyboard duyệt sau khi đổi. Không đổi `slug`. Nâng `max_attempts_per_scene` để mở khóa cảnh bị `ATTEMPTS_EXCEEDED`.
 
 **`DELETE /api/projects/:id`** — chuyển dự án vào **thùng rác** (mục 5.8), KHÔNG xoá cứng. Body bắt buộc `{ "confirm_name": string }` phải trùng tên dự án (NFC, bỏ khoảng trắng đầu/cuối, phân biệt hoa thường). `200 { ok, id, name, restorable_days }`. Lỗi: `400 VALIDATION_ERROR` (thiếu `confirm_name`), `400 CONFIRM_MISMATCH`, `404`, `409 PROJECT_BUSY` (đang bị chặn, `details.reasons[]={code,message}`), `500 TRASH_MOVE_FAILED` (đã hoàn tác). `GET /api/projects/:id` có thêm `delete_block` (`null` hoặc `{code,message,reasons[]}`) để giao diện báo trước.
 
@@ -378,15 +378,18 @@ Mọi thay đổi ảnh tham chiếu (upload, chép từ thư viện, đổi nh�
 
 **`PATCH /api/scenes/:id/prompt`** body `{ "prompt": string, "reason"?: string }` → `{ "scene": SceneSummary }`. Tạo `scene_prompt_versions` mới (`created_by='user'`, reason mặc định "Người dùng sửa tay"), cập nhật `scenes.prompt`, **không đổi trạng thái**. Prompt không đổi → không tạo version. Chỉ khi trạng thái ∈ {`draft, prompt_ready, awaiting_approval, storyboard_review, video_review, done, failed, blocked_budget`}, ngược lại `409 INVALID_STATE`.
 
-**`POST /api/scenes/:id/approve`** body `{ "stage": "storyboard" | "video" }` → `{ "scene": SceneSummary, "job": Job }`.
-- `storyboard` (không tốn credit): từ `awaiting_approval | storyboard_review | video_review | done | failed | blocked_budget` → tạo job storyboard (`requires_approval=true`, `approved_at=now`), cảnh → `storyboard_queued`.
-- `video` (**tốn credit**, đường duy nhất tạo job video): kiểm tra theo thứ tự trong một transaction `BEGIN IMMEDIATE`: không có job đang queued/claimed/running (`409 JOB_ACTIVE`) → trạng thái ∈ {`awaiting_approval, storyboard_review, video_review, done, failed, blocked_budget`} (`409 INVALID_STATE`) → cảnh đã có asset storyboard (`409 INVALID_STATE`, "chưa có storyboard") → lượt `< max_attempts_per_scene` (`409 ATTEMPTS_EXCEEDED`, "Cảnh C1 đã dùng 2/2 lượt"). **Không kiểm tra hạn mức credit** (đã bỏ). Qua hết → job video, cảnh → `video_queued`, credit được **đặt trước** (`reserved`, chỉ để hiển thị).
-- Flow vẫn trừ credit thật nên giao diện phải hỏi xác nhận (ghi rõ số credit sắp tiêu và lượt, vd 1/2 → 2/2) trước khi gọi `stage:"video"`.
+**`POST /api/scenes/:id/approve`** body `{ "stage": "storyboard" | "video", "generator"?: GeneratorId }` → `{ "scene": SceneSummary, "job": Job }`.
+- `storyboard`: từ `awaiting_approval | storyboard_review | video_review | done | failed | blocked_budget` → tạo job storyboard (`requires_approval=true`, `approved_at=now`), cảnh → `storyboard_queued`.
+- `video` (**dùng một lượt**, đường duy nhất tạo job video): kiểm tra theo thứ tự trong một transaction `BEGIN IMMEDIATE`: không có job đang queued/claimed/running (`409 JOB_ACTIVE`) → trạng thái ∈ {`awaiting_approval, storyboard_review, video_review, done, failed, blocked_budget`} (`409 INVALID_STATE`) → cảnh đã có asset storyboard (`409 INVALID_STATE`, "chưa có storyboard") → lượt `< max_attempts_per_scene` (`409 ATTEMPTS_EXCEEDED`, "Cảnh C1 đã dùng 2/2 lượt") → số ảnh gửi (ref của cảnh + 1 storyboard) `≤ max_images` của dịch vụ (`409 TOO_MANY_IMAGES`). Không có kiểm tra credit. Qua hết → job video (chiếm một lượt, `payload.generator` = id dịch vụ), cảnh → `video_queued`.
+- `generator`: id trong `GET /api/video-generators` (`muse`, `flow-veo-fast`, `flow-veo-lite`, `flow-omni-10s`); id lạ → `400 VALIDATION_ERROR`. Bỏ trống: dùng lại dịch vụ của job video gần nhất của cảnh, chưa có thì `muse`. `regenerate_same` cũng theo quy tắc này.
+- Giao diện hỏi xác nhận (ghi rõ lượt, vd 1/2 → 2/2, và chọn dịch vụ) trước khi gọi `stage:"video"`.
+
+**`GET /api/video-generators`** → `{ "generators": [ { "id", "provider": "muse"|"flow", "model", "label", "duration_s", "max_images", "flow_credits": number|null, "note" } ], "storyboard": [ { "id", "provider", "model", "label", "max_images", "remove_logo", "note" } ] }`. `storyboard` = dịch vụ tạo ảnh storyboard (chọn theo dự án qua `PATCH /api/projects/:id`). Danh sách cố định theo phiên bản server (`services/generators.ts`), phần tử đầu là mặc định. Khung luôn 9:16; Flow dùng model reference-to-video bản portrait (tối đa 3 ảnh), Muse tối đa 4 ảnh. Video tạo xong có `meta.generator` = `label` để giao diện hiện "tạo bằng …".
 
 **`POST /api/scenes/:id/comments`** body `{ "body": string, "timecode"?: number ≥0 (giây), "action"?: "note"|"revise_and_regenerate"|"regenerate_same"|"regenerate_storyboard" (mặc định note), "asset_id"?: int }` → `201 { "comment": Comment, "job": Job | null, "scene": SceneSummary }`.
 - `note`: chỉ lưu comment.
 - `revise_and_regenerate`: cảnh → `needs_revision` + job `revise_prompt` (`requires_approval=false`). **Không tạo job video.** Sau khi Claude sửa xong: cảnh → `awaiting_approval` với version prompt mới (`created_by='claude'` kèm lý do), video cũ được giữ; người dùng duyệt lại rồi mới tạo video. Cần trạng thái ∈ {`storyboard_review, video_review, done, awaiting_approval, failed`} và không có job đang chạy.
-- `regenerate_same`: gọi `approveVideo` (cùng kiểm tra credit/lượt như trên). UI phải xác nhận credit trước khi gửi.
+- `regenerate_same`: gọi `approveVideo` (cùng kiểm tra lượt như trên). UI xác nhận (dùng một lượt) trước khi gửi.
 - `regenerate_storyboard`: gọi `approveStoryboard`.
 - Với các action có tác dụng phụ, nếu bị từ chối (409) thì **comment cũng không được lưu** (một transaction).
 - `asset_id` phải thuộc cảnh (`404`/`400 INVALID_ASSET`).
@@ -397,32 +400,33 @@ Mọi thay đổi ảnh tham chiếu (upload, chép từ thư viện, đổi nh�
 
 **`POST /api/scenes/:id/reset`** (không body) → `{ "scene": SceneSummary }`. Cảnh `failed`/`blocked_budget` → `awaiting_approval` (để sửa prompt hoặc duyệt lại). Sai trạng thái → `409 INVALID_STATE`.
 
+**`POST /api/assets/:id/remove-logo`** (không body) → `{ "asset": Asset, "scene": SceneSummary }`. Chạy lại bước xoá logo Gemini cho ảnh storyboard Google Flow, làm từ ảnh gốc `meta.logo.raw_path`, cập nhật `meta.logo`. Ảnh không có `meta.logo` → `400 INVALID_ASSET`; mất ảnh gốc → `400 FILE_NOT_FOUND`; cảnh đang có job → `409 JOB_ACTIVE`.
+
 **`POST /api/assets/:id/verdict`** body `{ "verdict": "pass"|"fix_in_edit"|"redo"|null, "verdict_note"?: string|null }` (alias `note`) → `{ "asset": Asset, "scene": SceneSummary }`. Chỉ storyboard/video (grid → `400 INVALID_ASSET`). Khi `verdict` khác null thì append một dòng ghi chú vào `output/<slug>/log.md` ("… (kết luận của người dùng)"). Phát SSE `asset.updated` + `scene.updated`.
 
 ### 5.4 Duyệt hàng loạt
 
-**`GET /api/projects/:id/approve-all/preview?stage=storyboard|video`** →
+**`GET /api/projects/:id/approve-all/preview?stage=storyboard|video&generator=<id>`** (`generator` tùy chọn, chỉ dùng với `video`) →
 ```json
 { "stage": "video", "count": 2,
-  "scenes": [ { "scene_id": 1, "code": "C1", "title": "…", "status": "storyboard_review", "credits": 15 } ],
-  "skipped": [ { "scene_id": 3, "code": "C3", "reason_code": "ATTEMPTS_EXCEEDED", "message": "Cảnh C3 đã dùng 2/2 lượt" } ],
-  "total_credits": 30, "credit_per_video": 15 }
+  "scenes": [ { "scene_id": 1, "code": "C1", "title": "…", "status": "storyboard_review" } ],
+  "skipped": [ { "scene_id": 3, "code": "C3", "reason_code": "ATTEMPTS_EXCEEDED", "message": "Cảnh C3 đã dùng 2/2 lượt" } ] }
 ```
-Cảnh đủ điều kiện: `stage=storyboard` → cảnh `awaiting_approval`; `stage=video` → cảnh `storyboard_review`. Cảnh đúng trạng thái nhưng không qua kiểm tra (đủ lượt, đang có job…) nằm trong `skipped`.  Không còn `remaining`/`affordable` (đã bỏ hạn mức).
+Cảnh đủ điều kiện: `stage=storyboard` → cảnh `awaiting_approval`; `stage=video` → cảnh `storyboard_review`. Cảnh đúng trạng thái nhưng không qua kiểm tra (đủ lượt, đang có job…) nằm trong `skipped`.  Không còn trường credit (`credits`, `total_credits`, `credit_per_video`).
 
-**`POST /api/projects/:id/approve-all`** body `{ "stage": "storyboard"|"video", "expectedCredits": int }` → `{ "stage", "count", "total_credits", "jobs": [ { "scene_id", "code", "job_id" } ] }`.
-`expectedCredits` = tổng credit người dùng đã xác nhận trong hộp thoại (bắt buộc với `video`; `storyboard` mặc định 0). **Tất-cả-hoặc-không** trong một transaction:
-`409 NOTHING_TO_APPROVE` (không có cảnh nào) · `409 CREDITS_CHANGED` (`details: {expected, actual}`: tổng thực tế khác `expectedCredits` — hiển thị lại preview).
+**`POST /api/projects/:id/approve-all`** body `{ "stage": "storyboard"|"video", "generator"?: GeneratorId }` → `{ "stage", "count", "jobs": [ { "scene_id", "code", "job_id" } ] }`. Mọi job video dùng cùng `generator`; cảnh thừa ảnh so với dịch vụ nằm trong `skipped` (`TOO_MANY_IMAGES`).
+`expectedCredits` (client cũ) được chấp nhận và **bỏ qua**; không còn lỗi `CREDITS_CHANGED`. **Tất-cả-hoặc-không** trong một transaction:
+`409 NOTHING_TO_APPROVE` (không có cảnh nào).
 
 ### 5.5 Hàng đợi, job, worker status
 
 **`GET /api/jobs?projectId=&status=&type=&limit=`** → `Job[]` mới nhất trước (id giảm dần). `status` và `type` nhận nhiều giá trị cách nhau dấu phẩy (`status=queued,claimed,running`); giá trị sai → `400`. `limit` mặc định 200, tối đa 1000.
 **`GET /api/jobs/:id`** → Job.
-**`POST /api/jobs/:id/cancel`** → `{ "job": Job, "scene": SceneSummary | null }`. Hủy job `queued/claimed/running` (đã `done/failed/cancelled` → `409 INVALID_STATE`). Job **managed** đã có action `intent|uncertain|submitted|downloaded` → `409 RECONCILIATION_REQUIRED` (dùng `reconcile` bên dưới để credit/lượt được ghi đúng). Cảnh về trạng thái ổn định: job storyboard → có storyboard ? `storyboard_review` : `awaiting_approval`; job video → có video ? `video_review` : `storyboard_review`; job revise_prompt → `awaiting_approval`; job analyze_brief → project `draft`/`active`. Credit đặt trước được giải phóng. Worker đang chạy job sẽ nhận `409 JOB_CANCELLED` ở heartbeat/complete/fail kế tiếp.
-**`POST /api/jobs/:id/reconcile`** body `{ "outcome": "retry_download"|"nothing_created"|"charge_and_fail", "note"?: string(≤500) }` → `{ "job": Job, "scene": SceneSummary | null, "replay": boolean }`. Đối soát job **managed** đã gửi lệnh tạo sang Flow/ChatGPT mà chưa rõ kết quả (thường `reconcile_required`): job `queued` (không có worker giữ) với action `intent|uncertain|submitted|downloaded`. Một transaction, idempotent (lặp lại cùng `outcome` → `replay:true`, không ghi sổ thêm), ghi event `job.reconciled` và bảng `job_reconciliations`.
+**`POST /api/jobs/:id/cancel`** → `{ "job": Job, "scene": SceneSummary | null }`. Hủy job `queued/claimed/running` (đã `done/failed/cancelled` → `409 INVALID_STATE`). Job **managed** đã có action `intent|uncertain|submitted|downloaded` → `409 RECONCILIATION_REQUIRED` (dùng `reconcile` bên dưới để lượt được ghi đúng). Cảnh về trạng thái ổn định: job storyboard → có storyboard ? `storyboard_review` : `awaiting_approval`; job video → có video ? `video_review` : `storyboard_review`; job revise_prompt → `awaiting_approval`; job analyze_brief → project `draft`/`active`. Lượt mà job video chiếm được trả lại. Worker đang chạy job sẽ nhận `409 JOB_CANCELLED` ở heartbeat/complete/fail kế tiếp.
+**`POST /api/jobs/:id/reconcile`** body `{ "outcome": "retry_download"|"nothing_created"|"charge_and_fail", "note"?: string(≤500) }` → `{ "job": Job, "scene": SceneSummary | null, "replay": boolean }`. Đối soát job **managed** đã gửi lệnh tạo sang Flow/ChatGPT mà chưa rõ kết quả (thường `reconcile_required`): job `queued` (không có worker giữ) với action `intent|uncertain|submitted|downloaded`. Một transaction, idempotent (lặp lại cùng `outcome` → `replay:true`, không tính lượt thêm), ghi event `job.reconciled` và bảng `job_reconciliations`.
 - `retry_download`: kết quả đã tạo bên ngoài → action `intent|uncertain` → `submitted`, xóa `wait_reason`; worker resume giữ checkpoint, **không thể submit lại** (journal chỉ cho phép một action sống mỗi job).
 - `nothing_created`: người dùng xác nhận không có gì được tạo → action `abandoned`, xóa checkpoint; job chạy lại từ đầu với action id mới `media-<job>-<n>`. Từ chối (`409 RECONCILE_DOWNLOADED`) nếu action đã `downloaded`.
-- `charge_and_fail` (chỉ job `video`, ngược lại `400 INVALID_OUTCOME`): đã tốn credit nhưng không lấy được kết quả → job `failed`, `credits_cost = payload.credits_expected`, ledger ghi **một lần**, tính một lượt. Từ chối nếu action đã `downloaded`.
+- `charge_and_fail` (chỉ job `video`, ngược lại `400 INVALID_OUTCOME`; tên giữ nguyên cho tương thích): đã tạo nhưng không lấy được kết quả → job `failed` với `result.attempt_used=true`, tính **đúng một lượt**; không ghi sổ credit (`job_reconciliations.credits = 0`). Từ chối nếu action đã `downloaded`.
 Lỗi: `409 INVALID_STATE` (job không chờ đối soát / đang do worker giữ) · `409 ALREADY_RECONCILED` (đã đối soát bằng lựa chọn khác) · `404` · `400`.
 **`POST /api/ai/jobs/:id/resume`** (quản trị AI, cần phiên) bỏ chờ `ai_quota/browser_offline` của job `queued`; job `needs_reconciliation` → `409 RECONCILIATION_REQUIRED`.
 **`GET /api/worker/status`** (không cần token) → WorkerStatus + `server_time`.
@@ -443,34 +447,33 @@ Lỗi: `409 INVALID_STATE` (job không chờ đối soát / đang do worker gi�
 
 **`GET /api/lan`** (chỉ app chính) → `{ enabled, listening, error, host, port, urls: string[], require_code: boolean, access_code: string|null, plan_count, tool_jobs_24h, queue: {cuts, tools, total, cap}, render: {running_count, waiting_count, concurrency}|null }` (`require_code` = `LAN_REQUIRE_CODE`; **`access_code` chỉ khác `null` khi `require_code=true`** và có mã; `tool_jobs_24h` = số việc xoá logo tạo trong 24 giờ; `queue` = việc từ LAN đang trong hàng đợi và trần 6; `render` = hàng đợi render chung: đang chạy / đang chờ / `RENDER_CONCURRENCY`). Dữ liệu cho khối **Chia sẻ LAN** (nút trên header web): trạng thái, các URL `http://<IP LAN>:<LAN_PORT>` (IPv4 không loopback của máy), "Không cần mã truy cập" hoặc (khi `require_code`) mã truy cập (ẩn/hiện + sao chép), hướng dẫn bật bằng `.env`. Chỉ báo cáo, không sửa `.env`. Mã truy cập chỉ trả khi `enabled` và `require_code`; route này không tồn tại trên listener LAN (mục 13).
 
-### 5.6 Dòng thời gian, sổ cái, xuất file
+### 5.6 Dòng thời gian (nhật ký), xuất file
 
 **`GET /api/projects/:id/events?sceneId=&limit=&before=`** → `Event[]` mới nhất trước. `sceneId` lọc theo cảnh (dòng thời gian trang chi tiết cảnh); `before=<event id>` để lấy trang cũ hơn; `limit` mặc định 200, tối đa 1000.
-**`GET /api/projects/:id/ledger`** → `{ "totals": { "used", "reserved" }, "entries": [ LedgerEntry + cumulative_used ] }` (sắp theo `created_at, id`; `cumulative_used` = tổng credit đã tiêu lũy kế tới dòng đó, vd `[15, 30, 45]`). Không còn `balance`/`budget`/`remaining`.
 **`GET /api/projects/:id/budget`** → Budget (4.9).
-**`GET /api/projects/:id/ledger.csv`** → `text/csv; charset=utf-8` có BOM, `Content-Disposition: attachment; filename="ledger-<slug>.csv"`. Cột: `STT,Thời gian,Cảnh,Job,Credit,Lũy kế đã dùng,Ghi chú`.
+`GET /api/projects/:id/ledger` và `GET /api/projects/:id/ledger.csv` **đã bỏ** (404) cùng với credit; trang "Nhật ký" của web chỉ dùng `/events`.
 **`GET /api/projects/:id/log.md`** → `text/markdown`, tải về (`log-<slug>.md`), sinh từ assets theo bảng `| clip | lần | loại | lỗi thấy được | kết luận |` (grid không có dòng riêng). Khác với file `output/<slug>/log.md` trên đĩa (worker append dòng khi có asset mới).
 
 ### 5.7 Bản dựng hoàn chỉnh (final cut)
 
 Khi **mọi cảnh có video được chọn**, Claude (job `edit_plan`) xem video từng cảnh và trả **EDL** (đoạn giữ / đoạn cắt); **server tự render nền** (không cần worker) ra `output/<slug>/final/<slug>_final_v<n>.mp4`. Chuyển cảnh là **cắt thẳng**, giữ âm thanh (ffmpeg thêm afade 20ms ở mỗi chỗ nối). Lỗi chung: `404`, `403 FORBIDDEN_*`.
 
-**Tự kích hoạt**: ngay sau khi người dùng chọn video (`select-video`) mà MỌI cảnh của dự án đều `done` có `selected_video_id`, và chưa có bản dựng nào (không tính `failed`/`cancelled`) cho lựa chọn video hiện tại → server tạo final_cut `planning` (created_by `claude`) + job `edit_plan` (không cần duyệt, không tốn credit). Idempotent và an toàn với race (một transaction `BEGIN IMMEDIATE`); đổi video được chọn sang video khác thì tự tạo bản mới. Không có kích hoạt lúc khởi động server, và `import:legacy` không bao giờ kích hoạt.
+**Tự kích hoạt**: ngay sau khi người dùng chọn video (`select-video`) mà MỌI cảnh của dự án đều `done` có `selected_video_id`, và chưa có bản dựng nào (không tính `failed`/`cancelled`) cho lựa chọn video hiện tại → server tạo final_cut `planning` (created_by `claude`) + job `edit_plan` (không cần duyệt). Idempotent và an toàn với race (một transaction `BEGIN IMMEDIATE`); đổi video được chọn sang video khác thì tự tạo bản mới. Không có kích hoạt lúc khởi động server, và `import:legacy` không bao giờ kích hoạt.
 
 **`GET /api/projects/:id/final-cuts`** → `FinalCut[]` (version giảm dần, mới nhất trước).
 **`GET /api/final-cuts/:id`** → FinalCut.
 
 **`POST /api/projects/:id/final-cuts`** (body `{}`) → `201 { "final_cut": FinalCut, "job": Job }`. Dựng bản MỚI (version kế tiếp) + job `edit_plan`, kể cả khi đã có bản cũ ("Dựng bản mới"). Lỗi: `409 SCENES_NOT_READY` (message liệt kê mã cảnh: "Còn C2, C3 chưa chọn video"; hoặc "Dự án chưa có cảnh nào") · `409 FINAL_CUT_ACTIVE` (đang có bản `planning`/`rendering` của dự án).
 
-**`POST /api/final-cuts/:id/rerender`** body `{ "edl": Edl, "note"?: string }` → `201 { "final_cut": FinalCut }`. Người dùng chỉnh điểm cắt: tạo version **MỚI** (`created_by="user"`, cùng `selection`/`selection_signature` như bản gốc nên có thể `outdated=true`), `status="rendering"`, render ngay, **không qua worker, không tốn credit**; bản cũ giữ nguyên. Lỗi: `400 INVALID_EDL` (không tạo version nào) · `409 FINAL_CUT_ACTIVE` (đang có bản `rendering` của dự án — render lần lượt từng bản).
+**`POST /api/final-cuts/:id/rerender`** body `{ "edl": Edl, "note"?: string }` → `201 { "final_cut": FinalCut }`. Người dùng chỉnh điểm cắt: tạo version **MỚI** (`created_by="user"`, cùng `selection`/`selection_signature` như bản gốc nên có thể `outdated=true`), `status="rendering"`, render ngay, **không qua worker**; bản cũ giữ nguyên. Lỗi: `400 INVALID_EDL` (không tạo version nào) · `409 FINAL_CUT_ACTIVE` (đang có bản `rendering` của dự án — render lần lượt từng bản).
 
 **`POST /api/final-cuts/:id/cancel`** (không body) → `{ "final_cut": FinalCut }` (`status="cancelled"`). `planning`: hủy luôn job `edit_plan` (worker đang giữ nhận `409 JOB_CANCELLED`); `rendering`: dừng ffmpeg / gọi `cancel_render` của Shotcut, bản dở bị xóa; **đang ở bước xoá logo**: dừng cả cây tiến trình của tool (node + Chromium), xóa file tạm, **giữ bản raw** và ghi `failed_stage="clean"` để còn bấm `clean`; **đang ở bước chỉnh màu**: dừng ffmpeg, xóa file tạm, giữ bản sạch và ghi `failed_stage="grade"` để còn bấm `regrade`. `ready/failed/cancelled` → `409 INVALID_STATE`. Hủy job edit_plan ở trang hàng đợi (`POST /api/jobs/:id/cancel`) cũng hủy bản dựng.
 
-**`POST /api/final-cuts/:id/clean`** (không body) → `{ "final_cut": FinalCut }` (`status="rendering"`, `stage="clean"`, `progress=0`, `video_path=null`). Chạy lại **riêng bước xoá logo Veo** (không render lại, không tốn credit): ("Thử xoá logo lại" / "Xoá logo Veo"). Cho phép khi `failed_stage="clean"` (bản `failed`, hoặc `cancelled` giữa bước xoá logo) hoặc khi `ready` mà `watermark_removed=false`. Bản cũ chưa có `raw_video_path` (render trước khi có bước này): server **đổi tên** `<slug>_final_v<n>.mp4` → `<slug>_final_v<n>_raw.mp4` trước (nguyên tử, cập nhật DB), rồi xoá logo ra tên chính. Lỗi: `409 INVALID_STATE` (trạng thái khác, hoặc đã xoá logo rồi) · `409 WATERMARK_REMOVER_UNAVAILABLE` (tool tắt/không chạy được; `message` có lý do) · `409 RAW_EXISTS` (đã có file `_raw.mp4`, không ghi đè) · `409 FILE_MISSING` (mất bản gốc) · `404`.
+**`POST /api/final-cuts/:id/clean`** (không body) → `{ "final_cut": FinalCut }` (`status="rendering"`, `stage="clean"`, `progress=0`, `video_path=null`). Chạy lại **riêng bước xoá logo Veo** (không render lại): ("Thử xoá logo lại" / "Xoá logo Veo"). Cho phép khi `failed_stage="clean"` (bản `failed`, hoặc `cancelled` giữa bước xoá logo) hoặc khi `ready` mà `watermark_removed=false`. Bản cũ chưa có `raw_video_path` (render trước khi có bước này): server **đổi tên** `<slug>_final_v<n>.mp4` → `<slug>_final_v<n>_raw.mp4` trước (nguyên tử, cập nhật DB), rồi xoá logo ra tên chính. Lỗi: `409 INVALID_STATE` (trạng thái khác, hoặc đã xoá logo rồi) · `409 WATERMARK_REMOVER_UNAVAILABLE` (tool tắt/không chạy được; `message` có lý do) · `409 RAW_EXISTS` (đã có file `_raw.mp4`, không ghi đè) · `409 FILE_MISSING` (mất bản gốc) · `404`.
 
 **`POST /api/final-cuts/:id/feedback`** body `{ "feedback": string }` (1–1000 ký tự, đã cắt khoảng trắng) → `201 { "final_cut": FinalCut, "job": Job }`. Góp ý cho AI trên bản `ready`: tạo phiên bản **MỚI** (`parent_id` = bản đang xem, `feedback`, `status="planning"`, cùng `selection`) + job `edit_plan` mang `payload.revision` (mục 6.5); bản cũ giữ nguyên. Lỗi: `400 VALIDATION_ERROR` · `409 INVALID_STATE` (bản chưa `ready`) · `409 FINAL_CUT_ACTIVE` (dự án đang có bản `planning`/`rendering`) · `409 LOGO_NOT_REMOVED` (tool xoá logo đang bật mà bản này còn logo: phải `clean` trước) · `409 FILE_MISSING` · `404` (kể cả dự án trong thùng rác).
 
-**`POST /api/final-cuts/:id/grade`** body `{ "grade": Grade, "note"?: string(≤500) }` → `201 { "final_cut": FinalCut }`. Chỉnh màu tay: phiên bản mới `created_by="user"`, `status="rendering"`, `stage="grade"`, `revision.kind="manual"`, **không job, không AI, không credit, không render/xoá logo**. Lỗi như `/feedback` cộng `400 INVALID_GRADE`.
+**`POST /api/final-cuts/:id/grade`** body `{ "grade": Grade, "note"?: string(≤500) }` → `201 { "final_cut": FinalCut }`. Chỉnh màu tay: phiên bản mới `created_by="user"`, `status="rendering"`, `stage="grade"`, `revision.kind="manual"`, **không job, không AI, không render/xoá logo**. Lỗi như `/feedback` cộng `400 INVALID_GRADE`.
 
 **`POST /api/final-cuts/:id/grade-preview`** body `{ "grade": Grade }` → `{ "hash": string, "items": [ { "t": 0.3, "before_url": "/files/…", "after_url": "/files/…" } ×3 ] }`. Ba mốc ở 15% / 50% / 85% thời lượng; mỗi ảnh là một khung JPEG rộng 360 px dựng bằng ffmpeg từ bản sạch (chưa chỉnh màu) của bản đang xem. Cache theo (bản dựng, mốc, hash grade) trong `output/<slug>/final/preview/`, tối đa 120 ảnh mỗi dự án (xoá ảnh cũ nhất), tối đa 2 lượt chạy ffmpeg cùng lúc toàn server. Chỉ bản `ready` (`409 INVALID_STATE`). Có `grade.match` thì dùng đúng LUT như bước dựng thật (lấy mẫu bản sạch trong lượt này, thống kê được nhớ trong bộ nhớ nên kéo thanh cường độ nhanh); ảnh mẫu mất file → `409 COLOR_MATCH_FAILED`; hash khác khi đổi ảnh/cường độ/chế độ/từng cảnh.
 
@@ -502,10 +505,10 @@ Server kiểm tra (sai → `400 INVALID_EDL`, message dạng `EDL không hợp l
 
 ### 5.8 Thùng rác dự án (xoá mềm 30 ngày)
 
-Video trong dự án tốn credit thật nên **không có xoá cứng tức thì**: `DELETE /api/projects/:id` chuyển dự án vào thùng rác; chỉ `DELETE /api/trash/:id` (gõ lại tên) hoặc bộ dọn sau `TRASH_RETENTION_DAYS` ngày mới xoá vĩnh viễn.
+Video trong dự án là kết quả tạo thật nên **không có xoá cứng tức thì**: `DELETE /api/projects/:id` chuyển dự án vào thùng rác; chỉ `DELETE /api/trash/:id` (gõ lại tên) hoặc bộ dọn sau `TRASH_RETENTION_DAYS` ngày mới xoá vĩnh viễn.
 
 **Xoá (`DELETE /api/projects/:id`, hoặc `DELETE /lan/api/plans/:id` cho người tạo ở LAN):**
-1. Một transaction: kiểm tra điều kiện chặn → hủy mọi job `queued` bằng `cancelJob` (cảnh/ledger/bản dựng đúng) → đặt `projects.deleted_at`, `deleted_by` (`app`|`lan`), `trash_path` → ghi event `project.deleted`.
+1. Một transaction: kiểm tra điều kiện chặn → hủy mọi job `queued` bằng `cancelJob` (cảnh/lượt/bản dựng đúng) → đặt `projects.deleted_at`, `deleted_by` (`app`|`lan`), `trash_path` → ghi event `project.deleted`.
 2. Sau commit, chuyển file bằng `rename` (cùng ổ): `output/<slug>/` → `output/.trash/<id>-<slug>-<yyyymmddThhmmssZ>/output/`, `refs/<id>/` → `…/refs/` (thư mục không có thì bỏ qua). Lỗi giữa chừng → hoàn tác các thư mục đã chuyển, đặt lại `deleted_at=NULL`, ghi event `project.delete_failed`, trả `500 TRASH_MOVE_FAILED` (dự án giữ nguyên; job queued đã hủy thì không mở lại, bấm duyệt lại được). Khởi động lại sau khi chết giữa commit và chuyển file: bộ dọn hoàn tất việc chuyển dở.
 
 **Điều kiện chặn (`409 PROJECT_BUSY`, lý do tiếng Việt trong `message` và `details.reasons[]`):**
@@ -517,11 +520,11 @@ Job `queued` còn lại KHÔNG chặn (bị hủy); job done/failed/cancelled kh
 
 **Dự án đã xoá biến mất ở mọi nơi:** `404` ở mọi API theo id (dự án, cảnh, job, asset, comment, ảnh, bản dựng, `ai-policy`, `/api/stream?projectId=`), không có trong `GET /api/projects`, `/api/jobs`, `/api/ref-library` (cả bản LAN), `GET /lan/api/plans`, `GET /api/lan` (`plan_count`), trần hàng đợi LAN; `/files/*` và `/lan/files/*` không phục vụ file của nó (kể cả `output/.trash/**`); `GET /api/worker/next` không giao job của nó và các API worker theo id job trả 404. **Slug** của dự án trong thùng rác vẫn bị giữ (không cấp lại cho dự án mới) cho tới khi xoá vĩnh viễn. Cơ chế: mọi getter trong `services/repo.ts` nối `projects` và loại `deleted_at IS NOT NULL`; chỉ `getProjectAny` và `services/trash.ts` thấy dự án đã xoá.
 
-**`GET /api/trash`** → `TrashItem[]` (xoá gần nhất trước): `{id,name,slug,source,created_by_name,status,created_at,deleted_at,deleted_by:'app'|'lan',purge_at,days_left,retention_days,size_bytes|null,scene_count,done_count,credits_used,restore_block:string|null}`.
+**`GET /api/trash`** → `TrashItem[]` (xoá gần nhất trước): `{id,name,slug,source,created_by_name,status,created_at,deleted_at,deleted_by:'app'|'lan',purge_at,days_left,retention_days,size_bytes|null,scene_count,done_count,restore_block:string|null}` (không còn `credits_used`).
 
 **`POST /api/trash/:id/restore`** → Project detail. Chuyển file về đúng chỗ cũ rồi bỏ đánh dấu xoá, ghi event `project.restored`. **Không bao giờ ghi đè**: nếu `output/<slug>/` hoặc `refs/<id>/` đã có nội dung → `409 RESTORE_CONFLICT` và không đổi gì (cây thư mục rỗng thì được thay). Lỗi di chuyển → hoàn tác, `500 RESTORE_FAILED`. Dự án không ở trong thùng rác → `404`.
 
-**`DELETE /api/trash/:id`** body `{ "confirm_name" }` → `200 { ok, id, name }`. Xoá thư mục thùng rác rồi `DELETE FROM projects`: mọi bảng tham chiếu `projects`/`scenes`/`jobs`/`assets` đều `ON DELETE CASCADE` hoặc `SET NULL` (đã kiểm tra mọi migration; test `project-trash.test.ts` khoá điều này và chạy `PRAGMA foreign_key_check`), nên không cần dựng lại bảng. Sổ credit và nhật ký của dự án mất theo; `ai_attempts.job_id` về NULL. Lỗi: `400 CONFIRM_MISMATCH`, `404`, `500 PURGE_FAILED` (dự án vẫn trong thùng rác).
+**`DELETE /api/trash/:id`** body `{ "confirm_name" }` → `200 { ok, id, name }`. Xoá thư mục thùng rác rồi `DELETE FROM projects`: mọi bảng tham chiếu `projects`/`scenes`/`jobs`/`assets` đều `ON DELETE CASCADE` hoặc `SET NULL` (đã kiểm tra mọi migration; test `project-trash.test.ts` khoá điều này và chạy `PRAGMA foreign_key_check`), nên không cần dựng lại bảng. Nhật ký (và sổ credit cũ nếu có) của dự án mất theo; `ai_attempts.job_id` về NULL. Lỗi: `400 CONFIRM_MISMATCH`, `404`, `500 PURGE_FAILED` (dự án vẫn trong thùng rác).
 
 **Tự dọn:** lúc khởi động và mỗi giờ, xoá vĩnh viễn dự án có `deleted_at` quá `TRASH_RETENTION_DAYS` ngày.
 
@@ -562,26 +565,28 @@ Trả về Job (xem 4.5) với `payload` đầy đủ và `status: "claimed"`.
 
 **`POST /api/worker/jobs/:id/complete`**
 ```json
-{ "result": { }, "assets": [ { "kind": "video", "file_path": "output/…/C1_v1.mp4", "meta": { "duration_s": 10 } } ], "credits_cost": 15 }
+{ "result": { }, "assets": [ { "kind": "video", "file_path": "output/…/C1_v1.mp4", "meta": { "duration_s": 10 } } ] }
 ```
 → `200 { "job": Job }` (status `done`). Job phải đang `claimed/running`; không thì `409 JOB_CANCELLED` (job đã hủy) hoặc `409 INVALID_STATE` (queued/done/failed).
 `file_path`: tương đối **dưới `output/`**, file phải tồn tại và là file thường (symlink trỏ ra ngoài bị từ chối); sai → `400 INVALID_PATH` / `400 FILE_NOT_FOUND`. Asset được tạo với `attempt = payload.attempt`. Loại asset cho phép theo job: storyboard→`storyboard`; video→`video`,`grid`; hai loại còn lại không nhận asset (`400 INVALID_ASSET_KIND`); thiếu asset chính → `400 ASSET_REQUIRED`.
 
 Theo loại job:
 - `storyboard`: ≥1 asset `storyboard`. `result.note`/`result.verdict_note`/`result.verdict` (tùy chọn) gán vào asset. Cảnh → `storyboard_review`. Append dòng vào `output/<slug>/log.md`.
-- `video`: ≥1 asset `video` (+ `grid`). `result: { "verdict"?: "pass"|"fix_in_edit"|"redo", "verdict_note"?: string }` gán cho asset video (verdict sai → `400`). Ghi sổ cái `delta = −credits_cost` (`credits_cost` thiếu ⇒ `credit_per_video`; `0` ⇒ không ghi sổ cái). `jobs.credits_cost` = số đó. Cảnh → `video_review`. Append dòng log.md (grid không có dòng riêng).
+- `video`: ≥1 asset `video` (+ `grid`). `result: { "verdict"?: "pass"|"fix_in_edit"|"redo", "verdict_note"?: string }` gán cho asset video (verdict sai → `400`). Không ghi sổ credit; `credits_cost` nếu worker cũ gửi thì bị bỏ qua (`jobs.credits_cost = 0`). Video mới tính một lượt qua asset. Cảnh → `video_review`. Append dòng log.md (grid không có dòng riêng).
 - `revise_prompt`: `result: { "prompt": string, "reason": string (bắt buộc), "resolved_comment_ids"?: int[] }` (thiếu `prompt`/`reason` → `400`). Tạo `scene_prompt_versions` (created_by `claude`), cập nhật `scenes.prompt`, đánh dấu các comment `resolved` (mặc định tất cả comment trong `payload.comments`), cảnh → `awaiting_approval`. Không tạo video.
-- `edit_plan`: xem [6.5](#65-job-edit_plan). Không nhận `assets` (`400 INVALID_ASSET_KIND`), `credits_cost` bị bỏ qua.
+- `edit_plan`: xem [6.5](#65-job-edit_plan). Không nhận `assets` (`400 INVALID_ASSET_KIND`).
 - `analyze_brief`: phải đã gọi `POST /api/worker/scenes` (chưa có cảnh nào → `409 NO_SCENES`). Project → `active`.
 
-**`POST /api/worker/jobs/:id/fail`** `{ "error": string, "code"?: "CAPTCHA"|"LOGIN_REQUIRED"|"FLOW_OUT_OF_CREDIT"|"UI_CHANGED"|"OTHER", "credits_cost"?: int }` → `200 { "job": Job, "worker": WorkerStatus }`.
-- Job → `failed` (`error`, `error_code`; `code` mặc định `OTHER`). Cảnh → `failed` (job `video` với `FLOW_OUT_OF_CREDIT` → `blocked_budget`). Job analyze_brief: project về `draft`/`active`.
+**`POST /api/worker/jobs/:id/fail`** `{ "error": string, "code"?: "CAPTCHA"|"LOGIN_REQUIRED"|"FLOW_OUT_OF_CREDIT"|"UI_CHANGED"|"OTHER", "attempt_used"?: boolean, "retryable"?: boolean }` → `200 { "job": Job, "worker": WorkerStatus }`. `retryable`: lỗi trước khi dịch vụ nhận lệnh tạo (chưa tốn credit/lượt), ghi `result.retryable` để auto-resume tạo lại.
+
+**`POST /api/worker/queue/auto-resume`** → `200 { "resumed": boolean, "requeued": number[], "worker": WorkerStatus }`. Chỉ bật lại khi hàng đợi đang dừng với `pause_code=LOGIN_REQUIRED`; rồi tạo lại (qua `approveStoryboard`/`approveVideo`, video giữ dịch vụ cũ) mỗi job storyboard/video `failed` có `result.retryable` là job mới nhất của cảnh, cảnh còn `failed` và không có job khác; job cũ được ghi `result.retried_by`. Dừng vì lý do khác → `resumed: false`, không đổi gì. Worker nền ảnh/video gọi sau khi `GET /health` của Flow2API báo có tài khoản hoạt động.
+- Job → `failed` (`error`, `error_code`; `code` mặc định `OTHER`). Cảnh → `failed` (job `video` với `FLOW_OUT_OF_CREDIT` = hết hạn mức tạo video → `blocked_budget`). Job analyze_brief: project về `draft`/`active`.
 - 4 mã đầu **tạm dừng hàng đợi** (`worker.queue_paused=true`, `pause_reason="<CODE>: <error>"`) và phát SSE `worker.status`; `GET /next` trả `503 QUEUE_PAUSED` cho tới khi người dùng `POST /api/queue/resume`. `OTHER` không tạm dừng.
-- `credits_cost > 0` (chỉ job video): ghi sổ cái, và job này **vẫn tính một lượt** (attempts_used).
+- `attempt_used: true` (chỉ job video; lần tạo đã thực sự chạy dù lỗi): job lưu `result = {"attempt_used": true}` và **vẫn tính một lượt** (attempts_used). Mặc định `false` (không chiếm lượt). Worker cũ gửi `credits_cost > 0` được hiểu như `attempt_used: true` (không ghi sổ credit).
 
 ### 6.3 Payload theo loại job
 
-`requeued` = `requeue_count > 0`: job từng bị trả về do mất heartbeat — worker phải kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại để tránh tốn credit hai lần. Mọi đường dẫn là tương đối từ `ROOT_DIR`.
+`requeued` = `requeue_count > 0`: job từng bị trả về do mất heartbeat — worker phải kiểm tra Flow/ChatGPT xem đã tạo chưa trước khi bấm tạo lại để tránh tạo hai lần. Mọi đường dẫn là tương đối từ `ROOT_DIR`.
 
 `video`:
 ```json
@@ -592,9 +597,11 @@ Theo loại job:
   "attempt": 1,
   "output": { "video_path": "output/cacao-actiso-plus/video/C1_v1.mp4", "grid_path": "output/cacao-actiso-plus/video/C1_v1_grid.jpg" },
   "settings": { "aspect": "9:16", "duration_s": 10, "count": 1, "resolution": "720p" },
-  "credits_expected": 15, "requeued": false }
+  "generator": { "id": "muse", "provider": "muse", "model": "muse-video", "label": "Muse", "max_images": 4 },
+  "requeued": false }
 ```
-`upload_files` = các ref theo thứ tự `scene.upload_refs`, rồi storyboard mới nhất ở cuối. `attempt` = số video đã có + job video failed có tốn credit + 1.
+`generator` = dịch vụ người dùng chọn khi duyệt; worker gọi Muse2API (`WORKER-MUSE.md`) khi `provider="muse"`, Flow2API (`WORKER-FLOW.md`) khi `provider="flow"`. `settings.duration_s` theo dịch vụ (Muse 10, Veo 8, Omni 10). Job tạo trước khi có lựa chọn được tính là `muse`.
+`upload_files` = các ref theo thứ tự `scene.upload_refs`, rồi storyboard mới nhất ở cuối. `attempt` = số video đã có + job video failed vẫn tính lượt + 1. Không còn `credits_expected`.
 
 `storyboard`:
 ```json
@@ -603,13 +610,15 @@ Theo loại job:
   "chatgpt_message": "Tạo 1 ảnh tĩnh duy nhất, khung dọc 9:16, …\nĐây là khung hình MỞ ĐẦU (giây 0) của clip C1.\n…",
   "attempt": 1,
   "output": { "storyboard_path": "output/cacao-actiso-plus/storyboard/C1_storyboard.png" },
+  "generator": { "id": "muse", "provider": "muse", "model": "muse-image", "label": "Muse", "max_images": 4, "remove_logo": false },
   "requeued": false }
 ```
+`generator` = dịch vụ storyboard của dự án lúc duyệt (`projects.storyboard_generator`, job cũ = `muse`). Với `remove_logo: true` (Google Flow), khi worker gọi `complete` server chạy tool xoá logo Gemini (`GWR_CLI`) trên ảnh ở `output.storyboard_path` **trước** transaction: ảnh gốc giữ ở `<tên>_raw_j<job>.<đuôi>` cạnh đó, file storyboard được thay bằng bản đã xoá logo, asset có `meta.logo = { status: "removed"|"none"|"failed"|"skipped", detail, raw_path }`. `failed`/`skipped` vẫn nhận storyboard (giữ ảnh gốc), giao diện cảnh báo và cho xoá lại.
 `chatgpt_message` = lời nhắn gửi ChatGPT dựng sẵn bằng `buildStoryboardMessage` (`server/src/services/plan.ts`, template của WORKER.md 4.2), nhãn ảnh theo đúng thứ tự `upload_files`; worker gửi **nguyên văn**. Trang planner LAN dùng cùng hàm này. `upload_files` = ref theo `upload_refs`, + storyboard mới nhất của **cảnh đầu tiên** nếu `use_prev_storyboard` (và cảnh này không phải cảnh đầu). `attempt` = số storyboard đã có + 1; tên file lượt 1 `C1_storyboard.png`, lượt n≥2 `C1_storyboard_v<n>.png`.
 
 `analyze_brief`:
 ```json
-{ "project": { "id": 1, "slug": "…", "name": "…", "brief": "…", "style_lock": "…", "credit_per_video": 15, "max_attempts_per_scene": 2 },
+{ "project": { "id": 1, "slug": "…", "name": "…", "brief": "…", "style_lock": "…", "max_attempts_per_scene": 2 },
   "refs": [ { "id": 1, "label": "Hộp 3/4", "file_path": "refs/1/box.png" } ],
   "rules_file": "claude-system-prompt.md", "requeued": false }
 ```
@@ -640,7 +649,7 @@ Upsert theo `(project_id, code)`; cả lô tất-cả-hoặc-không. Cảnh mớ
 
 ### 6.5 Job `edit_plan`
 
-Job do server tạo (tự kích hoạt hoặc `POST /api/projects/:id/final-cuts`): `scene_id=null`, `requires_approval=false`, không tốn credit. Chỉ giao khi bản dựng còn `planning` (nếu không, job bị hủy lúc claim).
+Job do server tạo (tự kích hoạt hoặc `POST /api/projects/:id/final-cuts`): `scene_id=null`, `requires_approval=false`. Chỉ giao khi bản dựng còn `planning` (nếu không, job bị hủy lúc claim).
 
 Payload (tính lúc claim; đường dẫn tương đối từ `ROOT_DIR`):
 ```json
@@ -657,8 +666,8 @@ Payload (tính lúc claim; đường dẫn tương đối từ `ROOT_DIR`):
 ```
 `scenes` theo thứ tự cảnh. `duration_s/fps/width/height` đọc bằng ffprobe (không có thì lấy từ `asset.meta`, hoặc `null`). `grid_path`/`verdict`/`verdict_note` có thể `null`. `comments` chỉ gồm comment **chưa xử lý có `timecode`**. `output.*` chỉ để biết (worker không ghi file).
 
-`POST /api/worker/jobs/:id/complete` với `{ "result": { "edl": Edl, "summary": "1–3 câu tiếng Việt" } }` (không `assets`, không `credits_cost`):
-- hợp lệ → `200 { "job": Job }` (`status="done"`, `credits_cost=0`); final_cut → `rendering` và server render nền (SSE `final_cut.updated`);
+`POST /api/worker/jobs/:id/complete` với `{ "result": { "edl": Edl, "summary": "1–3 câu tiếng Việt" } }` (không `assets`):
+- hợp lệ → `200 { "job": Job }` (`status="done"`); final_cut → `rendering` và server render nền (SSE `final_cut.updated`);
 - EDL sai → `400 INVALID_EDL` (message nêu cảnh/đoạn); **job vẫn `claimed`/`running` để worker sửa và gọi lại**; thiếu `summary` → `400 VALIDATION_ERROR`;
 - job đã bị hủy (bản dựng bị hủy) → `409 JOB_CANCELLED`.
 `fail` job `edit_plan` → final_cut `failed` (`error` = nội dung lỗi). Mất heartbeat → job về `queued` như các job khác (`requeued=true`).
@@ -704,11 +713,11 @@ Payload (tính lúc claim; đường dẫn tương đối từ `ROOT_DIR`):
 | `comment.created` | `{ "comment": Comment }` | comment của người dùng hoặc Claude |
 | `comment.updated` | `{ "comment": Comment }` | đổi `resolved` (kể cả khi revise_prompt hoàn thành) — *ngoài danh sách gốc* |
 | `worker.status` | `{ online, last_seen_at, worker_id, queue_paused, pause_reason, pause_code, paused_at }` | online/offline đổi (timer 10 giây), worker vừa online lại, tạm dừng/tiếp tục hàng đợi, và ngay khi kết nối |
-| `budget.updated` | `{ "project_id": 1 }` | job video tạo/hủy/xong/lỗi, ledger đổi, sửa dự án → refetch `GET /budget` (hoặc project) |
+| `budget.updated` | `{ "project_id": 1 }` | job video tạo/hủy/xong/lỗi, sửa dự án → refetch `GET /budget` (hoặc project) |
 | `event.created` | `{ "event": Event }` | mỗi dòng mới ở dòng thời gian |
 | `final_cut.updated` | `{ "final_cut": FinalCut }` | final_cut tạo/đổi trạng thái (`planning` → `rendering` [stage `render` → `clean`] → `ready`/`failed`/`cancelled`), `stage`, `progress` đổi (ghi tối đa 1 lần/giây), có `.mlt`/`render_ref`, **vị trí hàng đợi đổi** (`queue_state`/`queue_position`/`running_count`/`ai_queue`, xem 4.12); kèm `project.updated` khi đổi trạng thái (để cập nhật `latest_final_cut`) |
 | `project.deleted` · `project.restored` · `project.purged` | `{project_id,name,deleted_by}` · `{project}` · `{project_id}` | dự án vào thùng rác (từ app hoặc LAN) / khôi phục / xoá vĩnh viễn (mục 5.8) — danh sách dự án và thùng rác cần refetch |
-| `source.updated` · `clip.updated` · `clip.deleted` (dành sẵn, chưa có endpoint xoá clip nên chưa phát) · `clip_cut.updated` | `{ "source": SourceVideo }` · `{ "clip": Clip }` · `{ "clip_id" }` · `{ "cut": ClipCut }` | cắt clip từ video dài (mục 14): tiến độ/trạng thái nhận dạng và vị trí hàng đợi STT; clip tạo/sửa/ảnh đại diện xong/có bản dựng mới; tiến độ, giai đoạn, vị trí hàng đợi của bản dựng clip. Luôn dạng app chính (URL `/files/...`); trang LAN không có SSE |
+| `source.updated` · `clip.updated` · `clip.deleted` (dành sẵn, chưa có endpoint xoá clip nên chưa phát) · `clip_cut.updated` | `{ "source": SourceVideo }` · `{ "clip": Clip }` · `{ "clip_id" }` · `{ "cut": ClipCut }` | highlight từ video dài (mục 14): tiến độ/trạng thái nhận dạng và vị trí hàng đợi STT; clip tạo/sửa/ảnh đại diện xong/có bản dựng mới; tiến độ, giai đoạn, vị trí hàng đợi của bản dựng clip. Luôn dạng app chính (URL `/files/...`); trang LAN không có SSE |
 | `project.updated` | `{ "project": ProjectSummary }` | gửi brief, phân tích xong/lỗi/hủy, sửa dự án, thay đổi ảnh tham chiếu (upload/chép từ thư viện/nhãn/thứ tự/xóa) — *ngoài danh sách gốc* |
 
 Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (SceneSummary đầy đủ, không có `assets/comments/jobs` — với trang chi tiết, invalidate `GET /api/scenes/:id` khi nhận `scene.updated`/`asset.*`/`comment.*` của cảnh đó). `job.updated` cập nhật trang Hàng đợi.
@@ -740,8 +749,8 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | 409 | `INVALID_STATE` | trạng thái cảnh/job không cho phép thao tác (kể cả "chưa có storyboard") |
 | 409 | `JOB_ACTIVE` | cảnh/dự án đang có job chưa xong |
 | 409 | `ATTEMPTS_EXCEEDED` | "Cảnh C1 đã dùng 2/2 lượt" |
-| 409 | `CREDITS_CHANGED` | approve-all: tổng credit khác `expectedCredits` (`details: {expected, actual}`) |
 | 409 | `NOTHING_TO_APPROVE` | approve-all không có cảnh đủ điều kiện |
+| 409 | `TOO_MANY_IMAGES` | tạo video: số ảnh (ref + storyboard) vượt `max_images` của dịch vụ đã chọn |
 | 409 | `JOB_CANCELLED` | worker: job đã hủy / không còn thuộc worker này → dừng ngay |
 | 409 | `RECONCILIATION_REQUIRED` | hủy/resume job managed đã gửi lệnh tạo bên ngoài: phải đối soát |
 | 409 | `ALREADY_RECONCILED` · `RECONCILE_DOWNLOADED` | đối soát: đã đối soát bằng lựa chọn khác · action đã `downloaded` (chỉ `retry_download`) |
@@ -798,8 +807,8 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | Gửi cho Claude phân tích | `POST /api/projects/:id/brief` | project `draft`/`active` | có `analyze_brief` đang chạy (`JOB_ACTIVE`) |
 | Duyệt prompt (& tạo storyboard) | `POST /api/scenes/:id/approve` `{stage:"storyboard"}` | `awaiting_approval` | `storyboard_block != null` |
 | Tạo storyboard (lại) | `POST …/approve` `{stage:"storyboard"}` hoặc comment `regenerate_storyboard` | `storyboard_review`, `video_review`, `done`, `failed`, `blocked_budget` | `storyboard_block != null` |
-| Tạo video (15 credit) — **hộp xác nhận bắt buộc** | `POST …/approve` `{stage:"video"}` | `storyboard_review`; `awaiting_approval` nếu `storyboard != null` (sau khi sửa prompt) | `video_block != null` → hiện `video_block.message` (vd "Cảnh C1 đã dùng 2/2 lượt") |
-| Tạo lại y nguyên (credit) | comment `regenerate_same` (hoặc `approve` video) | `video_review`, `done`, `failed`, `blocked_budget` | như trên |
+| Tạo video (dùng 1 lượt) — **hộp xác nhận bắt buộc** | `POST …/approve` `{stage:"video"}` | `storyboard_review`; `awaiting_approval` nếu `storyboard != null` (sau khi sửa prompt) | `video_block != null` → hiện `video_block.message` (vd "Cảnh C1 đã dùng 2/2 lượt") |
+| Tạo lại y nguyên (dùng 1 lượt) | comment `regenerate_same` (hoặc `approve` video) | `video_review`, `done`, `failed`, `blocked_budget` | như trên |
 | Sửa prompt rồi tạo lại | comment `revise_and_regenerate` (kèm `timecode`, `asset_id`) | `storyboard_review`, `video_review`, `done`, `awaiting_approval`, `failed` | có `active_job` |
 | Ghi chú / comment gắn mốc thời gian | comment `note` `{timecode}` | mọi trạng thái | — |
 | Đánh dấu comment đã xử lý | `PATCH /api/comments/:id` | — | — |
@@ -809,13 +818,13 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | Hủy job | `POST /api/jobs/:id/cancel` (`scene.active_job.id`) | `*_queued`, `*_running`, `needs_revision` | job managed đã gửi lệnh tạo (`RECONCILIATION_REQUIRED`) |
 | Đối soát | `POST /api/jobs/:id/reconcile` (`scene.active_job.reconcile_required`) | `*_queued/*_running` có `active_job.reconcile_required` | — |
 | Thử lại / Quay về chờ duyệt | `POST …/approve` (storyboard hoặc video theo `jobs[0].type`) hoặc `POST /api/scenes/:id/reset` | `failed`, `blocked_budget` | |
-| Duyệt tất cả cảnh đang chờ | `GET …/approve-all/preview` → hộp xác nhận ghi `total_credits` → `POST …/approve-all {stage, expectedCredits: total_credits}` | thanh trên cùng | `count=0`; nhận `CREDITS_CHANGED` thì tải lại preview |
+| Duyệt tất cả cảnh đang chờ | `GET …/approve-all/preview` → hộp xác nhận ghi số cảnh → `POST …/approve-all {stage}` | thanh trên cùng | `count=0` |
 | Tiếp tục hàng đợi | `POST /api/queue/resume` | banner khi `worker.queue_paused` (kèm `pause_reason`) | — |
 | Banner "job bị trả về do mất heartbeat" | `GET /api/projects/:id` → `requeued_jobs`; SSE `event.created` type `job.requeued` | | |
 | Chỉ báo Worker online/offline | `GET /api/worker/status` + SSE `worker.status` | luôn | |
-| Thẻ dự án (số cảnh, tiến trình, credit) | `GET /api/projects` (`scene_count`, `done_count`, `status_counts`, `credits_used`) | | |
-| Thanh trên cùng bảng cảnh | `GET /api/projects/:id` (`credits_used`, `credits_reserved`, `credit_per_video`, `status_counts`, `budget`) — hiển thị "Đã dùng X credit" (+ "đặt trước Y" nếu > 0) và "15 credit/video" | | |
-| Sửa ngân sách / số lượt / credit-per-video | `PATCH /api/projects/:id` | | |
+| Thẻ dự án (số cảnh, tiến trình) | `GET /api/projects` (`scene_count`, `done_count`, `status_counts`) | | |
+| Thanh trên cùng bảng cảnh | `GET /api/projects/:id` (`status_counts`, `budget`) — hiển thị số lượt tối đa mỗi cảnh | | |
+| Sửa tên / style lock / số lượt | `PATCH /api/projects/:id` | | |
 | Ảnh tham chiếu: tải, nhãn, thứ tự, xóa | `POST /api/projects/:id/refs`, `PATCH /api/refs/:id`, `PATCH /api/refs/reorder`, `DELETE /api/refs/:id` | | |
 | "Chọn từ thư viện" (ảnh của dự án trước) | `GET /api/ref-library?projectId=` (lưới thumbnail `url`, nhãn, `projects[].name` = "Đã dùng ở", `in_project` → "Đã có", không chọn được) → `POST /api/projects/:id/refs/from-library {ref_ids, labels?}` (thứ tự chọn = thứ tự `ref_ids`) | trang tạo dự án / mục Ảnh tham chiếu của dự án | `in_project=true` |
 | Hàng đợi (bảng job) | `GET /api/jobs?status=…` + SSE `job.updated` | | |
@@ -826,12 +835,12 @@ Gợi ý frontend: `scene.updated` ghi đè cảnh trong cache theo `scene.id` (
 | "Thử xoá logo lại" (lỗi ở bước clean) / "Xoá logo Veo" (bản `ready` còn logo) | `POST /api/final-cuts/:id/clean` | `failed_stage="clean"`, hoặc `ready` với `watermark_removed=false` | `WATERMARK_REMOVER_UNAVAILABLE` (xem `/api/meta.watermark_remover.reason`) |
 | Link nhỏ "Tải bản gốc còn logo" | `raw_video_url` | khi `raw_video_url != null` | — |
 | "Mở trong Shotcut" | `POST /api/final-cuts/:id/open-in-shotcut` | chỉ khi `project_file_path != null` | `NO_PROJECT_FILE` |
-| Trình chỉnh EDL → "Render lại (không tốn credit)" | `POST /api/final-cuts/:id/rerender {edl, note?}`; `INVALID_EDL` hiện đúng cảnh/đoạn từ `error.details` / `message` | bản `ready`/`failed` | `FINAL_CUT_ACTIVE` |
+| Trình chỉnh EDL → "Render lại" | `POST /api/final-cuts/:id/rerender {edl, note?}`; `INVALID_EDL` hiện đúng cảnh/đoạn từ `error.details` / `message` | bản `ready`/`failed` | `FINAL_CUT_ACTIVE` |
 | Hủy khi đang chọn điểm cắt / render | `POST /api/final-cuts/:id/cancel` | `planning`, `rendering` | — |
 | "Gửi góp ý cho AI" | `POST /api/final-cuts/:id/feedback {feedback}` | bản `ready`, không có bản nào đang chạy | `FINAL_CUT_ACTIVE` / `LOGO_NOT_REMOVED` |
 | Panel "Chỉnh màu" → "Màu theo ảnh mẫu": tải ảnh / chọn từ ảnh dự án / tải file LUT / bỏ | `POST …/color-refs` · `POST …/color-refs/from-asset` · `DELETE …/color-refs/:refId` · (chọn/bỏ = sửa `grade.match` trong bản nháp) | dự án còn tồn tại | `INVALID_LUT` / `INVALID_IMAGE` / `FILE_TOO_LARGE` / `COLOR_REF_IN_USE` |
 | Panel "Chỉnh màu": "Xem trước" / "Tạo phiên bản" / "Thử chỉnh màu lại" | `POST …/grade-preview {grade}` / `POST …/grade {grade,note?}` / `POST …/regrade` | bản `ready` (regrade: `failed_stage="grade"`) | `INVALID_GRADE` / `FINAL_CUT_ACTIVE` |
-| Nhật ký & credit; xuất | `GET …/ledger`, `GET …/ledger.csv`, `GET …/log.md` | | |
+| Nhật ký; xuất | `GET …/events`, `GET …/log.md` | | |
 | Dòng thời gian của cảnh | `GET /api/projects/:id/events?sceneId=` | | |
 
 Thông báo "Cảnh C1 đã dùng 2/2 lượt" lấy từ `scene.video_block.message` (hoặc tự dựng từ `attempts_used/max_attempts`).
@@ -841,14 +850,14 @@ Thông báo "Cảnh C1 đã dùng 2/2 lượt" lấy từ `scene.video_block.mes
 ## 11. Quy tắc nghiệp vụ quan trọng
 
 - **Không bao giờ tạo video khi chưa duyệt**: job video chỉ tạo bởi `approveVideo` (qua `approve stage=video`, comment `regenerate_same`, hoặc `approve-all stage=video`). Server từ chối kể cả khi gọi API trực tiếp; `worker/next` còn bỏ qua mọi job `requires_approval` mà chưa có `approved_at`.
-- **Credit**: ledger `delta` âm khi tốn. `used = −SUM(delta)`; `reserved = credit_per_video × job video queued/claimed/running`. **Không có hạn mức credit**: server không bao giờ từ chối vì credit (không còn `BUDGET_EXCEEDED`); chỉ giới hạn số lượt mỗi cảnh. Trạng thái `blocked_budget` chỉ do worker báo `FLOW_OUT_OF_CREDIT` (Flow hết credit thật). Job video `done` ghi `−credits_cost` (mặc định `credit_per_video`); job video `failed` có `credits_cost>0` cũng ghi sổ cái.
-- **Lượt** của cảnh = số asset video + job video đang hoạt động + job video failed có tốn credit; tối đa `max_attempts_per_scene` (mặc định 2). Lượt storyboard không giới hạn và miễn phí.
+- **Không còn credit**: video tạo qua API (Muse2API) không tốn credit Flow. Server không đọc/ghi credit (không `credits_expected`, không sổ cái, `jobs.credits_cost` luôn 0 với job mới), chỉ giới hạn số lượt mỗi cảnh. Trạng thái `blocked_budget` ("Hết hạn mức tạo video") chỉ do worker báo `FLOW_OUT_OF_CREDIT` (tài khoản tạo video hết hạn mức).
+- **Lượt** của cảnh = số asset video + job video đang hoạt động + job video failed vẫn tính lượt (`attempt_used`, hoặc `credits_cost>0` ở hàng cũ); tối đa `max_attempts_per_scene` (mặc định 2). Lượt storyboard không giới hạn và miễn phí.
 - **Một cảnh một job**: cảnh có job `queued/claimed/running` thì mọi `approve`/comment hành động đều `409 JOB_ACTIVE`; worker không nhận job thứ hai cùng cảnh.
 - **Job mất heartbeat**: sau `HEARTBEAT_STALE_MINUTES`, tác vụ quét (30 giây) trả job về `queued` (`requeue_count+1`, `last_requeued_at`, xóa `claimed_*`), cảnh `*_running` → `*_queued`, ghi event `job.requeued`, phát SSE. Lần claim kế tiếp `payload.requeued=true`. Worker cũ nếu quay lại sẽ nhận `409`.
 - **Hàng đợi tạm dừng** chỉ chặn `GET /api/worker/next` (503); heartbeat/complete/fail của job đang chạy vẫn hoạt động.
 - Mỗi asset storyboard/video mới từ worker → append một dòng vào `output/<slug>/log.md` (`| clip | lần | loại | lỗi thấy được | kết luận |`; tạo file + header nếu chưa có). Cập nhật kết luận của người dùng cũng append một dòng. Verdict → chữ: pass="Đạt", fix_in_edit="Sửa khi dựng", redo="Tạo lại" (chưa có = "Chưa đánh giá").
-- **Bản dựng hoàn chỉnh**: version tăng dần theo dự án và không bao giờ ghi đè (kiểm tra DB và đĩa); `edit_plan` và render không tốn credit; tối đa `RENDER_CONCURRENCY` bản render cùng lúc (hàng đợi trong tiến trình, mặc định 2; mỗi dự án vẫn chỉ một bản `planning`/`rendering`); server tắt giữa lúc render thì **mọi** bản đang `rendering` thành `failed` ở lần khởi động sau; job `edit_plan` có `scene_id=null` nên không đổi trạng thái cảnh. Mỗi bản `ready` thêm một dòng `| FINAL | v<n> | bản dựng (<renderer>, cắt thẳng) | <summary> | Sẵn sàng |` vào `output/<slug>/log.md` (và vào `GET …/log.md`).
-- Import dữ liệu cũ dùng `transition(..., {force:true})`, cột `ext_key` (UNIQUE) của `assets`, `credit_ledger`, `comments`, `events`, `scene_prompt_versions` để chạy lặp không trùng — chưa có API HTTP cho việc này (chạy bằng script `npm run import:legacy`, xem mục 12).
+- **Bản dựng hoàn chỉnh**: version tăng dần theo dự án và không bao giờ ghi đè (kiểm tra DB và đĩa); `edit_plan` và render không tốn lượt; tối đa `RENDER_CONCURRENCY` bản render cùng lúc (hàng đợi trong tiến trình, mặc định 2; mỗi dự án vẫn chỉ một bản `planning`/`rendering`); server tắt giữa lúc render thì **mọi** bản đang `rendering` thành `failed` ở lần khởi động sau; job `edit_plan` có `scene_id=null` nên không đổi trạng thái cảnh. Mỗi bản `ready` thêm một dòng `| FINAL | v<n> | bản dựng (<renderer>, cắt thẳng) | <summary> | Sẵn sàng |` vào `output/<slug>/log.md` (và vào `GET …/log.md`).
+- Import dữ liệu cũ dùng `transition(..., {force:true})`, cột `ext_key` (UNIQUE) của `assets`, `comments`, `events`, `scene_prompt_versions` để chạy lặp không trùng — chưa có API HTTP cho việc này (chạy bằng script `npm run import:legacy`, xem mục 12).
 
 ---
 
@@ -892,7 +901,7 @@ curl -s -H "Authorization: Bearer $WORKER_TOKEN" 'localhost:8787/api/worker/next
 
 ## 13. Trang planner LAN (listener riêng)
 
-**Mục đích:** đồng nghiệp trong cùng mạng nhập yêu cầu + ảnh tham chiếu, AI chia cảnh, trang hiển thị **kế hoạch prompt** cho từng cảnh để họ tự tạo ảnh (ChatGPT) và video (Google Flow) bằng tay trên tài khoản của họ. Trang LAN **không bao giờ** tạo job storyboard/video và không tốn credit Flow của máy chủ: job AI nó tạo là `analyze_brief` và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh, không tốn credit). Từ đợt 22/10/2026 trang còn có **Bước 3** (tải video đã tạo lên), **Bản hoàn chỉnh** (AI chọn điểm cắt → Shotcut/ffmpeg render → xoá logo Veo, người dùng chỉnh điểm cắt rồi render lại) và công cụ độc lập **Xoá logo Veo** (13.2–13.4).
+**Mục đích:** đồng nghiệp trong cùng mạng nhập yêu cầu + ảnh tham chiếu, AI chia cảnh, trang hiển thị **kế hoạch prompt** cho từng cảnh để họ tự tạo ảnh (ChatGPT) và video (Google Flow) bằng tay trên tài khoản của họ. Trang LAN **không bao giờ** tạo job storyboard/video trên máy chủ: job AI nó tạo là `analyze_brief` và `edit_plan` (chọn điểm cắt cho bản hoàn chỉnh). Từ đợt 22/10/2026 trang còn có **Bước 3** (tải video đã tạo lên), **Bản hoàn chỉnh** (AI chọn điểm cắt → Shotcut/ffmpeg render → xoá logo Veo, người dùng chỉnh điểm cắt rồi render lại) và công cụ độc lập **Xoá logo Veo** (13.2–13.4).
 
 **Cô lập (bắt buộc, có test `lan-security`, `lan-listener`):**
 - Cùng tiến trình, **Fastify instance thứ hai** (`server/src/lan/`), chung `AppContext` (DB, SSE, đồng hồ). Bật bằng `LAN_ENABLED=true` (mặc định tắt). App chính vẫn chỉ nghe `127.0.0.1:8787`, vẫn kiểm tra Host/Origin như cũ, **không** có route `/lan/*`.
@@ -911,10 +920,10 @@ curl -s -H "Authorization: Bearer $WORKER_TOKEN" 'localhost:8787/api/worker/next
 | `POST /lan/api/logout` | hủy phiên |
 | `GET /lan/api/session` | công khai: đòi mã → `{authenticated:false, code_required:true}` hoặc `{authenticated:true, code_required:true, expires_at}`; không đòi mã (mặc định) → luôn `{authenticated:true, code_required:false, expires_at:null}`. (Server cũ không có `code_required`.) |
 | `GET /lan/api/status` | `{worker:{online,queue_paused}, code_required, limits, rate, analyze_remaining, remaining:{analyze,upload_video,create_final,remove_logo}, queue:{cuts,tools,total,cap}, render:{running_count,waiting_count,concurrency}, server_time}` (rút gọn từ trạng thái worker; không lộ `worker_id`/lý do tạm dừng; `remaining` = hạn mức còn lại của CHÍNH người gọi theo IP) |
-| `GET /lan/api/plans` | danh sách kế hoạch LAN (mới nhất trước, không có kế hoạch đã xoá): `{id,name,created_by_name,status,scene_count,ref_count,created_at,updated_at,analysis,can_delete,delete_block}` |
+| `GET /lan/api/plans` | danh sách kế hoạch LAN (mới nhất trước, không có kế hoạch đã xoá): `{id,name,created_by_name,status,scene_count,ref_count,thumbnail_url,progress,next_action,created_at,updated_at,analysis,can_delete,delete_block}` |
 | `DELETE /lan/api/plans/:id` | xoá kế hoạch = chuyển vào thùng rác của chủ máy (5.8). CHỈ trình duyệt đã tạo kế hoạch: băm SHA-256 của cookie client `autovideo_lan_client` phải trùng `projects.lan_client_hash` (ghi lúc `POST /lan/api/plans`, so sánh thời gian hằng số). Kế hoạch cũ (không có băm) hoặc của người khác → `403 NOT_PLAN_OWNER` "Chỉ người tạo (trình duyệt đã tạo kế hoạch) mới xoá được; nhờ chủ máy xoá". `409 PROJECT_BUSY` khi đang dựng/render/tải video; `404` nếu không có/đã xoá; `429` quá 10 lần/giờ/IP (tính cả lần bị từ chối). `200 {ok,id,restorable_days}`. LAN không có khôi phục hay xoá vĩnh viễn |
 | `POST /lan/api/plans` `{name, created_by_name, brief?, style_lock?}` | tạo dự án `source='lan'` → `201 {plan}`; cấp cookie client nếu chưa có và lưu băm của nó để chỉ trình duyệt này xoá được (`can_delete`) |
-| `GET /lan/api/plans/:id` | chi tiết: `plan` (+`brief`,`style_lock`,`credit_per_video`), `refs[]`, `settings`, `scenes[]` (mỗi cảnh có `videos`), `markdown`, `worker`, `analysis`, `limits` (+`scene_video`), `final` = `{block:{code,message}\|null, active, latest:{id,version,status}\|null, watermark:{active,reason}}` |
+| `GET /lan/api/plans/:id` | chi tiết: `plan` (+`brief`,`style_lock`), `refs[]`, `settings`, `scenes[]` (mỗi cảnh có `videos`), `markdown`, `worker`, `analysis`, `limits` (+`scene_video`), `final` = `{block:{code,message}\|null, active, latest:{id,version,status}\|null, watermark:{active,reason}}` |
 | `POST /lan/api/plans/:id/refs` (multipart: `label` rồi `file`, lặp lại) | thêm ảnh → `201 [{id,label,url,file_name,order_index}]`; `409 TOO_MANY_REFS`, `409 JOB_ACTIVE` (đang phân tích) |
 | `GET /lan/api/ref-library[?planId=]` | thư viện ảnh **chỉ của các kế hoạch LAN** (không có ảnh của dự án `app`) |
 | `POST /lan/api/plans/:id/refs/from-library` `{ref_ids, labels?}` | chép ảnh từ thư viện LAN (ảnh của dự án `app` hoặc không tồn tại → 404) |
@@ -930,11 +939,13 @@ curl -s -H "Authorization: Bearer $WORKER_TOKEN" 'localhost:8787/api/worker/next
 
 Dự án không phải `source='lan'` trả **404** ở mọi route `/lan/api/plans/:id/*`.
 
+**Tiến độ trên danh sách và `plan` chi tiết:** `progress={storyboards,prompts,videos,final_status,final_current}`. Chỉ đếm storyboard/video do người dùng LAN tải lên; storyboard phải khớp phiên bản prompt, video phải là lựa chọn của đúng cảnh. `final_current` kiểm tra chữ ký lựa chọn hiện tại; bản hoàn chỉnh cũ không được báo là đã hoàn tất. `thumbnail_url` là storyboard LAN đầu tiên còn file, hoặc `null`; giữ nguyên danh sách file được phép. `next_action={stage:storyboard|prompt|video|final,label,scene_id?,scene_code?}|null` chỉ hướng dẫn mở bước tiếp theo, không tạo job. Bộ lọc “Của tôi” trên web dùng tên lưu ở trình duyệt, không thay quyền sở hữu/xoá kế hoạch.
+
 **`plan.status`:** `draft` (chưa phân tích), `analyzing` (có job `analyze_brief` queued/claimed/running), `ready` (có cảnh, lần phân tích gần nhất xong), `failed` (lần gần nhất lỗi/bị hủy; cảnh cũ nếu có vẫn hiện). `analysis` = `{state: idle|queued|running|done|failed, job_id, waiting, error, created_at, finished_at, queue}`; `queue` (thêm 22/10/2026) = vị trí job `analyze_brief` trong hàng đợi của worker AI khi `state` là `queued`/`running`, cùng dạng `ai_queue` của 4.12 (`{state, position, ahead, running, worker:{online,paused}, wait_reason}`; `null` khi `idle/done/failed`); `waiting` là thông báo tiếng Việt khi job `queued` ("Máy chủ AI chưa sẵn sàng, yêu cầu đang xếp hàng.", hàng đợi tạm dừng, hết hạn mức AI…); `error` chung chung, chi tiết kỹ thuật chỉ có trên app chính.
 
 **Mỗi cảnh** trong `scenes[]`: `{id, code, title, order_index, use_prev_storyboard, step1, step2, storyboard, storyboard_uploads, upload_block, videos}`; `videos` = `{items:[{id,attempt,url,file_name,uploaded_at,duration_s,width,height,bytes,has_audio,selected}], selected_id, count, max:5, block}` (xem 13.2).
 - `step1` (ChatGPT) = `{message, attachments[], warnings[]}`. `message` dựng bằng `buildStoryboardMessage` (template WORKER.md 4.2: khung 9:16, khung MỞ ĐẦU giây 0, danh sách "ảnh N = nhãn", dòng "Giữ cùng…" khi `use_prev_storyboard`, `first_frame_desc` + dòng Style + dòng chủ thể, câu "Không có chữ…"). `attachments` = ảnh theo `upload_refs`, rồi storyboard của **cảnh đầu** nếu `use_prev_storyboard` (cảnh đầu không tự đính kèm chính nó).
-- `step2` (Google Flow) = `{prompt, attachments[], settings, notes[], warnings[]}`. `prompt` = `scene.prompt` nguyên văn. `attachments` = ảnh theo `upload_refs` (gọi "image 1…" trong prompt), rồi storyboard của chính cảnh ở cuối (không đánh số). `settings` = `{aspect:"9:16", duration_s:10, count:1, resolution:"720p", estimated_credits: credit_per_video}`. `notes` gồm lưu ý giao diện Flow mới (ảnh vào "Tệp tải lên" chưa tự đính kèm vào ô prompt, xem `docs/ai/BACKLOG.md`).
+- `step2` (Google Flow) = `{prompt, attachments[], settings, notes[], warnings[]}`. `prompt` = `scene.prompt` nguyên văn. `attachments` = ảnh theo `upload_refs` (gọi "image 1…" trong prompt), rồi storyboard của chính cảnh ở cuối (không đánh số). `settings` = `{aspect:"9:16", duration_s:10, count:1, resolution:"720p"}`. `notes` gồm lưu ý giao diện Flow mới (ảnh vào "Tệp tải lên" chưa tự đính kèm vào ô prompt, xem `docs/ai/BACKLOG.md`).
 - Mỗi attachment: `{order, kind: ref|storyboard_prev|storyboard_self, label, ref_id, scene_code, url, file_name, available, prompt_label, note}`; `available=false` khi storyboard chưa được tải lên.
 - `warnings`: ảnh đã bị xóa khỏi kế hoạch; prompt nhắc `image N` vượt số ảnh đính kèm. `storyboard.stale=true` khi prompt cảnh đã đổi sau lúc tải ảnh lên.
 
@@ -942,7 +953,7 @@ Dự án không phải `source='lan'` trả **404** ở mọi route `/lan/api/pl
 
 `POST /lan/api/plans/:id/scenes/:sceneId/video` (multipart, MỘT `file`; trường văn bản nếu có phải đứng trước file) → `201 {video, videos, rate:{upload_video_remaining}}`.
 - **Stream xuống đĩa, không đọc cả file vào RAM** (`lib/video-upload.ts`): pipeline có backpressure vào file tạm ẩn `output/<slug>/video/.lan-upload-<hex>.tmp`; từ chối sớm theo `Content-Length` (> 200 MB + 256 KB) và theo số byte thực nhận (client nói dối vẫn bị cắt, `413 FILE_TOO_LARGE`); kiểm tra magic bytes `ftyp` ở byte 4–8 của chunk đầu (`415 UNSUPPORTED_FILE_TYPE`, nhận mp4/mov); sau khi nhận xong mới ffprobe (bất đồng bộ, không chặn event loop): phải có luồng video đọc được (`422 INVALID_VIDEO`), thời lượng **1–60 giây** (`422 VIDEO_DURATION`). Lỗi ở bất kỳ bước nào đều xoá file tạm; phần thân còn lại được xả bỏ (tối đa 32 MB rồi cắt kết nối) để kết nối không kẹt.
-- Lưu thành asset `kind='video'` của cảnh, `job_id=NULL`, `file_path=output/<slug>/video/<code>_v<n>.mp4` (n = max(attempt, số video)+1; gắn tên cuối bằng hard link nguyên tử, **không bao giờ ghi đè**), `meta={source:'lan_upload', original_name, bytes, duration_s, width, height, fps, has_audio, ffprobe:{format_name, video_codec, audio_codec, video_streams}}`. Video vừa tải **trở thành video được chọn** (`scenes.selected_video_id`). **Không đổi trạng thái cảnh** (không qua `transition()`; bảng chuyển không thêm đường đi nào), không tạo job, không tốn credit, **không tự kích hoạt dựng**. Video LAN không tính vào lượt/credit của chủ máy (`attemptsUsed` bỏ qua `lan_upload`).
+- Lưu thành asset `kind='video'` của cảnh, `job_id=NULL`, `file_path=output/<slug>/video/<code>_v<n>.mp4` (n = max(attempt, số video)+1; gắn tên cuối bằng hard link nguyên tử, **không bao giờ ghi đè**), `meta={source:'lan_upload', original_name, bytes, duration_s, width, height, fps, has_audio, ffprobe:{format_name, video_codec, audio_codec, video_streams}}`. Video vừa tải **trở thành video được chọn** (`scenes.selected_video_id`). **Không đổi trạng thái cảnh** (không qua `transition()`; bảng chuyển không thêm đường đi nào), không tạo job, **không tự kích hoạt dựng**. Video LAN không tính vào lượt của chủ máy (`attemptsUsed` bỏ qua `lan_upload`).
 - Lỗi nghiệp vụ: `409 SCENE_BUSY` (chủ máy đang có job/đang sản xuất cảnh, báo trước khi nhận file) · `409 TOO_MANY_UPLOADS` (đã đủ 5 video của cảnh) · `404` (cảnh không thuộc kế hoạch LAN) · `429 RATE_LIMITED` (30 lần/giờ) · `429 UPLOAD_BUSY` (đủ luồng tải đồng thời).
 `POST …/video/select {asset_id}` → `{video, videos}`: chọn lại một video `lan_upload` của chính cảnh đó (asset khác → `404`).
 Phân tích lại kế hoạch giữ nguyên cảnh đã có video tải lên (không bị prune).
@@ -977,9 +988,22 @@ Không cần kế hoạch. Bảng `lan_tool_jobs` (migration 010): `id, kind='re
 
 ---
 
-## 14. Cắt clip từ video dài (long video → shorts)
+### 13.5 Tab Autovideo (tạo storyboard/video tự động)
 
-Người dùng tải một video dài (livestream, podcast, review… tiếng Việt) lên một dự án `kind='clips'`; server nhận dạng lời nói, AI chọn các đoạn hay, người dùng duyệt và sửa điểm cắt trên lời thoại, rồi server dựng clip 9:16 có phụ đề chạy theo từng từ. Không tốn credit Flow. Kế hoạch gốc: `PLAN-long-video-to-shorts.md` (phần nhận dạng lời nói đã đổi sang dịch vụ STT nội bộ, xem 14.5).
+Dự án LAN có `projects.lan_mode='auto'` (migration 019; kế hoạch prompt cũ là `'plan'`, dự án `app` luôn `'plan'`). Người dùng LAN làm như chủ máy: phân tích → tạo storyboard → tạo video (chọn dịch vụ) → chọn video → bản hoàn chỉnh. Job storyboard/video tạo qua ĐÚNG `approveStoryboard` / `approveVideo` / `approveAll` / `selectVideo` / `editPrompt` / `cancelJob` của app chính (lượt video mỗi cảnh = 5 (`LAN_AUTO_MAX_ATTEMPTS`), số ảnh tối đa của dịch vụ, cảnh đang có job... giữ nguyên) và do worker nền ảnh/video xử lý (`npm run worker:media`, WORKER-MUSE.md / WORKER-FLOW.md).
+
+- Ảnh tham chiếu, phân tích (`/lan/api/plans/:id/refs|analyze`), xoá (`DELETE /lan/api/plans/:id`) và bản hoàn chỉnh (`/lan/api/plans/:id/final-cuts...`) dùng chung route của kế hoạch. Dự án Autovideo không có trong `GET /lan/api/plans`; tải storyboard/video tay lên dự án Autovideo → `409 AUTO_PROJECT`.
+- `GET /lan/api/auto/generators` → `{generators, storyboard}` (như `GET /api/video-generators`).
+- `GET /lan/api/auto/projects` → danh sách (`progress: {storyboards, videos, active, final_status}`, `storyboard_generator`, `can_delete`...). `POST /lan/api/auto/projects` `{name, created_by_name, brief, style_lock, storyboard_generator?}` → `201 {project}` (10/giờ/IP).
+- `GET /lan/api/auto/projects/:id` → `{project, refs, scenes, analysis, worker, media, final}`. Mỗi cảnh: `status`, `prompt`, `refs` (ảnh gửi kèm), `image_count`, `storyboard {url, attempt, logo}`, `videos[] {id, attempt, url, grid_url, duration_s, generator, selected}`, `attempts_used/max_attempts`, `job {type, state queued|running, position, generator, started_at, can_cancel}`, `error` (lỗi job gần nhất, đã che đường dẫn), `blocks {storyboard, video, select, prompt}` (lý do khóa nút; `video` tính với Muse, giao diện tự tính giới hạn ảnh của dịch vụ khác theo `image_count`). `media` = `{enabled, online, paused, pause_text, load, cap}` (cũng có ở `GET /lan/api/status` → `autovideo`).
+- `PATCH /lan/api/auto/projects/:id` `{storyboard_generator}`; `POST .../scenes/:sceneId/storyboard`; `POST .../scenes/:sceneId/video` `{generator?}`; `POST .../approve-all` `{stage: storyboard|video, generator?}` (tất-cả-hoặc-không); `POST .../scenes/:sceneId/select` `{asset_id}` (video_review → done; dự án LAN không tự dựng bản hoàn chỉnh); `PUT .../scenes/:sceneId/prompt` `{prompt}`; `POST .../scenes/:sceneId/cancel` (chỉ job còn `queued`; đã nhận → `409 JOB_RUNNING`).
+- Hạn mức theo IP: storyboard 40 cảnh/giờ, video 20 cảnh/giờ (tạo hàng loạt tính theo số cảnh), sửa/chọn/hủy/đổi dịch vụ 120/giờ (`remaining.auto_storyboard|auto_video|auto_project` trong `/lan/api/status`). Trần chung `LAN_AUTO_QUEUE_CAP` = 20 job storyboard/video LAN đang chờ/chạy → `429 QUEUE_FULL`. `LAN_AUTOVIDEO=false` → `403 FEATURE_DISABLED`.
+- Ưu tiên: `claimNext` xếp storyboard/video của dự án Autovideo SAU mọi job khác (`LAN_MEDIA_LAST`), trong nhóm theo id. `job.position` tính cùng thứ tự.
+- `/lan/files` phục vụ thêm storyboard/video/lưới khung hình (`assets.kind in storyboard|video|grid`) của dự án Autovideo; ảnh gốc còn logo (`meta.logo.raw_path`) không phục vụ. `pause_text` là câu chung (không lộ lý do gốc của chủ máy).
+
+## 14. Highlight từ video dài (long video → shorts)
+
+Người dùng tải một video dài (livestream, podcast, review… tiếng Việt) lên một dự án `kind='clips'`; server nhận dạng lời nói, AI chọn các đoạn hay, người dùng duyệt và sửa điểm cắt trên lời thoại, rồi server dựng clip 9:16 có phụ đề chạy theo từng từ. Kế hoạch gốc: `PLAN-long-video-to-shorts.md` (phần nhận dạng lời nói đã đổi sang dịch vụ STT nội bộ, xem 14.5).
 
 **Luồng**: tạo dự án → tải video (`source`, tự xếp nhận dạng) → `transcribed` → `clip-plan` (AI) hoặc tạo clip tay từ khoảng từ → duyệt/sửa → `render` → tải mp4/srt hoặc ZIP.
 
@@ -1011,9 +1035,10 @@ SourceVideo = {
 
 Clip = {
   id, project_id, code, status: 'proposed'|'approved'|'rejected',
-  start_s, end_s, duration_s,                 // đã bám khoảng lặng (14.4)
-  start_word, end_word,                       // chỉ số từ toàn cục (gồm hai đầu), cũng là khóa để sửa điểm cắt
+  start_s, end_s, duration_s,                 // đã bám khoảng lặng (14.4); clip ghép: start/end là KHUNG BAO, duration_s = TỔNG các đoạn
+  start_word, end_word,                       // chỉ số từ toàn cục (gồm hai đầu), cũng là khóa để sửa điểm cắt (clip ghép: khung bao)
   start_sentence, end_sentence,
+  parts: ClipPart[] | null,                   // clip ghép nhiều đoạn (14.10), theo THỨ TỰ PHÁT; null = clip một đoạn
   title, hook, score (0–100|null), reason, content_type,
   verify: { status:'kept'|'unverified'|'repaired', standalone_score, diagnosis, keep? } | null,
   created_by: 'agent'|'user',
@@ -1048,7 +1073,7 @@ PlanJob = {
 | Endpoint | Kết quả / ghi chú |
 |---|---|
 | `POST /api/clip-projects {name, stt_terms?}` | `201 ClipProjectDetail`. `stt_terms` ≤ 500 ký tự: tên riêng/thuật ngữ, gửi làm `prompt` cho STT (chỉ khi có) |
-| `GET /api/projects` | mỗi dự án thêm `kind`; dự án `clips` thêm `clip_count`, `source_video:{duration_s,status}\|null`, `stt_terms` |
+| `GET /api/projects` | mỗi dự án thêm `kind`; dự án `clips` thêm `clip_count`, `ready_count`, `poster_url`, `source_video:{duration_s,status}\|null`, `stt_terms`. `ready_count` chỉ đếm bản dựng mới nhất ready và khớp chỉnh sửa hiện tại; `poster_url` dùng đường dẫn file theo app/LAN hoặc null. Danh sách `/lan/api/clip-projects` dùng cùng các trường tiến độ này. |
 | `GET /api/clip-projects/:id` | `ClipProjectDetail` (dự án `kind='scenes'` → 404) |
 | `PATCH /api/clip-projects/:id {name?, stt_terms?}` | `ClipProjectDetail`. Đổi `stt_terms` không tự nhận dạng lại (xem `transcribe`) |
 | `POST /api/projects/:id/source` | multipart `file` (stream xuống đĩa, không giữ RAM) → `201 {source}`. Nhận mp4/mov/mkv/avi theo magic bytes; `ffprobe` phải thấy hình + tiếng; thời lượng ≤ `CLIP_SOURCE_MAX_S`, dung lượng ≤ `CLIP_SOURCE_MAX_BYTES` (LAN: `LAN_CLIP_SOURCE_*`); ổ đĩa trống ≥ `CLIP_MIN_FREE_GB` + 3 × dung lượng. Trùng `content_hash` trong dự án → dùng lại (không nhận dạng lại; nếu bản cũ `failed/cancelled` thì chạy lại). Video khác khi dự án đã có video: thay được nếu chưa có clip và không đang nhận dạng (bản cũ bị xoá, transcript cũ lưu thành `transcript.v<k>.json`), không thì `409 SOURCE_EXISTS`. Xong thì server tự xếp nhận dạng. Chưa cấu hình STT: vẫn nhận file nhưng `status:'failed', error_code:'STT_NOT_CONFIGURED'` |
@@ -1056,9 +1081,9 @@ PlanJob = {
 | `POST /api/sources/:id/cancel` | `{source}` (`cancelled`); chỉ khi `transcribing`/`uploaded`. Dừng ffmpeg/fetch, kết quả muộn không ghi đè |
 | `GET /api/sources/:id/transcript?from=&limit=` | `{total, sentences:[{id,start,end,words:[{i,w,start,end}]}]}`; phân trang theo CÂU, `from` bắt đầu từ 0, `limit` mặc định 200 tối đa 500. Chữ thường, không dấu câu (đúng như ASR). Chưa xong → `409 NOT_TRANSCRIBED` |
 | `GET /api/sources/:id/transcript.srt` · `.txt` | tải về: SRT theo câu (viết hoa chữ đầu câu) · mỗi câu một dòng `[hh:mm:ss] nội dung` |
-| `POST /api/projects/:id/clip-plan {count?, duration_preset?, focus?, exclude_existing?}` | `201 {job: PlanJob}`. `count` 1–15 (mặc định 5); `duration_preset` ∈ `15_30`\|`30_60` (mặc định)\|`60_90`\|`90_180`; `focus` ≤ 300 ký tự (là DỮ LIỆU cho AI, không phải lệnh); `exclude_existing` loại các đoạn trùng clip đã có. Chỉ khi `transcribed`, còn file video, có lời (`409 NO_SPEECH`), chưa có job `clip_plan` đang chạy (`409 JOB_ACTIVE`), video gốc chưa bị xoá (`409 SOURCE_DELETED`) |
-| `PATCH /api/clips/:id {status?, title?, start_word?, end_word?}` | `{clip}`. Đổi điểm cắt bằng chỉ số từ: server tính lại câu và giây (14.4); độ dài 3–300 giây (`400 CLIP_LENGTH`), chỉ số sai `400 INVALID_WORD_RANGE`. Chữ phụ đề đã sửa của các từ còn trong khoảng mới được giữ |
-| `POST /api/projects/:id/clips {start_word, end_word, title?}` | `201 {clip}` tạo tay (`created_by:'user'`, `status:'approved'`) |
+| `POST /api/projects/:id/clip-plan {count?, duration_preset?, focus?, exclude_existing?, allow_multi?}` | `201 {job: PlanJob}`. `count` 1–15 (mặc định 5); `duration_preset` ∈ `15_30`\|`30_60` (mặc định)\|`60_90`\|`90_180`; `focus` ≤ 300 ký tự (là DỮ LIỆU cho AI, không phải lệnh); `exclude_existing` loại các đoạn trùng clip đã có; `allow_multi` (mặc định `true`) cho phép AI đề xuất thêm clip ghép nhiều đoạn (14.10). Chỉ khi `transcribed`, còn file video, có lời (`409 NO_SPEECH`), chưa có job `clip_plan` đang chạy (`409 JOB_ACTIVE`), video gốc chưa bị xoá (`409 SOURCE_DELETED`) |
+| `PATCH /api/clips/:id {status?, title?, start_word?, end_word?, parts?}` | `{clip}`. Đổi điểm cắt bằng chỉ số từ: server tính lại câu và giây (14.4); độ dài 3–300 giây (`400 CLIP_LENGTH`), chỉ số sai `400 INVALID_WORD_RANGE`. Chữ phụ đề đã sửa của các từ còn trong khoảng mới được giữ. `parts` (1–6 đoạn) thay toàn bộ các đoạn (14.10); `start_word/end_word` trên clip ghép đưa nó về clip một đoạn; gửi cả hai kiểu → `400 VALIDATION_ERROR` |
+| `POST /api/projects/:id/clips {start_word, end_word, title?}` hoặc `{parts:[{start_word,end_word}…], title?}` | `201 {clip}` tạo tay (`created_by:'user'`, `status:'approved'`). `parts` 1–6 đoạn theo thứ tự phát (14.10); một đoạn = clip thường |
 | `PUT /api/clips/:id/captions {words:[{i, w}]}` | `{clip}`. Sửa chữ từng từ, giữ mốc thời gian; `w:""` = ẩn từ (thời gian cộng vào từ hiển thị đứng trước, nên "ca cao a tiso" → `ca="Cacao"`, `cao=""`, `a="Actiso"`, `tiso=""`). Gửi một phần cũng được (server gộp với chữ hiện có); `i` ngoài clip → `400 INVALID_WORD_RANGE`; mỗi chữ ≤ 60 ký tự |
 | `POST /api/clips/:id/render {aspect?, reframe_mode?, captions_preset?}` | `201 {cut: ClipCut}`. `aspect` mặc định `9:16`; `reframe_mode` ∈ `fit`(nền mờ, mặc định khi nguồn ngang)\|`center`, bỏ qua khi nguồn đã đúng tỉ lệ; `captions_preset` mặc định `highlight`. Xếp vào hàng đợi render chung (app trước LAN, `RENDER_CONCURRENCY`) |
 | `POST /api/clip-cuts/:id/cancel` | `{cut}`: hủy bản đang dựng, kill ffmpeg, xoá file dở |
@@ -1078,7 +1103,8 @@ Xoá dự án/thùng rác dùng lại `DELETE /api/projects/:id` (5.8). Đang nh
 | 409 | `CUT_ACTIVE` | clip đang dựng một bản khác |
 | 409 | `CAPTIONS_UNAVAILABLE` | ffmpeg trên máy chủ thiếu libass mà chọn phụ đề (chọn `none` vẫn dựng được) |
 | 409 | `NO_FFMPEG` | không tìm thấy ffmpeg |
-| 400 | `INVALID_WORD_RANGE` · `CLIP_LENGTH` | chỉ số từ sai · độ dài clip ngoài 3–300 giây |
+| 400 | `INVALID_WORD_RANGE` · `CLIP_LENGTH` | chỉ số từ sai · độ dài clip ngoài 3–300 giây (clip ghép: tổng các đoạn; hoặc một đoạn < 1,5 giây, `details.part` = chỉ số đoạn) |
+| 400 | `PARTS_OVERLAP` | các đoạn của clip ghép chồng nhau (theo chỉ số từ) |
 | 400 | `INVALID_CLIP_PLAN` | (worker) có đề xuất mà tất cả đều không hợp lệ (job được giữ để sửa) |
 | 422 | `INVALID_VIDEO` · `NO_AUDIO` · `VIDEO_DURATION` | ffprobe không đọc được · video không có âm thanh · thời lượng vượt giới hạn |
 | 413 · 415 | `FILE_TOO_LARGE` · `UNSUPPORTED_FILE_TYPE` | vượt dung lượng · không phải video (magic bytes) |
@@ -1094,12 +1120,13 @@ Một job nằm trong hàng đợi AI chung (managed worker, hoặc worker legac
   sentences:[{id,start,end,start_word,text,words:[{i,start,end}]}], // text chữ thường, ID = chỉ số câu tuyệt đối của video
   windows:[{from_id,to_id}],                       // cửa sổ 15–20 phút, chồng ~60 s, tính theo ID câu
   count, duration_preset:{key,min_s,max_s,ideal_min_s,ideal_max_s}, focus, exclude_existing,
-  existing:[{start_id,end_id,title}],              // chỉ khi exclude_existing
+  existing:[{start_id,end_id,title,parts?}],       // chỉ khi exclude_existing; clip ghép có parts:[{start_id,end_id,start_word,end_word}]
+  allow_multi,                                     // false: không đề xuất clip ghép (job cũ thiếu trường này = true)
   content_hint, speech_ratio, requeued }
 ```
 Preset (cứng / lý tưởng, giây): `15_30` 15–30 / 18–28; `30_60` 30–60 / 38–55; `60_90` 60–90 / 65–85; `90_180` 90–180 / 100–160.
 
-**Kết quả** `POST /api/worker/jobs/:id/complete`: `{result:{ clips:[{start_id,end_id,start_quote?,end_quote?,start_word?,end_word?,title,hook,score,reason,content_type,verify,caption_words?}], summary, diagnostics?, not_found_reason? }}` (không asset, không credit).
+**Kết quả** `POST /api/worker/jobs/:id/complete`: `{result:{ clips:[{start_id,end_id,start_quote?,end_quote?,start_word?,end_word?,parts?,title,hook,score,reason,content_type,verify,caption_words?}], summary, diagnostics?, not_found_reason? }}` (không asset). `parts` (clip ghép, 14.10): `[{start_id,end_id,start_quote?,end_quote?,start_word?,end_word?}]` theo thứ tự phát; khi có ≥ 2 phần thì `start_id/end_id` ở ngoài chỉ là khung bao (vẫn bắt buộc), các trường điểm cắt ở ngoài bị bỏ qua.
 - Server kiểm tra lại TỪNG đề xuất: ID tồn tại, `start_id ≤ end_id`, độ dài (sau bám khoảng lặng) trong khoảng cứng của preset **±20%** và 3–300 giây, không chồng > 60% đề xuất đã nhận (và clip có sẵn khi `exclude_existing`), tối đa `count`. Đề xuất sai bị loại riêng (`job.result.rejected` = số bị loại, `created` = số clip tạo); mảng rỗng là hợp lệ ("không có đoạn nào đạt", kèm `not_found_reason`); có đề xuất mà TẤT CẢ sai → `400 INVALID_CLIP_PLAN` và job giữ nguyên.
 - `start_quote`/`end_quote`: 4–8 từ đầu/cuối clip, dò theo thứ tự từ trong ID ±1 câu, không phân biệt dấu/hoa thường, khớp ≥70%. `start_word`/`end_word` (nếu gửi) phải khớp câu trích và nằm trong cửa sổ ID ±1; server tự tính lại giây. Không dò được câu trích thì dùng cả câu nếu độ dài hợp lệ, ghi `verify.boundary='sentence_fallback'`; dò được cả hai thì `word_quote`. Worker cũ không gửi các trường mới vẫn dùng điểm theo câu.
 - `diagnostics:{proposed,rejected:[{start_id,end_id,reason}]}` ghi số đề xuất thô và lý do worker loại trước kiểm định, lưu cả khi kết quả rỗng và trong checkpoint. Không lẫn với `job.result.rejected` (số đề xuất server loại).
@@ -1142,8 +1169,8 @@ output/<slug>/clips/
 
 ### 14.8 Trang LAN
 
-Cùng bộ endpoint dưới `/lan/api/...` (mục 13: Host, Origin, CSP, cookie client). Thêm: `GET /lan/api/clip-projects` (danh sách dự án cắt clip của LAN, `can_delete` theo cookie), `DELETE /lan/api/clip-projects/:id` (chỉ người tạo; vào thùng rác 30 ngày; `DELETE /lan/api/plans/:id` cũng dùng được cho dự án cắt clip), `GET /lan/api/clip-status`. `POST /lan/api/clip-projects` nhận thêm `created_by_name`.
-- Dự án LAN và dự án app tách nhau (chéo → 404); kế hoạch prompt và dự án cắt clip không lẫn trong danh sách của nhau.
+Cùng bộ endpoint dưới `/lan/api/...` (mục 13: Host, Origin, CSP, cookie client). Thêm: `GET /lan/api/clip-projects` (danh sách dự án highlight của LAN, `can_delete` theo cookie), `DELETE /lan/api/clip-projects/:id` (chỉ người tạo; vào thùng rác 30 ngày; `DELETE /lan/api/plans/:id` cũng dùng được cho dự án highlight), `GET /lan/api/clip-status`. `POST /lan/api/clip-projects` nhận thêm `created_by_name`.
+- Dự án LAN và dự án app tách nhau (chéo → 404); kế hoạch prompt và dự án highlight không lẫn trong danh sách của nhau.
 - Hạn mức theo IP mỗi giờ: tạo dự án 10, video nguồn 3 (cũng tính nhận dạng lại), AI chọn đoạn 6, dựng clip 30, sửa (duyệt/điểm cắt/phụ đề/tên) 120; tối đa **1 lượt tải video đồng thời mỗi IP** (2 toàn listener); chỉ lượt thành công mới tính. Vượt → `429 RATE_LIMITED`/`UPLOAD_BUSY`.
 - Tính vào trần hàng đợi LAN (6, `queue.clips`): video đang chờ/chạy nhận dạng, job `clip_plan` đang chờ/chạy, bản dựng clip đang dựng. Đầy → `429 QUEUE_FULL`.
 - `GET /lan/api/status` thêm `remaining.clip_project|clip_source|clip_plan|clip_render|clip_edit`, `rate.clip*`, `queue.clips`, và `clip` (giới hạn như `/api/clip-status`).
@@ -1151,3 +1178,39 @@ Cùng bộ endpoint dưới `/lan/api/...` (mục 13: Host, Origin, CSP, cookie 
 - **Không phục vụ video gốc qua LAN.** Sau khi tải, server sinh `source/preview_480p.mp4` (H.264 480p, CRF 28, trong hàng đợi render, xếp sau việc của app) làm `video_url`. Allowlist `/lan/files`: bản xem thử, poster, ảnh clip `thumbs/K<n>.jpg`, và clip `ready` (`clips/K<n>_v<m>.mp4|.srt`) của dự án LAN còn tồn tại; `.ass`, `transcript.json`, video gốc, file của bản chưa `ready`, file của dự án app → `404`.
 - Lỗi trong JSON LAN được lọc đường dẫn máy chủ (như mục 13).
 - Tự xoá video gốc sau `LAN_CLIP_SOURCE_RETENTION_DAYS` (7) ngày (timer mỗi giờ; bỏ qua video đang nhận dạng/dựng): giữ transcript, bản xem thử và clip; `source.status` vẫn `transcribed`, `source_deleted:true`; không dựng clip mới / chọn đoạn mới (`409 SOURCE_DELETED`), vẫn xem transcript và tải clip đã dựng.
+
+### 14.9 Làm gọn lời nói trong clip (migration 015)
+
+Áp dụng cho app chính và LAN với cùng tiền tố `/api` / `/lan/api`. Giữ nguyên source và các bản dựng cũ.
+
+| Endpoint | Hành vi |
+|---|---|
+| `POST /api/projects/:id/process-clips {reprocess?:boolean}` | Tiếp tục làm gọn clip còn chờ hoặc chạy lại toàn bộ clip chưa bỏ; `201 {job}` / `200 {job:null}`. Từ chối reprocess khi có job đang hoạt động. |
+| `POST /api/clips/:id/cleanup-plan {}` | `201 {job}`: managed `clip_plan`, payload `mode:"cleanup"`; mỗi dự án chỉ một yêu cầu chọn clip/làm gọn đang hoạt động. Cần managed worker có `clip_plan`; nếu không → `409 MANAGED_REQUIRED`. Endpoint tương thích; job cùng clip/revision đang chạy được trả lại. Không tạo bản dựng. |
+| `PUT /api/clips/:id/cleanup {job_id,revision,selected_ids,edits?}` | Lưu chỉnh sửa sau khi AI tự áp dụng. `edits:[{id,start_word,end_word}]` kéo hai đầu theo từ; server tính lại giây, không nhận timestamp tự do. `selected_ids:[]` về bản chưa làm gọn. Chỉ ảnh hưởng lần dựng tiếp theo. Trùng ID/ID lạ/khoảng không hợp lệ → `400 INVALID_CLEANUP`; đề xuất hoặc điểm cắt đã đổi → `409 STALE_CLEANUP`; cùng clip đang có job cleanup queued/claimed/running → `409 CLEANUP_RUNNING` (không tăng revision). |
+
+- Clip JSON thêm `cleanup:{job_id,revision,proposals,selected_ids}`, `cleanup_job:PlanJob|null`, `edit_revision`, `edited_duration_s`, `cleanup_state` (`pending/processing/failed/ready`), `latest_cut_stale`, `retained_segments` (null khi chưa xử lý). Web dùng các đoạn giữ server trả về; chỉnh sửa chưa lưu dùng chung hàm thuần với server. `plan_job` vẫn chỉ là job chọn clip. `proposals[]` gồm `{id,kind,start_word,end_word,text,start,end,reason,replacement?}`; replacement gồm từ, lời thoại và thời gian phần nói lại được giữ.
+- Worker **mới** quảng bá `features=clip_cleanup` ở `/api/worker/next`. Server không giao yêu cầu làm gọn cho worker cũ/legacy. Payload gồm `mode,clip_id,source_id,edit_revision,start_s,end_s,words:[{i,w,start,end}]`; result `{proposals,summary,provenance?}`. Worker và server kiểm tra cùng quy tắc (`lib/clip-cleanup.ts`); JSON lỗi có tối đa 3 lượt thử. Checkpoint lưu kết quả hợp lệ trước complete, hỗ trợ resume/idempotency và quota wait như managed job khác. Không dùng browser/Flow.
+- AI chỉ đề xuất tiếng đệm (`filler`), nói vấp/tự sửa (`false_start`), lặp không chủ ý (`repetition`). Hai loại sau phải trích phần nói lại ngay sau (≤8s) để giữ. Không tự sửa kiến thức hoặc loại lời vì cho rằng sai. STT có thể bỏ sót tiếng đệm nên AI không đảm bảo tìm đủ.
+- Cần confidence ≥0.9, câu trích khớp đúng dãy từ, từ nằm trong clip; filler chỉ gồm tối đa 5 tiếng đệm. Tối đa 40 chỗ, mỗi chỗ ≤30s, tổng bỏ ≤40%, bản còn ≥3s, không chồng nhau, không được bỏ phần nói lại cần giữ. Timestamp hàng xóm chồng nhau → từ chối cắt. Complete tự áp dụng tất cả điểm bỏ hợp lệ; người dùng có thể chỉnh lại sau.
+- Luồng bắt buộc: chọn/tạo clip → tự nối job làm gọn từng clip → tự áp dụng → mới hiện clip. Lỗi không hiện clip và không tự lặp vô hạn; nút tiếp tục cho phép retry. Giao diện có vị trí trên video dài, vùng giữ trắng/vùng bỏ đỏ gạch chéo, playhead, phóng timeline, kéo hai đầu theo từ, danh sách lý do và khôi phục đoạn cắt sai. Nghe thử là tua bỏ trên nguồn, chưa phải file render chính xác. Khôi phục tất cả rồi lưu để hoàn tác. Đổi điểm đầu/cuối làm mất hiệu lực đề xuất và lựa chọn cũ, kể cả đổi về điểm ban đầu; tự chạy lại làm gọn.
+- `clips.cleanup` lưu đề xuất/lựa chọn, `clips.edit_revision` chặn stale/ABA. `clip_cuts.edit_snapshot` chụp các đoạn giữ, caption_words và khoảng từ lúc xếp hàng. Thay đổi sau đó không làm đổi bản đang chờ dựng. Bản dựng cũ trước 015 (`edit_snapshot=NULL`) tiếp tục đọc được.
+- Render trả `409 CLEANUP_REQUIRED` khi clip chưa làm gọn; bản cũ không khớp điểm cắt/phụ đề được đánh dấu stale, ẩn khỏi bản xem hiện tại và ZIP. Render: video dùng select + ánh xạ PTS theo tổng đoạn giữ, chỉ lượng tử hóa FPS một lần; audio dùng atrim/asetpts + concat riêng, rồi reframe và phụ đề. Tránh cộng dồn sai số khung hình ở nhiều điểm nối, kể cả nguồn không tiếng. Kiểm tra độ dài cho phép sai số có giới hạn theo FPS/số đoạn; vẫn chặn lệch lớn. Phụ đề ASS/SRT tính lại theo đồng hồ của các đoạn giữ; từ đã bỏ không còn trong phụ đề. Fade âm thanh 8ms quanh điểm nối, vẫn giữ fade 60ms hai đầu. Cut JSON thêm `cleanup_count`. Vẫn chung hàng đợi, ưu tiên app hơn LAN, giữ hủy/tiến độ/phiên bản/ZIP.
+- LAN dùng lượt `clip_plan` (6/giờ/IP) cho yêu cầu tiếp tục/chạy lại, `clip_edit` (120/giờ/IP) cho chỉnh sửa, tính job vào `queue.clips`/trần 6. Không thêm quyền file nguồn hoặc route quản trị vào listener LAN.
+
+### 14.10 Clip ghép nhiều đoạn (montage, migration 017)
+
+Một clip có thể gồm 2–6 đoạn rời của video nguồn, phát nối tiếp theo **thứ tự phát** do người dùng/AI chọn (có thể khác thứ tự thời gian, vd đưa câu hook ở phút 45 lên đầu). Cùng endpoint cho app chính và LAN. Hàm thuần dùng chung server/worker/web: `server/src/lib/clip-parts.ts`.
+
+```
+ClipPart = { start_word, end_word, start_s, end_s, start_sentence, end_sentence }   // mỗi đoạn bám khoảng lặng như clip thường
+```
+- `clips.parts` (migration 017, `TEXT` JSON): NULL cho clip một đoạn (mọi dòng cũ). Clip ghép: mảng 2–6 `ClipPart` theo thứ tự phát; các cột `start_*/end_*` của dòng là khung bao (nhỏ nhất/lớn nhất).
+- Quy tắc (server kiểm tra, web làm theo): mỗi đoạn bám khoảng lặng như 14.4 và dài ≥ 1,5 giây; khoảng từ các đoạn không chồng nhau (`400 PARTS_OVERLAP`); tổng độ dài 3–300 giây (`400 CLIP_LENGTH`); tối đa 6 đoạn. `parts` một phần tử = clip thường (`parts:null`). Hai đoạn liền kề theo từ mà bám lấn khoảng lặng của nhau thì điểm cắt chung đặt giữa khoảng lặng (không phát lặp).
+- JSON clip: `parts` (null khi một đoạn); `duration_s` = tổng các đoạn; `retained_segments`/`edited_duration_s` tính theo từng đoạn và nối theo thứ tự phát (có thể không tăng dần theo thời gian); `transcript_excerpt` = lời các đoạn theo thứ tự phát, ngăn bằng `…`, bỏ từ đã cắt/ẩn; `caption_words` chỉ gồm từ của các đoạn (sắp theo chỉ số từ). `PUT captions` với từ nằm ngoài mọi đoạn → `400 INVALID_WORD_RANGE`. Ảnh đại diện lấy ở 40% đoạn phát đầu tiên.
+- Đổi `parts` (PATCH): như đổi điểm cắt — tính lại, giữ chữ phụ đề của từ còn trong clip, xoá kết quả làm gọn, `edit_revision+1`, dựng lại ảnh, tự xếp làm gọn. Đổi thứ tự cũng là thay đổi.
+- **Làm gọn**: payload thêm `parts:[{start_word,end_word,start_s,end_s}]` (thứ tự phát; clip một đoạn cũng có một phần tử), `words` là từ của mọi đoạn theo thứ tự phát, `start_s/end_s` là khung bao (cho worker cũ). Mỗi chỗ bỏ và phần nói lại của nó phải nằm trọn trong một đoạn; mã đề xuất đánh theo thứ tự phát. `PUT cleanup` với `edits` kéo sang đoạn khác → `400 INVALID_CLEANUP`.
+- **Dựng**: mỗi đoạn một input (`-ss start -t dur -i src`), trong từng đoạn áp dụng phần giữ lại như bản làm gọn (select/setpts + atrim, fade 8 ms ở mỗi điểm nối), rồi `concat=n=K:v=1:a=1` theo thứ tự phát (hình/tiếng khớp lại ở đầu mỗi đoạn), sau đó reframe/phụ đề/fade 60 ms như cũ; nguồn không tiếng dùng `concat …:a=0`. Clip một đoạn dựng đúng như trước. `clip_cuts.edit_snapshot.parts` chụp các đoạn lúc xếp hàng; bản dựng chỉ còn "hiện tại" khi các đoạn (cả thứ tự) khớp clip. Phụ đề lấy chữ từng đoạn theo thứ tự phát rồi tính lại theo đồng hồ đầu ra. Kiểm tra độ dài dùng tổng phần giữ lại.
+- **AI** (`clip_plan`, khi `allow_multi`): worker có thể đề xuất clip ghép 2–4 phần cùng chủ đề (câu hỏi/trả lời bị chen ngang, mẹo rải rác, bỏ đoạn lạc đề, mở bằng hook nói sau), mỗi phần ≥ ~3 giây; mặc định vẫn là đoạn liền mạch. Server kiểm tra từng phần bằng cùng bộ dò câu trích, áp các quy tắc trên, tổng độ dài theo preset ±20%, chồng nhau theo `partsOverlapRatio` (> 0,6 → loại), tối đa 4 phần; `caption_words` phải khớp từ ASR của các phần nối theo thứ tự phát (sai thì bỏ riêng phụ đề). `allow_multi:false` → server loại mọi đề xuất ghép. `verify.boundary='word_quote'` chỉ khi mọi phần đều dò được câu trích.
+
+Migration `016_cleanup_routing` giữ nguyên 015, thêm `worker_sessions.features` và hai partial expression index cho cleanup/discovery. `/api/worker/next` ghi nhận `clip_cleanup` chỉ khi worker managed nhận loại `clip_plan`; heartbeat giữ capability. Job cleanup queued không có worker phù hợp online sau 5 phút kể từ tạo/xếp lại → failed, không tự retry vòng lặp; sweeper chạy mỗi 30 giây và kiểm tra lại trước khi tạo job. Không hết hạn backlog có worker hỗ trợ online, quota wait hoặc khi hàng đợi tạm dừng. Clip luôn đọc transcript theo `clip.source_id`. Polling dự án dùng một truy vấn có index cho job cleanup của các clip, không parse payload chọn đoạn lớn cho từng clip.

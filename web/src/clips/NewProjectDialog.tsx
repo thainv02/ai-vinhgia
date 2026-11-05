@@ -16,7 +16,7 @@ const readName = (): string => {
   }
 };
 
-/** Hộp thoại tạo dự án cắt clip: tên + tên riêng/thuật ngữ hay xuất hiện (giúp nhận dạng đúng). */
+/** Hộp thoại tạo dự án highlight: tên + tên riêng/thuật ngữ hay xuất hiện (giúp nhận dạng đúng). */
 export function NewClipProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: number) => void }) {
   const { api, scope, quota } = useClipEnv();
   const qc = useQueryClient();
@@ -43,7 +43,7 @@ export function NewClipProjectDialog({ open, onClose, onCreated }: { open: boole
     <Modal
       open={open}
       onClose={onClose}
-      title="Dự án cắt clip mới"
+      title="Dự án highlight mới"
       footer={
         <>
           <Button onClick={onClose} disabled={create.isPending}>

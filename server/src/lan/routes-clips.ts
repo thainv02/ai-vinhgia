@@ -11,15 +11,15 @@ import { LAN_RATE, beginClipUpload, tooMany, type LanLimiters } from './limits.j
 import { lanIp } from './security.js';
 
 const WHAT: Record<Exclude<LimitKind, 'upload'>, string> = {
-  project: `Mỗi người chỉ được tạo tối đa ${LAN_RATE.clipProject.max} dự án cắt clip mỗi giờ.`,
+  project: `Mỗi người chỉ được tạo tối đa ${LAN_RATE.clipProject.max} dự án highlight mỗi giờ.`,
   source: `Mỗi người chỉ được tải video nguồn hoặc nhận dạng lại tối đa ${LAN_RATE.clipSource.max} lần mỗi giờ.`,
-  plan: `Mỗi người chỉ được nhờ AI chọn đoạn tối đa ${LAN_RATE.clipPlan.max} lần mỗi giờ.`,
+  plan: `Mỗi người chỉ được nhờ AI đề xuất highlight tối đa ${LAN_RATE.clipPlan.max} lần mỗi giờ.`,
   render: `Mỗi người chỉ được dựng clip tối đa ${LAN_RATE.clipRender.max} lần mỗi giờ.`,
   edit: `Mỗi người chỉ được sửa clip tối đa ${LAN_RATE.clipEdit.max} lần mỗi giờ.`,
 };
 
 /**
- * Cắt clip từ video dài trên listener LAN: cùng bộ endpoint với app chính (`/lan/api/...`), thêm danh sách dự án và xoá theo cookie người tạo.
+ * Highlight từ video dài trên listener LAN: cùng bộ endpoint với app chính (`/lan/api/...`), thêm danh sách dự án và xoá theo cookie người tạo.
  * Hạn mức theo IP: tạo dự án 10/giờ, video nguồn 3/giờ (1 lượt tải đồng thời mỗi IP), AI chọn đoạn 6/giờ, dựng 30/giờ, sửa 120/giờ; tính vào trần hàng đợi LAN.
  */
 export function registerLanClipRoutes(app: FastifyInstance, ctx: AppContext, L: LanLimiters): void {
@@ -30,7 +30,7 @@ export function registerLanClipRoutes(app: FastifyInstance, ctx: AppContext, L: 
     prefix: '/lan/api',
     view: (req) => ({ lan: true, clientHash: peekClientHash(req) }),
     scope: (project) => {
-      if (project.source !== 'lan') throw notFound('dự án cắt clip');
+      if (project.source !== 'lan') throw notFound('dự án highlight');
     },
     origin: (req, reply) => ({ source: 'lan', lan_client_hash: ensureClientHash(req, reply) }),
     limit: (kind, req, reply): LimitHandle => {
@@ -46,7 +46,7 @@ export function registerLanClipRoutes(app: FastifyInstance, ctx: AppContext, L: 
     },
   });
 
-  // Danh sách dự án cắt clip của LAN (mọi người trong LAN đều thấy; xoá theo cookie người tạo)
+  // Danh sách dự án highlight của LAN (mọi người trong LAN đều thấy; xoá theo cookie người tạo)
   app.get('/lan/api/clip-projects', async (req) => listLanClipProjects(ctx, { lan: true, clientHash: peekClientHash(req) }));
 
   // Xoá = chuyển vào thùng rác của chủ máy (30 ngày). CHỈ trình duyệt đã tạo dự án; cùng hạn mức với xoá kế hoạch (10/giờ/IP).

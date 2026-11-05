@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { resolveBoundaries, type BoundarySentence } from '../../server/src/lib/clip-boundaries.js';
+import { MIN_PART_S, partsOverlapRatio, wordRangesOverlap } from '../../server/src/lib/clip-parts.js';
 
 /**
  * Job `clip_plan` (AI chọn đoạn clip từ transcript của video dài): logic THUẦN (dựng prompt, đọc JSON lỏng, kiểm tra, khử trùng, khôi phục dấu câu)
@@ -9,6 +10,9 @@ import { resolveBoundaries, type BoundarySentence } from '../../server/src/lib/c
  * Tiêu chí chọn đoạn (hook 3 giây đầu, cảm xúc, quan điểm mạnh, tiết lộ, câu đáng trích, mẹo thực dụng; livestream bán hàng: công dụng, chốt giá/ưu đãi,
  * phản hồi câu hỏi khách) và prompt kiểm định "đứng một mình" (`keep`, `standalone_score`, `diagnosis`, sửa một lần) viết lại bằng tiếng Việt, port ý từ
  * SamurAIGPT/AI-Youtube-Shorts-Generator và linzzzzzz/openclip (MIT).
+ *
+ * Clip ghép (montage, khi `payload.allow_multi !== false`): một đề xuất có thể gồm 2–4 phần (`parts`, theo THỨ TỰ PHÁT), mỗi phần là một dãy câu liên tiếp
+ * có câu trích như đoạn thường; độ dài = tổng các phần. Kiểm định xem các phần theo đúng thứ tự phát, không sửa điểm cắt (`fix`) cho clip ghép.
  */
 
 // ---------------------------------------------------------------- kiểu dữ liệu (khớp payload của server)
@@ -30,12 +34,16 @@ export interface ClipPlanPayload {
   duration_preset: { key: string; min_s: number; max_s: number; ideal_min_s: number; ideal_max_s: number };
   focus?: string;
   exclude_existing?: boolean;
-  existing: { start_id: number; end_id: number; title: string }[];
+  /** Clip ghép trong `existing` có thêm `parts` (theo thứ tự phát). */
+  existing: { start_id: number; end_id: number; title: string; parts?: { start_id: number; end_id: number; start_word?: number; end_word?: number }[] }[];
+  /** false: không đề xuất clip ghép. Thiếu (server cũ) = cho phép. */
+  allow_multi?: boolean;
   content_hint?: string;
   speech_ratio?: number;
 }
 
-export interface Moment {
+/** Một phần của clip ghép: như một đoạn thường (ID câu + câu trích; sau khi kiểm tra có chỉ số từ). */
+export interface MomentPart {
   start_id: number;
   end_id: number;
   start_quote: string;
@@ -43,11 +51,26 @@ export interface Moment {
   start_word?: number;
   end_word?: number;
   boundary?: 'word_quote' | 'sentence_fallback';
+}
+
+export interface Moment {
+  /** Clip ghép: khung bao (ID câu nhỏ nhất/lớn nhất của các phần). */
+  start_id: number;
+  end_id: number;
+  start_quote: string;
+  end_quote?: string;
+  start_word?: number;
+  end_word?: number;
+  boundary?: 'word_quote' | 'sentence_fallback';
+  /** Clip ghép: 2–4 phần theo thứ tự phát; không có = đoạn liền mạch. */
+  parts?: MomentPart[];
   title: string;
   hook: string;
   score: number;
   reason: string;
 }
+
+export const isMontage = (m: Pick<Moment, 'parts'>): boolean => (m.parts?.length ?? 0) > 1;
 
 export interface VerifyOutcome {
   status: 'kept' | 'unverified' | 'repaired';
@@ -85,6 +108,8 @@ export const MAX_NETWORK_RETRIES = 2;
 export const VERIFY_BATCH = 4;
 export const CONTEXT_S = 60;
 export const MAX_JSON_RETRIES = 2;
+/** Clip ghép do AI đề xuất: tối đa 4 phần (server cũng chặn). */
+export const AI_MAX_PARTS = 4;
 
 // ---------------------------------------------------------------- tiện ích
 
@@ -180,8 +205,21 @@ const STANDALONE_RULES =
   'ĐOẠN PHẢI HIỂU ĐƯỢC KHI KHÔNG CÓ NGỮ CẢNH:\n' +
   '- Câu MỞ (start_id) không được bắt đầu bằng từ nối ("thì", "rồi", "và", "còn", "nhưng", "mà", "nên"), không dùng đại từ không rõ chỉ ai/cái gì ("nó", "họ", "cái đó", "ở trên") khi chưa nói ra, ' +
   'và không phải câu trả lời cho câu hỏi của người xem mà clip không có.\n' +
-  '- Không kết thúc giữa ý: câu CUỐI (end_id) phải khép lại ý (có kết luận, chốt, hoặc ngắt tự nhiên).\n' +
-  '- Đoạn là dãy câu LIÊN TIẾP từ start_id đến end_id (gồm cả hai đầu).\n';
+  '- Không kết thúc giữa ý: câu CUỐI (end_id) phải khép lại ý (có kết luận, chốt, hoặc ngắt tự nhiên).\n';
+const CONTIGUOUS_RULE = '- Đoạn là dãy câu LIÊN TIẾP từ start_id đến end_id (gồm cả hai đầu).\n';
+const CONTIGUOUS_RULE_MULTI = '- Đoạn liền mạch là dãy câu LIÊN TIẾP từ start_id đến end_id (gồm cả hai đầu). Với clip ghép, câu MỞ là đầu phần thứ nhất và câu CUỐI là cuối phần cuối cùng.\n';
+
+/** Hướng dẫn clip ghép (montage): chỉ dùng khi ghép thật sự kể chuyện rõ hơn/mạnh hơn một đoạn liền mạch. */
+export const MONTAGE_RULES =
+  'CLIP GHÉP NHIỀU ĐOẠN (montage) — được phép, nhưng KHÔNG phải mặc định:\n' +
+  '- Mặc định vẫn là đoạn liền mạch. Chỉ ghép khi nối vài phần lại kể câu chuyện rõ hơn hoặc mạnh hơn hẳn bất kỳ đoạn liền mạch nào, ví dụ: câu hỏi và câu trả lời bị chen giữa bởi một đoạn lan man; ' +
+  'nhiều mẹo của cùng một chủ đề nằm rải rác; cần bỏ một đoạn lạc đề dài ở giữa; mở clip bằng một câu hook thật mạnh mà người nói chỉ nói ra ở phía sau.\n' +
+  '- Mọi phần phải nói về CÙNG MỘT chủ đề và khi nối lại vẫn đúng ý người nói. Tuyệt đối không ghép những nội dung không liên quan, không cắt ghép làm sai lệch, đảo ngược hay phóng đại ý.\n' +
+  '- Clip ghép có 2–4 phần, liệt kê trong "parts" theo THỨ TỰ PHÁT (được phép khác thứ tự thời gian, vd đưa câu hook nói ở phía sau lên đầu). ' +
+  'Mỗi phần là một dãy câu liên tiếp, có start_id, end_id, start_quote, end_quote như một đoạn thường, dài ít nhất khoảng 3 giây, mở và khép trọn ý (không bắt đầu bằng từ nối, không dừng giữa câu). Các phần không được chồng lên nhau.\n' +
+  '- ĐỘ DÀI của clip ghép là TỔNG độ dài các phần và cũng phải nằm trong khoảng cứng ở trên.\n' +
+  '- Phần lớn đề xuất vẫn nên là đoạn liền mạch; chỉ thêm clip ghép khi thật sự có lợi (thường không quá 1/3 số đề xuất). Không có chỗ nào đáng ghép thì đừng ghép.\n' +
+  '- Clip ghép không cần start_id, end_id, start_quote, end_quote ở ngoài "parts"; title, hook, score, reason vẫn bắt buộc, và reason nói rõ vì sao ghép hay hơn để liền mạch.\n';
 
 export interface MomentsPromptInput {
   contentType: string;
@@ -191,6 +229,8 @@ export interface MomentsPromptInput {
   want: number;
   windowIndex: number;
   windowCount: number;
+  /** Cho phép đề xuất clip ghép (mặc định không). */
+  allowMulti?: boolean;
 }
 
 export function momentsSystem(i: MomentsPromptInput): string {
@@ -203,9 +243,14 @@ export function momentsSystem(i: MomentsPromptInput): string {
     `ĐỘ DÀI mỗi đoạn (từ đầu câu start_id đến cuối câu end_id): khoảng cứng ${p.min_s}–${p.max_s} giây, lý tưởng ${p.ideal_min_s}–${p.ideal_max_s} giây. Không đề xuất đoạn ngoài khoảng cứng.\n` +
     CRITERIA +
     STANDALONE_RULES +
+    (i.allowMulti ? CONTIGUOUS_RULE_MULTI + MONTAGE_RULES : CONTIGUOUS_RULE) +
     `SỐ LƯỢNG: đề xuất tối đa ${i.want} đoạn khác nhau; cố gắng đề xuất ít nhất ${i.want} đoạn nếu nội dung cho phép (không chồng nhau quá nửa, không trùng ý). Không có đoạn nào đạt thì trả mảng rỗng, đừng cố điền cho đủ.\n` +
     'Mỗi đoạn gồm: start_id, end_id, start_quote (4–8 từ ĐẦU của clip), end_quote (4–8 từ CUỐI của clip), chép nguyên văn trong câu có ID tương ứng hoặc câu liền kề ±1, title (tiêu đề ngắn có dấu), hook (6–12 từ, VIẾT MỚI cho video, có dấu, hấp dẫn, không chép nguyên câu), score (0–100), reason (1 câu vì sao đáng chọn).\n' +
-    'Trả đúng JSON, không Markdown: {"moments":[{"start_id":123,"end_id":131,"start_quote":"...","end_quote":"...","title":"...","hook":"...","score":87,"reason":"..."}]}'
+    (i.allowMulti
+      ? 'Trả đúng JSON, không Markdown. Ví dụ dưới có một đoạn liền mạch và một clip ghép mở bằng câu hook ở S0245–S0246 rồi mới quay lại S0210–S0214: ' +
+        '{"moments":[{"start_id":123,"end_id":131,"start_quote":"...","end_quote":"...","title":"...","hook":"...","score":87,"reason":"..."},' +
+        '{"parts":[{"start_id":245,"end_id":246,"start_quote":"...","end_quote":"..."},{"start_id":210,"end_id":214,"start_quote":"...","end_quote":"..."}],"title":"...","hook":"...","score":82,"reason":"..."}]}'
+      : 'Trả đúng JSON, không Markdown: {"moments":[{"start_id":123,"end_id":131,"start_quote":"...","end_quote":"...","title":"...","hook":"...","score":87,"reason":"..."}]}')
   );
 }
 
@@ -214,7 +259,22 @@ export function momentsUser(sentences: PlanSentence[], window: { from_id: number
   return `${focus ? asData('focus', focus) + '\n' : ''}${asData('transcript', lines.join('\n'))}`;
 }
 
-/** Đọc `{moments:[...]}`; null nếu JSON hỏng hoặc sai cấu trúc (để thử lại). Phần tử hỏng bị bỏ. */
+/** `parts` của clip ghép: null nếu không có / hỏng (phần tử nào thiếu ID nguyên thì cả clip bị bỏ). */
+function parseParts(v: unknown): MomentPart[] | null | 'bad' {
+  if (v === undefined || v === null) return null;
+  if (!Array.isArray(v) || !v.length) return 'bad';
+  const out: MomentPart[] = [];
+  for (const p of v) {
+    if (!isRec(p)) return 'bad';
+    const s = Number(p.start_id);
+    const e = Number(p.end_id);
+    if (!Number.isInteger(s) || !Number.isInteger(e)) return 'bad';
+    out.push({ start_id: s, end_id: e, start_quote: cleanStr(p.start_quote, 200), end_quote: cleanStr(p.end_quote, 200) });
+  }
+  return out;
+}
+
+/** Đọc `{moments:[...]}`; null nếu JSON hỏng hoặc sai cấu trúc (để thử lại). Phần tử hỏng bị bỏ. Clip ghép: `parts` (≥ 2), ID ở ngoài = khung bao. */
 export function parseMoments(text: string): Moment[] | null {
   const j = parseLooseJson(text);
   const arr = isRec(j) ? j.moments : Array.isArray(j) ? j : undefined;
@@ -222,15 +282,21 @@ export function parseMoments(text: string): Moment[] | null {
   const out: Moment[] = [];
   for (const m of arr) {
     if (!isRec(m)) continue;
-    const s = Number(m.start_id);
-    const e = Number(m.end_id);
+    const parsed = parseParts(m.parts);
+    if (parsed === 'bad') continue;
+    // `parts` một phần tử = đoạn liền mạch
+    const parts = parsed && parsed.length > 1 ? parsed : null;
+    const one = parsed?.length === 1 ? parsed[0]! : null;
+    const s = parts ? Math.min(...parts.map((p) => p.start_id)) : one ? one.start_id : Number(m.start_id);
+    const e = parts ? Math.max(...parts.map((p) => p.end_id)) : one ? one.end_id : Number(m.end_id);
     if (!Number.isInteger(s) || !Number.isInteger(e)) continue;
     const score = Number(m.score);
     out.push({
       start_id: s,
       end_id: e,
-      start_quote: cleanStr(m.start_quote, 200),
-      end_quote: cleanStr(m.end_quote, 200),
+      start_quote: parts ? parts[0]!.start_quote : one ? one.start_quote : cleanStr(m.start_quote, 200),
+      end_quote: parts ? parts.at(-1)!.end_quote : one ? one.end_quote : cleanStr(m.end_quote, 200),
+      ...(parts ? { parts } : {}),
       title: cleanStr(m.title, 200),
       hook: cleanStr(m.hook, 200),
       score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
@@ -275,6 +341,7 @@ export type MomentCheck = { ok: true; moment: Moment; shifted: number } | { ok: 
  * Độ dài theo từ ASR, trong khoảng cứng ±20%; bộ dò dùng chung với server.
  */
 export function checkMoment(m: Moment, byId: Map<number, PlanSentence>, preset: { min_s: number; max_s: number }): MomentCheck {
+  if (isMontage(m)) return checkMontage(m, byId, preset);
   if (!byId.has(m.start_id) || !byId.has(m.end_id)) return { ok: false, reason: `ID câu không tồn tại (${m.start_id}–${m.end_id})` };
   if (m.start_id > m.end_id) return { ok: false, reason: 'start_id lớn hơn end_id' };
   const resolved = resolveBoundaries([...byId.values()], m);
@@ -282,6 +349,43 @@ export function checkMoment(m: Moment, byId: Map<number, PlanSentence>, preset: 
   const len = resolved.end - resolved.start;
   if (!lengthOk(len, preset)) return { ok: false, reason: `độ dài ${len.toFixed(1)} giây ngoài khoảng ${preset.min_s}–${preset.max_s} giây` };
   return { ok: true, moment: { ...m, start_id: resolved.start_id, end_id: resolved.end_id, start_word: resolved.start_word, end_word: resolved.end_word, boundary: resolved.boundary }, shifted: resolved.start_id - m.start_id };
+}
+
+/**
+ * Clip ghép: 2–4 phần, mỗi phần qua cùng bộ dò câu trích như đoạn thường, dài ≥ 1,5 giây (theo từ ASR), không chồng nhau;
+ * TỔNG độ dài trong khoảng cứng ±20%. Kết quả giữ thứ tự phát; ID/chỉ số từ ở ngoài là khung bao.
+ */
+function checkMontage(m: Moment, byId: Map<number, PlanSentence>, preset: { min_s: number; max_s: number }): MomentCheck {
+  const parts = m.parts!;
+  if (parts.length > AI_MAX_PARTS) return { ok: false, reason: `clip ghép tối đa ${AI_MAX_PARTS} đoạn` };
+  const sentences = [...byId.values()];
+  const out: MomentPart[] = [];
+  let total = 0;
+  for (const [k, p] of parts.entries()) {
+    if (!byId.has(p.start_id) || !byId.has(p.end_id)) return { ok: false, reason: `đoạn ${k + 1}: ID câu không tồn tại (${p.start_id}–${p.end_id})` };
+    if (p.start_id > p.end_id) return { ok: false, reason: `đoạn ${k + 1}: start_id lớn hơn end_id` };
+    const r = resolveBoundaries(sentences, p);
+    if (!r) return { ok: false, reason: `đoạn ${k + 1}: điểm từ không khớp ID câu / câu trích` };
+    const len = r.end - r.start;
+    if (len < MIN_PART_S) return { ok: false, reason: `đoạn ${k + 1} chỉ dài ${len.toFixed(1)} giây` };
+    total += len;
+    out.push({ ...p, start_id: r.start_id, end_id: r.end_id, start_word: r.start_word, end_word: r.end_word, boundary: r.boundary });
+  }
+  if (wordRangesOverlap(out as { start_word: number; end_word: number }[])) return { ok: false, reason: 'các đoạn của clip ghép chồng lên nhau' };
+  if (!lengthOk(total, preset)) return { ok: false, reason: `tổng độ dài ${total.toFixed(1)} giây ngoài khoảng ${preset.min_s}–${preset.max_s} giây` };
+  return {
+    ok: true,
+    moment: {
+      ...m,
+      parts: out,
+      start_id: Math.min(...out.map((p) => p.start_id)),
+      end_id: Math.max(...out.map((p) => p.end_id)),
+      start_word: Math.min(...out.map((p) => p.start_word!)),
+      end_word: Math.max(...out.map((p) => p.end_word!)),
+      boundary: out.every((p) => p.boundary === 'word_quote') ? 'word_quote' : 'sentence_fallback',
+    },
+    shifted: 0,
+  };
 }
 
 // ---------------------------------------------------------------- 4. khử trùng
@@ -306,16 +410,28 @@ export function overlapRatio(a: { start_id: number; end_id: number }, b: { start
   return inter / Math.min(a.end_id - a.start_id + 1, b.end_id - b.start_id + 1);
 }
 
+type Overlappable = { start_id: number; end_id: number; start_word?: number; end_word?: number; parts?: { start_id: number; end_id: number; start_word?: number; end_word?: number }[] };
+const pieces = (m: Overlappable) => (m.parts && m.parts.length > 1 ? m.parts : [m]);
+
+/** Như `overlapRatio` nhưng hiểu clip ghép: tổng phần chung của mọi đoạn (theo từ nếu hai bên đều có chỉ số từ, không thì theo câu). */
+export function momentOverlap(a: Overlappable, b: Overlappable): number {
+  const pa = pieces(a), pb = pieces(b);
+  const hasWords = (ps: Overlappable['parts'] & object) => ps.every((p) => typeof p.start_word === 'number' && typeof p.end_word === 'number');
+  if (hasWords(pa) && hasWords(pb)) return partsOverlapRatio(pa as { start_word: number; end_word: number }[], pb as { start_word: number; end_word: number }[]);
+  const ids = (ps: Overlappable['parts'] & object) => ps.map((p) => ({ start_word: p.start_id, end_word: p.end_id }));
+  return partsOverlapRatio(ids(pa), ids(pb));
+}
+
 /**
  * Sắp theo điểm giảm dần; bỏ ứng viên chồng > 60% đoạn ngắn hơn với ứng viên đã giữ, hoặc Jaccard token (title + reason) ≥ 0.33 (ý của openclip),
- * hoặc trùng đoạn đã có (`existing`) khi người dùng yêu cầu loại trừ.
+ * hoặc trùng đoạn đã có (`existing`) khi người dùng yêu cầu loại trừ. Clip ghép so theo từng đoạn (`momentOverlap`).
  */
-export function dedupeMoments<T extends Moment>(moments: T[], existing: { start_id: number; end_id: number }[] = []): T[] {
+export function dedupeMoments<T extends Moment>(moments: T[], existing: Overlappable[] = []): T[] {
   const sorted = [...moments].sort((a, b) => b.score - a.score || a.start_id - b.start_id);
   const kept: T[] = [];
   for (const m of sorted) {
-    if (existing.some((e) => overlapRatio(m, e) > 0.6)) continue;
-    if (kept.some((k) => overlapRatio(m, k) > 0.6 || jaccard(`${m.title} ${m.reason}`, `${k.title} ${k.reason}`) >= 0.33)) continue;
+    if (existing.some((e) => momentOverlap(m, e) > 0.6)) continue;
+    if (kept.some((k) => momentOverlap(m, k) > 0.6 || jaccard(`${m.title} ${m.reason}`, `${k.title} ${k.reason}`) >= 0.33)) continue;
     kept.push(m);
   }
   return kept;
@@ -331,6 +447,8 @@ export const VERIFY_SYSTEM =
   'và fix {start_id, end_id} NẾU sửa được bằng cách chọn lại ID câu TRONG ngữ cảnh đã cho (diagnosis bad_start / bad_end / missing_premise / missing_payoff). ' +
   'Câu mở không được bắt đầu bằng từ nối hoặc đại từ không rõ; clip không được kết thúc giữa ý. Hình không hợp thì diagnosis=visual_bad, keep=false. Không sửa được thì not_fixable.\n' +
   'Khi sửa điểm cắt, fix gồm start_id, end_id, start_quote (4–8 từ đầu clip) và end_quote (4–8 từ cuối clip), chép nguyên văn, có thể ở giữa câu.\n' +
+  'CLIP GHÉP (lời thoại chia "--- đoạn 1 ---", "--- đoạn 2 ---"…) được phát nối tiếp đúng thứ tự đó, có thể khác thứ tự thời gian trong video gốc. Ngoài các tiêu chí trên, kiểm tra: các đoạn cùng một chủ đề, ' +
+  'chỗ nối nghe mạch lạc, và ghép lại KHÔNG làm sai, đảo ngược hay phóng đại ý người nói; không đạt thì keep=false. Ngữ cảnh của clip ghép là phần trước đoạn 1 và sau đoạn cuối. Với clip ghép luôn trả fix: null.\n' +
   'Trả đúng JSON, không Markdown: {"results":[{"id":"c1","keep":true,"standalone_score":0.8,"diagnosis":"none","fix":null}]}';
 
 export interface VerifyItem {
@@ -338,8 +456,31 @@ export interface VerifyItem {
   candidate: Candidate;
 }
 
+/** Lời thoại của một đoạn (câu cắt theo chỉ số từ nếu có). */
+const insideLines = (sentences: PlanSentence[], p: { start_id: number; end_id: number; start_word?: number; end_word?: number }): string[] =>
+  sentences.filter((s) => s.id >= p.start_id && s.id <= p.end_id).map((s) => formatSentence({ ...s, text: asrWords([s], s.id, s.id, p.start_word, p.end_word)?.map((w) => w.w).join(' ') ?? s.text }));
+
+/** Clip ghép: các đoạn theo thứ tự phát (`--- đoạn k ---`), ngữ cảnh trước đoạn 1 và sau đoạn cuối. */
+function montageItemText(item: VerifyItem, sentences: PlanSentence[]): string {
+  const c = item.candidate;
+  const parts = c.parts!;
+  const first = parts[0]!, last = parts[parts.length - 1]!;
+  const a = sentences.find((s) => s.id === first.start_id);
+  const b = sentences.find((s) => s.id === last.end_id);
+  const before = a ? sentences.filter((s) => s.id < first.start_id && s.start >= a.start - CONTEXT_S).map(formatSentence) : [];
+  const after = b ? sentences.filter((s) => s.id > last.end_id && s.end <= b.end + CONTEXT_S).map(formatSentence) : [];
+  const inside = parts.flatMap((p, k) => [`--- đoạn ${k + 1} ---`, ...insideLines(sentences, p)]);
+  return (
+    `Ứng viên ${item.key}: CLIP GHÉP ${parts.length} đoạn, phát theo đúng thứ tự bên dưới; tiêu đề "${c.title}"; hook "${c.hook}".\n` +
+    asData('ngu_canh', `--- trước đoạn 1 ---\n${before.join('\n')}\n--- sau đoạn ${parts.length} ---\n${after.join('\n')}`) +
+    '\n' +
+    asData('loi_thoai', inside.join('\n'))
+  );
+}
+
 /** Nội dung kiểm định cho một ứng viên: lời thoại + ngữ cảnh ±60 s (câu nằm ngoài clip). */
 export function verifyItemText(item: VerifyItem, sentences: PlanSentence[]): string {
+  if (isMontage(item.candidate)) return montageItemText(item, sentences);
   const c = item.candidate;
   const a = sentences.find((s) => s.id === c.start_id);
   const b = sentences.find((s) => s.id === c.end_id);
@@ -386,7 +527,7 @@ export function parseVerify(text: string): ParsedVerify[] | null {
  * Trả ứng viên mới (start_quote lấy lại từ câu đầu mới) hoặc null.
  */
 export function applyFix(c: Candidate, fix: ParsedVerify['fix'], sentences: PlanSentence[], preset: { min_s: number; max_s: number }): Candidate | null {
-  if (!fix) return null;
+  if (!fix || isMontage(c)) return null; // clip ghép không sửa điểm cắt bằng kiểm định
   const byId = new Map(sentences.map((s) => [s.id, s]));
   const oldA = byId.get(c.start_id);
   const oldB = byId.get(c.end_id);
@@ -434,6 +575,18 @@ export function asrWords(sentences: PlanSentence[], startId: number, endId: numb
     s.text.split(/\s+/).filter(Boolean).forEach((w, k) => { const i = s.start_word! + k; if (i >= (startWord ?? -Infinity) && i <= (endWord ?? Infinity)) out.push({ i, w }); });
   }
   return out.length ? out : null;
+}
+
+/** Dãy từ ASR của ứng viên: clip ghép nối từ các đoạn theo thứ tự phát. null nếu thiếu `start_word`. */
+export function candidateWords(c: Moment, sentences: PlanSentence[]): { i: number; w: string }[] | null {
+  if (!isMontage(c)) return asrWords(sentences, c.start_id, c.end_id, c.start_word, c.end_word);
+  const out: { i: number; w: string }[] = [];
+  for (const p of c.parts!) {
+    const ws = asrWords(sentences, p.start_id, p.end_id, p.start_word, p.end_word);
+    if (!ws) return null;
+    out.push(...ws);
+  }
+  return out;
 }
 
 export const restoreUser = (words: { w: string }[]): string => asData('loi_thoai', words.map((w) => w.w).join(' '));
@@ -484,6 +637,8 @@ export interface ClipPlanResult {
     end_word?: number;
     start_quote?: string;
     end_quote?: string;
+    /** Clip ghép: các đoạn theo thứ tự phát; khi có thì start_id/end_id là khung bao. */
+    parts?: { start_id: number; end_id: number; start_word?: number; end_word?: number; start_quote?: string; end_quote?: string }[];
     title: string;
     hook: string;
     score: number;
@@ -553,11 +708,12 @@ export async function runClipPlan(payload: ClipPlanPayload, deps: ClipPlanDeps, 
   // 2 + 3. đề xuất theo cửa sổ, kiểm tra phía worker
   const windows = payload.windows.length ? payload.windows : sentences.length ? [{ from_id: sentences[0]!.id, to_id: sentences[sentences.length - 1]!.id }] : [];
   const want = perWindowWant(payload.count, windows.length);
+  const allowMulti = payload.allow_multi !== false;
   for (let w = 0; w < windows.length; w++) {
     if (state.windows[String(w)]) continue;
     const raw = await inferParsed(
       deps,
-      [system(momentsSystem({ contentType: state.content_type!, density: state.density ?? 'vừa', preset, want, windowIndex: w, windowCount: windows.length })), user(momentsUser(sentences, windows[w]!, payload.focus))],
+      [system(momentsSystem({ contentType: state.content_type!, density: state.density ?? 'vừa', preset, want, windowIndex: w, windowCount: windows.length, allowMulti })), user(momentsUser(sentences, windows[w]!, payload.focus))],
       ['text'],
       parseMoments,
       prov,
@@ -566,7 +722,7 @@ export async function runClipPlan(payload: ClipPlanPayload, deps: ClipPlanDeps, 
     const rejected: { start_id: number; end_id: number; reason: string }[] = [];
     log(`cửa sổ ${w + 1}: ${raw?.length ?? 0} đề xuất thô`);
     for (const m of raw ?? []) {
-      const c = checkMoment(m, byId, preset);
+      const c: MomentCheck = !allowMulti && isMontage(m) ? { ok: false, reason: 'người dùng không cho ghép nhiều đoạn' } : checkMoment(m, byId, preset);
       if (c.ok) ok.push(c.moment);
       else { rejected.push({ start_id: m.start_id, end_id: m.end_id, reason: c.reason }); log(`cửa sổ ${w + 1}: loại đề xuất ${m.start_id}–${m.end_id}: ${c.reason}`); }
     }
@@ -633,7 +789,7 @@ export async function runClipPlan(payload: ClipPlanPayload, deps: ClipPlanDeps, 
   // 7. khôi phục chữ thường/dấu câu cho lời thoại từng clip được chọn (giữ nguyên dãy từ; lệch → dùng ASR)
   for (const it of chosen) {
     if (it.key in state.restored) continue;
-    const words = asrWords(sentences, it.candidate.start_id, it.candidate.end_id, it.candidate.start_word, it.candidate.end_word);
+    const words = candidateWords(it.candidate, sentences);
     if (!words) {
       state.restored[it.key] = null;
       continue;
@@ -654,10 +810,10 @@ export async function runClipPlan(payload: ClipPlanPayload, deps: ClipPlanDeps, 
   const clips: ClipPlanResult['clips'] = chosen.map((it) => ({
     start_id: it.candidate.start_id,
     end_id: it.candidate.end_id,
-    start_word: it.candidate.start_word,
-    end_word: it.candidate.end_word,
-    start_quote: it.candidate.start_quote,
-    end_quote: it.candidate.end_quote,
+    // clip ghép: điểm cắt nằm trong `parts` (server bỏ qua chỉ số từ/câu trích ở ngoài)
+    ...(isMontage(it.candidate)
+      ? { parts: it.candidate.parts!.map((p) => ({ start_id: p.start_id, end_id: p.end_id, start_word: p.start_word, end_word: p.end_word, start_quote: p.start_quote, end_quote: p.end_quote })) }
+      : { start_word: it.candidate.start_word, end_word: it.candidate.end_word, start_quote: it.candidate.start_quote, end_quote: it.candidate.end_quote }),
     title: it.candidate.title,
     hook: it.candidate.hook,
     score: it.candidate.score,
@@ -699,18 +855,20 @@ async function verifyBatch(deps: ClipPlanDeps, batch: VerifyItem[], sentences: P
   for (let k = 0; k < batch.length; k++) {
     const it = { ...batch[k]!, key: `c${k + 1}` };
     content.push({ type: 'text', text: verifyItemText(it, sentences) });
-    const a = byId.get(it.candidate.start_id)!;
-    const b = byId.get(it.candidate.end_id)!;
+    // clip ghép: lưới khung hình lấy từ đoạn phát đầu tiên
+    const range = it.candidate.parts?.[0] && isMontage(it.candidate) ? it.candidate.parts[0] : it.candidate;
+    const a = byId.get(range.start_id)!;
+    const b = byId.get(range.end_id)!;
     let grid: string | null = null;
     try {
-      const bounds = resolveBoundaries(sentences, it.candidate);
+      const bounds = resolveBoundaries(sentences, range);
       grid = await deps.grid(bounds?.start ?? a.start, bounds?.end ?? b.end);
     } catch (e) {
       if (isLeaseError(e)) throw e;
       grid = null;
     }
     if (grid) {
-      content.push({ type: 'text', text: `Lưới 4 khung hình của ${it.key} (2×2, theo thứ tự trái→phải, trên→dưới, ở 15%, 40%, 65%, 90% của clip):` }, { type: 'image_url', image_url: { url: grid } });
+      content.push({ type: 'text', text: `Lưới 4 khung hình của ${it.key} (2×2, theo thứ tự trái→phải, trên→dưới, ở 15%, 40%, 65%, 90% của ${range === it.candidate ? 'clip' : 'đoạn 1'}):` }, { type: 'image_url', image_url: { url: grid } });
       images++;
     }
   }

@@ -2,7 +2,7 @@
 
 /*
   Hệ màu: giao diện đơn sắc (mực + giấy), màu chỉ dùng để nói về trạng thái.
-  Nút thường màu mực; nút tốn credit có huy hiệu credit riêng (xem .spend-chip).
+  Nút thường màu mực; tông --spend (cam) chỉ dùng để nhấn mạnh chi phí lượt tạo.
   Sáng/tối theo hệ thống (prefers-color-scheme).
 */
 :root {
@@ -207,23 +207,6 @@
 }
 
 @layer components {
-  /* Huy hiệu credit gắn vào nút tốn credit */
-  .spend-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    white-space: nowrap;
-    margin-left: 4px;
-    padding: 0 6px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 18px;
-    background: var(--spend-bg);
-    color: var(--spend);
-    border: 1px solid var(--spend-line);
-  }
-
   /* Tiến trình mượt khi đổi trạng thái */
   @keyframes pulse-dot {
     0%,

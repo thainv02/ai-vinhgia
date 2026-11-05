@@ -9,7 +9,7 @@ import { useClipEnv } from './env';
 import { useClipActions } from './hooks';
 import type { ClipProjectDetail } from './types';
 
-/** Cài đặt dự án cắt clip: tên, thuật ngữ cho nhận dạng lời nói, chuyển vào thùng rác. */
+/** Cài đặt dự án highlight: tên, thuật ngữ cho nhận dạng lời nói, chuyển vào thùng rác. */
 export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscribe }: { open: boolean; detail: ClipProjectDetail; onClose: () => void; onDeleted: () => void; onRetranscribe: () => void }) {
   const { deleteProject, scope } = useClipEnv();
   const p = detail.project;
@@ -39,7 +39,7 @@ export function ProjectSettings({ open, detail, onClose, onDeleted, onRetranscri
     <Modal
       open={open}
       onClose={onClose}
-      title="Cài đặt dự án cắt clip"
+      title="Cài đặt dự án highlight"
       footer={
         <>
           <Button onClick={onClose}>Đóng</Button>

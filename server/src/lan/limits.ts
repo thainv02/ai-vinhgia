@@ -63,12 +63,17 @@ export const LAN_RATE = {
   colorRef: { max: 20, windowMs: 60 * 60_000 },
   /** Xoá kế hoạch (DELETE /lan/api/plans/:id): 10 lần/giờ/IP, tính mọi yêu cầu tới được bước kiểm tra quyền (kể cả bị từ chối). */
   deletePlan: { max: 10, windowMs: 60 * 60_000 },
-  /** Cắt clip từ video dài: tạo dự án 10/giờ, tải video nguồn (và nhận dạng lại) 3/giờ, AI chọn đoạn 6/giờ, dựng clip 30/giờ, sửa (duyệt, điểm cắt, phụ đề, tên) 120/giờ. */
+  /** Highlight từ video dài: tạo dự án 10/giờ, tải video nguồn (và nhận dạng lại) 3/giờ, AI chọn đoạn 6/giờ, dựng clip 30/giờ, sửa (duyệt, điểm cắt, phụ đề, tên) 120/giờ. */
   clipProject: { max: 10, windowMs: 60 * 60_000 },
   clipSource: { max: 3, windowMs: 60 * 60_000 },
   clipPlan: { max: 6, windowMs: 60 * 60_000 },
   clipRender: { max: 30, windowMs: 60 * 60_000 },
   clipEdit: { max: 120, windowMs: 60 * 60_000 },
+  /** Autovideo: tạo dự án 10/giờ; mỗi cảnh tạo storyboard tính 1 lượt (40/giờ), tạo video 1 lượt (20/giờ); sửa prompt, chọn video, hủy, đổi dịch vụ 120/giờ. */
+  autoProject: { max: 10, windowMs: 60 * 60_000 },
+  autoStoryboard: { max: 40, windowMs: 60 * 60_000 },
+  autoVideo: { max: 20, windowMs: 60 * 60_000 },
+  autoEdit: { max: 120, windowMs: 60 * 60_000 },
 } as const;
 
 export interface LanLimiters {
@@ -89,8 +94,12 @@ export interface LanLimiters {
   clipPlan: SlidingWindowLimiter;
   clipRender: SlidingWindowLimiter;
   clipEdit: SlidingWindowLimiter;
+  autoProject: SlidingWindowLimiter;
+  autoStoryboard: SlidingWindowLimiter;
+  autoVideo: SlidingWindowLimiter;
+  autoEdit: SlidingWindowLimiter;
   gate: UploadGate;
-  /** Tải video nguồn cắt clip: tối đa 1 lượt đồng thời mỗi IP (2 toàn listener). */
+  /** Tải video nguồn highlight: tối đa 1 lượt đồng thời mỗi IP (2 toàn listener). */
   clipGate: UploadGate;
 }
 
@@ -114,6 +123,10 @@ export function makeLimiters(now: () => number): LanLimiters {
     clipPlan: lim(LAN_RATE.clipPlan),
     clipRender: lim(LAN_RATE.clipRender),
     clipEdit: lim(LAN_RATE.clipEdit),
+    autoProject: lim(LAN_RATE.autoProject),
+    autoStoryboard: lim(LAN_RATE.autoStoryboard),
+    autoVideo: lim(LAN_RATE.autoVideo),
+    autoEdit: lim(LAN_RATE.autoEdit),
     gate: new UploadGate(),
     clipGate: new UploadGate(1, 2),
   };
@@ -126,7 +139,7 @@ export function tooMany(reply: FastifyReply, what: string, retryAfterMs: number)
   return new AppError('RATE_LIMITED', `${what} Thử lại sau ${secs < 90 ? `${secs} giây` : `${Math.ceil(secs / 60)} phút`}.`, 429, { retry_after_s: secs });
 }
 
-/** Như `beginUpload` nhưng cho video nguồn cắt clip: cổng riêng (1 lượt đồng thời mỗi IP). */
+/** Như `beginUpload` nhưng cho video nguồn highlight: cổng riêng (1 lượt đồng thời mỗi IP). */
 export function beginClipUpload(reply: FastifyReply, limiters: LanLimiters, ip: string, what: string): () => void {
   const lim = limiters.clipSource.check(ip, limiters.clipGate.inflight(ip) + 1);
   if (!lim.allowed) throw tooMany(reply, what, lim.retryAfterMs);

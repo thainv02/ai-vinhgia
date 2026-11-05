@@ -1,4 +1,4 @@
-// Kiểu dữ liệu của tính năng "Cắt clip từ video dài" (hợp đồng: clips-spec.md mục 5). Dùng chung cho app chính và trang planner LAN.
+// Kiểu dữ liệu của tính năng "Highlight từ video dài" (hợp đồng: clips-spec.md mục 5). Dùng chung cho app chính và trang planner LAN.
 
 export type SourceStatus = 'uploaded' | 'transcribing' | 'transcribed' | 'failed' | 'cancelled';
 export type ClipStatus = 'proposed' | 'approved' | 'rejected';
@@ -6,6 +6,8 @@ export type CutStatus = 'rendering' | 'ready' | 'failed' | 'cancelled';
 export type ReframeMode = 'fit' | 'center';
 export type CaptionPreset = 'highlight' | 'karaoke' | 'minimal' | 'none';
 export type DurationPreset = '15_30' | '30_60' | '60_90' | '90_180';
+/** Một đoạn của clip ghép (montage), theo thứ tự phát. Kiểu dùng chung với server/worker. */
+export type { ClipPart } from '../../../server/src/lib/clip-parts';
 
 export interface SourceVideo {
   id: number;
@@ -45,6 +47,7 @@ export interface ClipCut {
   aspect: string;
   reframe: { mode?: ReframeMode } | null;
   captions: { preset?: CaptionPreset } | null;
+  cleanup_count?: number;
   duration_s: number | null;
   video_url: string | null;
   srt_url: string | null;
@@ -74,9 +77,14 @@ export interface Clip {
   start_s: number;
   end_s: number;
   duration_s: number;
-  /** Chỉ số từ (toàn cục trong transcript), gồm cả hai đầu. */
+  /** Chỉ số từ (toàn cục trong transcript), gồm cả hai đầu. Clip ghép nhiều đoạn: khung bao của các đoạn. */
   start_word: number;
   end_word: number;
+  /**
+   * Clip ghép nhiều đoạn: các đoạn theo thứ tự phát (2–6 đoạn); null/vắng (server cũ) = clip một đoạn.
+   * Khi có, `start_*`/`end_*` là khung bao, `duration_s` là tổng độ dài các đoạn. Dùng `clipParts()` trong lib để đọc.
+   */
+  parts?: import('../../../server/src/lib/clip-parts').ClipPart[] | null;
   title: string | null;
   hook: string | null;
   score: number | null;
@@ -91,6 +99,13 @@ export interface Clip {
   caption_edited: boolean;
   /** Đề xuất bổ sung hợp đồng: chữ phụ đề hiện tại (đã sửa tay hoặc đã khôi phục dấu câu). Vắng thì dùng chữ ASR. */
   caption_words?: CaptionWord[] | null;
+  edit_revision?: number;
+  edited_duration_s?: number;
+  retained_segments?: import('../../../server/src/lib/clip-cleanup').Segment[] | null;
+  cleanup?: import('../../../server/src/lib/clip-cleanup').CleanupPlan | null;
+  cleanup_state?: 'pending' | 'processing' | 'ready' | 'failed';
+  latest_cut_stale?: boolean;
+  cleanup_job?: PlanJob | null;
   latest_cut: ClipCut | null;
   cuts_count: number;
 }
@@ -128,7 +143,7 @@ export interface ClipProjectDetail {
   can_delete?: boolean;
 }
 
-/** Dòng trong danh sách dự án cắt clip (`GET /api/projects` lọc `kind === 'clips'`). */
+/** Dòng trong danh sách dự án highlight (`GET /api/projects` lọc `kind === 'clips'`). */
 export interface ClipProjectSummary {
   id: number;
   name: string;
@@ -140,6 +155,8 @@ export interface ClipProjectSummary {
   created_at: string;
   updated_at?: string;
   clip_count?: number;
+  ready_count?: number;
+  poster_url?: string | null;
   source_video?: { duration_s: number | null; status: SourceStatus } | null;
 }
 
@@ -165,6 +182,14 @@ export interface PlanInput {
   duration_preset: DurationPreset;
   focus?: string;
   exclude_existing?: boolean;
+  /** Cho phép AI đề xuất clip ghép nhiều đoạn (mặc định ở server: true). */
+  allow_multi?: boolean;
+}
+
+/** Một đoạn gửi lên khi tạo/sửa clip ghép (server tự bám khoảng lặng và tính giây). */
+export interface PartInput {
+  start_word: number;
+  end_word: number;
 }
 
 export interface RenderInput {
@@ -180,5 +205,6 @@ export interface ClipServerStatus {
   retention_days: number | null;
   stt: { configured: boolean };
   captions: { available: boolean; reason: string | null; font?: string | null };
+  cleanup?: { required: boolean; configured: boolean };
   plan: { min_count: number; max_count: number };
 }

@@ -28,7 +28,7 @@ const ACTION_HINT: Record<CommentAction, string> = {
   note: 'Chỉ lưu nhận xét, không chạy gì.',
   revise_and_regenerate: 'AI sửa đúng chỗ liên quan trong prompt, bạn duyệt lại rồi mới tạo video.',
   regenerate_same: 'Tạo video mới với đúng prompt hiện tại.',
-  regenerate_storyboard: 'Tạo lại ảnh storyboard, không tốn credit.',
+  regenerate_storyboard: 'Tạo lại ảnh storyboard.',
 };
 
 function CommentItem({ c, scene, videos, onSeek }: { c: Comment; scene: SceneDetail; videos: Asset[]; onSeek: Props['onSeek'] }) {
@@ -76,7 +76,6 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
   const [withTime, setWithTime] = useState(false);
   const [confirm, setConfirm] = useState(false);
 
-  const creditPerVideo = scene.project.credit_per_video;
   const status = sceneStatusInfo(scene.status);
 
   // Lý do vô hiệu hóa từng hành động (lấy từ server cho video/storyboard).
@@ -115,7 +114,7 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
             effective === 'revise_and_regenerate'
               ? 'Đã gửi. AI sẽ sửa prompt, bạn sẽ duyệt lại trước khi tạo video.'
               : effective === 'regenerate_same'
-                ? `Đã gửi và đặt trước ${creditPerVideo} credit cho video mới.`
+                ? 'Đã gửi. Video mới sẽ được tạo (dùng 1 lượt).'
                 : effective === 'regenerate_storyboard'
                   ? 'Đã gửi. Storyboard sẽ được tạo lại.'
                   : 'Đã lưu nhận xét.',
@@ -172,7 +171,6 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
           {ACTIONS.map((a) => {
             const reason = reasons[a];
             const selected = effective === a;
-            const credit = a === 'regenerate_same';
             return (
               <label
                 key={a}
@@ -184,7 +182,6 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
                 <input type="radio" name="cm-action" value={a} checked={selected} disabled={!!reason} onChange={() => setAction(a)} className="mt-0.5" />
                 <span className="min-w-0">
                   <span className="font-semibold">{COMMENT_ACTION_LABEL[a]}</span>
-                  {credit && <span className="spend-chip">{creditPerVideo} credit</span>}
                   <span className={`block text-xs ${reason ? 'text-warn-fg' : 'text-muted'}`}>{reason ?? ACTION_HINT[a]}</span>
                 </span>
               </label>
@@ -207,7 +204,7 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
         {add.isError && !confirm && <InlineError>{errorMessage(add.error)}</InlineError>}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="primary" loading={add.isPending && !confirm} disabledReason={bodyReason} credit={effective === 'regenerate_same' ? creditPerVideo : undefined}>
+          <Button type="submit" variant="primary" loading={add.isPending && !confirm} disabledReason={bodyReason}>
             {effective === 'note'
               ? 'Gửi nhận xét'
               : effective === 'revise_and_regenerate'
@@ -225,13 +222,13 @@ export function CommentsPanel({ scene, videos, activeVideo, stopTime, getTime, o
         onClose={() => setConfirm(false)}
         title={`Tạo lại video cho ${scene.code}?`}
         confirmLabel="Xác nhận tạo lại video"
-        credit={creditPerVideo}
         pending={add.isPending}
         error={add.isError ? errorMessage(add.error) : null}
         confirmDisabledReason={scene.video_block?.message ?? null}
         onConfirm={submit}
       >
-        <VideoCostSummary scene={scene} creditPerVideo={creditPerVideo} />
+        <VideoCostSummary scene={scene} />
+        <p className="text-[13px] text-muted">Dùng lại dịch vụ (Muse hoặc Google Flow) của lần tạo video trước của cảnh.</p>
         <p className="rounded-md bg-surface-2 px-3 py-2 text-[13px]">
           <span className="font-semibold">Nhận xét sẽ được lưu kèm:</span> {body.trim()}
         </p>

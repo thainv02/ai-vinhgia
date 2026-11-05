@@ -38,7 +38,6 @@ const input = (scenes: PlanSceneInput[], over: Partial<PlanInput> = {}): PlanInp
   name: 'Cacao Actiso',
   created_by_name: 'Lan',
   style_lock: 'Ánh sáng ấm buổi sáng, mặt bếp đá trắng',
-  credit_per_video: 15,
   refs,
   scenes,
   ...over,
@@ -189,10 +188,10 @@ describe('buildScenePlans: ảnh đính kèm và thứ tự', () => {
     expect(bad!.video.warnings.join(' ')).toContain('image 2');
   });
 
-  it('cài đặt Flow: 9:16, 10 giây, x1, 720p, credit lấy từ dự án', () => {
-    const [c1] = buildScenePlans(input([scene()], { credit_per_video: 20 }));
-    expect(c1!.video.settings).toEqual({ aspect: '9:16', duration_s: 10, count: 1, resolution: '720p', estimated_credits: 20 });
-    expect(settingsLine(c1!.video.settings)).toBe('9:16 · 10 giây · x1 · 720p · ước tính 20 credit mỗi video');
+  it('cài đặt Flow: 9:16, 10 giây, x1, 720p (không còn ước tính credit)', () => {
+    const [c1] = buildScenePlans(input([scene()]));
+    expect(c1!.video.settings).toEqual({ aspect: '9:16', duration_s: 10, count: 1, resolution: '720p' });
+    expect(settingsLine(c1!.video.settings)).toBe('9:16 · 10 giây · x1 · 720p');
     expect(c1!.video.notes.join(' ')).toMatch(/ĐÍNH KÈM từng ảnh vào ô prompt/);
   });
 });
@@ -217,7 +216,8 @@ describe('planToMarkdown', () => {
     expect(md).toContain('## C2 — Rót nước');
     expect(md.match(/### Bước 1: Storyboard \(ChatGPT\)/g)).toHaveLength(2);
     expect(md.match(/### Bước 2: Video \(Google Flow\)/g)).toHaveLength(2);
-    expect(md).toContain('9:16 · 10 giây · x1 · 720p · ước tính 15 credit mỗi video');
+    expect(md).toContain('9:16 · 10 giây · x1 · 720p');
+    expect(md).not.toMatch(/credit/i);
   });
 
   it('danh sách ảnh đính kèm theo thứ tự, kèm nhãn "image N" ở bước 2 và "không đánh số" cho storyboard', () => {
