@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react';
 
-export type Route = { name: 'list' } | { name: 'new' } | { name: 'plan'; id: number } | { name: 'tool' } | { name: 'clips' } | { name: 'clip'; id: number };
+export type Route =
+  | { name: 'list' }
+  | { name: 'new' }
+  | { name: 'plan'; id: number }
+  | { name: 'tool' }
+  | { name: 'clips' }
+  | { name: 'clip'; id: number }
+  | { name: 'auto' }
+  | { name: 'autoNew' }
+  | { name: 'autoProject'; id: number };
 
-/** Đường dẫn dạng hash (#/, #/new, #/plan/12, #/tools/remove-logo, #/clips, #/clips/5): listener LAN chỉ cần phục vụ một trang planner.html. */
+/** Đường dẫn dạng hash (#/, #/new, #/plan/12, #/tools/remove-logo, #/clips, #/clips/5, #/auto, #/auto/new, #/auto/7): listener LAN chỉ cần phục vụ một trang planner.html. */
 export function parseHash(hash: string): Route {
+  const a = /^#\/auto\/(\d+)$/.exec(hash);
+  if (a) return { name: 'autoProject', id: Number(a[1]) };
+  if (hash === '#/auto') return { name: 'auto' };
+  if (hash === '#/auto/new') return { name: 'autoNew' };
   const m = /^#\/plan\/(\d+)$/.exec(hash);
   if (m) return { name: 'plan', id: Number(m[1]) };
   const c = /^#\/clips\/(\d+)$/.exec(hash);
@@ -14,18 +27,28 @@ export function parseHash(hash: string): Route {
   return { name: 'list' };
 }
 
-export const hrefOf = (route: Route): string =>
-  route.name === 'plan'
-    ? `#/plan/${route.id}`
-    : route.name === 'new'
-      ? '#/new'
-      : route.name === 'tool'
-        ? '#/tools/remove-logo'
-        : route.name === 'clips'
-          ? '#/clips'
-          : route.name === 'clip'
-            ? `#/clips/${route.id}`
-            : '#/';
+export function hrefOf(route: Route): string {
+  switch (route.name) {
+    case 'plan':
+      return `#/plan/${route.id}`;
+    case 'new':
+      return '#/new';
+    case 'tool':
+      return '#/tools/remove-logo';
+    case 'clips':
+      return '#/clips';
+    case 'clip':
+      return `#/clips/${route.id}`;
+    case 'auto':
+      return '#/auto';
+    case 'autoNew':
+      return '#/auto/new';
+    case 'autoProject':
+      return `#/auto/${route.id}`;
+    default:
+      return '#/';
+  }
+}
 
 export function navigate(route: Route): void {
   window.location.hash = hrefOf(route);

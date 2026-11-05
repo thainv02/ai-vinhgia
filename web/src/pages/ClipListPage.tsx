@@ -16,9 +16,9 @@ const RouterLink: LinkComp = ({ id, className, children }) => (
   </Link>
 );
 
-/** `/clips`: danh sách dự án cắt clip từ video dài + tạo dự án mới. */
+/** `/clips`: danh sách dự án highlight từ video dài + tạo dự án mới. */
 export default function ClipListPage() {
-  useDocumentTitle('Cắt clip');
+  useDocumentTitle('Highlight');
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(params.get('new') === '1');
@@ -36,11 +36,11 @@ export default function ClipListPage() {
     <ClipEnvProvider value={appClipEnv}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Cắt clip từ video dài</h1>
-          <p className="text-[13px] text-muted">Tải lên video dài, AI chọn các đoạn hay, bạn duyệt rồi dựng thành clip 9:16 có phụ đề tiếng Việt.</p>
+          <h1 className="text-xl font-bold tracking-tight">Highlight từ video dài</h1>
+          <p className="text-[13px] text-muted">Tải lên video dài, AI đề xuất các đoạn highlight, bạn duyệt rồi dựng thành clip 9:16 có phụ đề tiếng Việt.</p>
         </div>
         <Button variant="primary" icon={<Icon name="plus" />} onClick={() => setCreating(true)}>
-          Dự án cắt clip mới
+          Dự án highlight mới
         </Button>
       </div>
       <ClipProjectList projects={projects} loading={isLoading} error={error} onRetry={() => void refetch()} onCreate={() => setCreating(true)} Link={RouterLink} />

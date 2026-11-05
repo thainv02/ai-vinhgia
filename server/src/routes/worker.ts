@@ -7,9 +7,11 @@ import { AppError, conflict } from '../lib/errors.js';
 import { intParam, parse } from '../lib/validate.js';
 import { COMMENT_ACTIONS } from '../db/types.js';
 import { createComment } from '../services/comments.js';
+import { autoResumeQueue } from '../services/auto-resume.js';
 import { claimNext, completeBody, completeJob, failBody, failJob, heartbeat } from '../services/jobs.js';
 import { commentJson, getComment, getJobJson, getJobRow, getScene } from '../services/repo.js';
 import { listSceneSummaries } from '../services/scene-view.js';
+import { prepareStoryboardComplete } from '../services/storyboard-logo.js';
 import { upsertScenes, upsertScenesBody } from '../services/scenes.js';
 import { touchWorker, workerStatus } from '../services/worker.js';
 import { assertLease, assertManagedLease, saveCheckpoint, waitJob, actionJournal, actions, browserLease, completionHash, stampProvenance } from '../services/managed.js';
@@ -71,15 +73,20 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     // Nhận (claim) job tiếp theo: 200 + job | 204 không có việc | 503 QUEUE_PAUSED
     w.get('/api/worker/next', async (req, reply) => {
-      const query = req.query as { mode?: string; types?: string };
+      const query = req.query as { mode?: string; types?: string; features?: string };
       const managed = query.mode === 'managed';
       // Không còn cổng WORKER_MODE toàn cục: mỗi loại job thuộc đúng một chế độ (config.managedJobTypes); lệch chế độ → 204.
       const types = query.types ? parse(z.array(z.enum(JOB_TYPES)), query.types.split(',')) : undefined;
       if (managed && !workerIdOf(req)) throw new AppError('WORKER_REQUIRED', 'Managed worker phải có worker ID');
-      const job = claimNext(ctx, workerIdOf(req), { managed, types });
+      const features = managed && (!types || types.includes('clip_plan')) && query.features?.split(',').includes('clip_cleanup') ? ['clip_cleanup'] : [];
+      ctx.db.prepare('UPDATE worker_sessions SET features=? WHERE worker_id=?').run(JSON.stringify(features), workerIdOf(req));
+      const job = claimNext(ctx, workerIdOf(req), { managed, types, features: query.features?.split(',') });
       if (!job) return reply.code(204).send();
       return job;
     });
+
+    // Worker tự bật lại hàng đợi dừng vì LOGIN_REQUIRED sau khi kiểm tra dịch vụ đã dùng lại được, rồi tạo lại job lỗi trước khi gửi lệnh tạo.
+    w.post('/api/worker/queue/auto-resume', async (req) => ({ ...autoResumeQueue(ctx, workerIdOf(req)), worker: workerStatus(ctx) }));
 
     w.get('/api/worker/jobs/:id', async (req) => getJobJson(ctx, intParam((req.params as { id: string }).id), { full: true }));
 
@@ -90,7 +97,12 @@ export function registerWorkerRoutes(app: FastifyInstance, ctx: AppContext): voi
 
     w.post('/api/worker/jobs/:id/complete', async (req) => {
       const id = intParam((req.params as { id: string }).id);
-      const body = parse(completeBody, req.body ?? {});
+      // Storyboard Google Flow: xoá logo Gemini trên ảnh TRƯỚC transaction (chạy tool ngoài, không giữ khóa DB).
+      const body = await prepareStoryboardComplete(
+        ctx,
+        ctx.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as JobRow | undefined,
+        parse(completeBody, req.body ?? {}),
+      );
       return ctx.tx(() => {
         const job = assertLease(ctx, id, ownerOf(req), true);
         const key = typeof req.headers['idempotency-key'] === 'string' ? req.headers['idempotency-key'] : null;

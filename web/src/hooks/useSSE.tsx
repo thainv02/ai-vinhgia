@@ -130,7 +130,6 @@ export function LiveUpdates({ children }: { children: ReactNode }) {
           invalidateSoon(qk.budget(project_id));
           invalidateSoon(qk.project(project_id));
           invalidateSoon(qk.projects);
-          invalidateSoon(qk.ledger(project_id));
           invalidateSoon(['approve-preview', project_id]);
           // Job video tạo/hủy/xong đổi attempts_used và video_block; làm mới danh sách cảnh để các cảnh khác không bị lệch.
           invalidateSoon(qk.scenes(project_id));
@@ -172,7 +171,7 @@ export function LiveUpdates({ children }: { children: ReactNode }) {
           invalidateSoon(['ref-library']);
           break;
         }
-        // ---- cắt clip: ghi thẳng vào cache khi biết dự án, không thì làm mới mọi dự án cắt clip đang mở ----
+        // ---- highlight: ghi thẳng vào cache khi biết dự án, không thì làm mới mọi dự án highlight đang mở ----
         case 'source.updated': {
           const { source } = data as SseEventMap['source.updated'];
           if (source.project_id) patchSource(qc, 'app', source.project_id, source);

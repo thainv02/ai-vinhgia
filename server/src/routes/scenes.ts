@@ -4,6 +4,8 @@ import type { AppContext } from '../context.js';
 import { intParam, parse } from '../lib/validate.js';
 import type { AssetRow, CommentRow, PromptVersionRow } from '../db/types.js';
 import { approveStoryboard, approveVideo } from '../services/approvals.js';
+import { GENERATOR_IDS } from '../services/generators.js';
+import { retryStoryboardLogo } from '../services/storyboard-logo.js';
 import { setVerdict, verdictBody } from '../services/assets.js';
 import { commentBody, createComment, setCommentResolved } from '../services/comments.js';
 import {
@@ -42,7 +44,6 @@ export function registerSceneRoutes(app: FastifyInstance, ctx: AppContext): void
         slug: project.slug,
         name: project.name,
         style_lock: project.style_lock,
-        credit_per_video: project.credit_per_video,
         max_attempts_per_scene: project.max_attempts_per_scene,
       },
       assets: assets.map(assetJson),
@@ -63,8 +64,8 @@ export function registerSceneRoutes(app: FastifyInstance, ctx: AppContext): void
 
   app.post('/api/scenes/:id/approve', async (req) => {
     const id = intParam((req.params as { id: string }).id);
-    const body = parse(z.object({ stage: z.enum(['storyboard', 'video']) }), req.body);
-    const r = body.stage === 'video' ? approveVideo(ctx, id) : approveStoryboard(ctx, id);
+    const body = parse(z.object({ stage: z.enum(['storyboard', 'video']), generator: z.enum(GENERATOR_IDS).optional() }), req.body);
+    const r = body.stage === 'video' ? approveVideo(ctx, id, body.generator) : approveStoryboard(ctx, id);
     return { scene: sceneSummaryById(ctx, id), job: getJobJson(ctx, r.jobId) };
   });
 
@@ -97,6 +98,8 @@ export function registerSceneRoutes(app: FastifyInstance, ctx: AppContext): void
     const body = parse(z.object({ resolved: z.boolean() }), req.body);
     return commentJson(setCommentResolved(ctx, id, body.resolved));
   });
+
+  app.post('/api/assets/:id/remove-logo', async (req) => retryStoryboardLogo(ctx, intParam((req.params as { id: string }).id)));
 
   app.post('/api/assets/:id/verdict', async (req) => {
     const id = intParam((req.params as { id: string }).id);

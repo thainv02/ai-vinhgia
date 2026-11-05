@@ -11,7 +11,7 @@ export const LAN_QUEUE_CAP = 6;
 export interface LanQueueLoad {
   cuts: number;
   tools: number;
-  /** Việc cắt clip từ LAN: nhận dạng lời nói đang chờ/chạy, job AI chọn đoạn đang chờ/chạy, bản dựng clip đang dựng. */
+  /** Việc highlight từ LAN: nhận dạng lời nói đang chờ/chạy, job AI chọn đoạn đang chờ/chạy, bản dựng clip đang dựng. */
   clips: number;
   total: number;
   cap: number;

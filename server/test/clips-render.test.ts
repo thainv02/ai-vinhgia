@@ -8,7 +8,7 @@ import { thumbsIdle } from '../src/services/clips/clips.js';
 import { resolveBinary } from '../src/services/media.js';
 import { client, makeEnv, userClient, type Env } from './helpers.js';
 import { FFMPEG, ffprobeJson } from './final-helpers.js';
-import { libassFfmpeg, seedClipProject, waitFor } from './helpers-clips.js';
+import { finishCleanupFixture, libassFfmpeg, seedClipProject, waitFor } from './helpers-clips.js';
 import { unzipEntries } from './helpers-zip.js';
 
 const LIBASS = libassFfmpeg();
@@ -31,6 +31,7 @@ async function withClip(o: { seconds?: number; size?: string; sw?: number; ew?: 
   const s = seedClipProject(env, { video: { seconds: o.seconds ?? 30, size: o.size ?? '640x360' } });
   const r = await user().post(`/api/projects/${s.projectId}/clips`, { start_word: o.sw ?? 0, end_word: o.ew ?? 23, title: 'Đoạn thử' });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
+  finishCleanupFixture(env, r.body.clip.id);
   if (o.status === 'rejected') await user().patch(`/api/clips/${r.body.clip.id}`, { status: 'rejected' });
   return { s, clip: r.body.clip as any };
 }
@@ -230,6 +231,7 @@ describe('điều kiện và lỗi khi dựng', () => {
       const s = seedClipProject(e2, { video: { seconds: 20 } });
       const c = userClient(e2.app);
       const clip = (await c.post(`/api/projects/${s.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
+      finishCleanupFixture(e2, clip.id);
       if (captionSupport(e2.ctx).available) return; // máy có ffmpeg-full: ca này không áp dụng
       const r = await c.post(`/api/clips/${clip.id}/render`, { captions_preset: 'highlight' });
       expect([r.status, r.body.error.code]).toEqual([409, 'CAPTIONS_UNAVAILABLE']);
@@ -305,6 +307,7 @@ describe('hủy, khôi phục, hàng đợi', () => {
         const s = seedClipProject(e2, { name, video: { seconds: 300, size: '960x540' }, lan });
         const clip = (await c.post(`/api/projects/${s.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
         e2.ctx.db.prepare('UPDATE clips SET end_s = 80 WHERE id = ?').run(clip.id);
+        finishCleanupFixture(e2, clip.id);
         return clip;
       };
       const a = await mk('A');

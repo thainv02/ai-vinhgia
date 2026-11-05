@@ -117,7 +117,7 @@ export function UploadCard({ projectId, disabledReason, onUploaded }: { projectI
         type="file"
         accept="video/*,.mkv,.mov,.mp4,.webm,.m4v"
         hidden
-        aria-label="Chọn video dài cần cắt clip"
+        aria-label="Chọn video dài để tìm highlight"
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
@@ -204,7 +204,7 @@ export function SourceInfo({ projectId, source, hasClips }: { projectId: number;
           </div>
           {source.speech_ratio !== null && source.speech_ratio < 0.3 && (
             <Alert tone="warn">
-              <strong>Video ít lời.</strong> Chỉ có khoảng {Math.round(source.speech_ratio * 100)}% là tiếng nói nên AI chọn đoạn theo lời thoại sẽ cho kết quả kém. Chế độ chọn theo hình ảnh chưa có ở phiên bản này.
+              <strong>Video ít lời.</strong> Chỉ có khoảng {Math.round(source.speech_ratio * 100)}% là tiếng nói nên AI đề xuất highlight theo lời thoại sẽ cho kết quả kém. Chế độ chọn theo hình ảnh chưa có ở phiên bản này.
             </Alert>
           )}
           {source.source_deleted && (

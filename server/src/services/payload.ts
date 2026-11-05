@@ -4,7 +4,9 @@ import { commentJson, getProject, getScene, parseJson, projectRefs } from './rep
 import { clipPlanPayloadFor } from './clips/plan.js';
 import { editPlanPayloadFor } from './final-revisions.js';
 import { buildStoryboardMessage, VIDEO_SETTINGS } from './plan.js';
+import { generatorIdOfPayload, getGenerator, storyboardGeneratorOfPayload } from './generators.js';
 import { firstScene } from './rules.js';
+import { FAILED_ATTEMPT_USED_SQL } from './budget.js';
 
 export const RULES_FILE = 'video-production-rules.md';
 export { VIDEO_SETTINGS };
@@ -15,12 +17,12 @@ function latestAsset(ctx: AppContext, sceneId: number, kind: 'storyboard' | 'vid
     .get(sceneId, kind) as AssetRow | undefined;
 }
 
-/** Số lượt (attempt) cho job video tiếp theo của cảnh: video đã có + job video failed có tốn credit + 1. */
+/** Số lượt (attempt) cho job video tiếp theo của cảnh: video đã có + job video failed vẫn tính lượt + 1. */
 export function nextVideoAttempt(ctx: AppContext, sceneId: number): number {
   const row = ctx.db
     .prepare(
       `SELECT (SELECT COUNT(*) FROM assets WHERE scene_id = @id AND kind = 'video')
-            + (SELECT COUNT(*) FROM jobs WHERE scene_id = @id AND type = 'video' AND status = 'failed' AND credits_cost > 0) AS n`,
+            + (SELECT COUNT(*) FROM jobs WHERE scene_id = @id AND type = 'video' AND status = 'failed' AND ${FAILED_ATTEMPT_USED_SQL}) AS n`,
     )
     .get({ id: sceneId }) as { n: number };
   return row.n + 1;
@@ -75,7 +77,6 @@ export function computePayload(ctx: AppContext, job: JobRow): Record<string, unk
         name: project.name,
         brief: project.brief,
         style_lock: project.style_lock,
-        credit_per_video: project.credit_per_video,
         max_attempts_per_scene: project.max_attempts_per_scene,
       },
       refs: projectRefs(ctx, project.id).map((r) => ({ id: r.id, label: r.label, file_path: r.file_path })),
@@ -118,12 +119,18 @@ export function computePayload(ctx: AppContext, job: JobRow): Record<string, unk
       }),
       attempt,
       output: { storyboard_path: storyboardPath(project.slug, scene.code, attempt) },
+      // Dịch vụ tạo ảnh của dự án lúc duyệt. Ảnh Flow được server xoá logo khi nộp kết quả (worker không cần tự làm).
+      generator: (({ id, provider, model, label, max_images, remove_logo }) => ({ id, provider, model, label, max_images, remove_logo }))(
+        storyboardGeneratorOfPayload(job.payload),
+      ),
       requeued,
     };
   }
 
   if (job.type === 'video') {
     const attempt = nextVideoAttempt(ctx, scene.id);
+    // Dịch vụ người dùng chọn khi duyệt; payload lúc claim ghi đè cột payload nên đọc được cả dạng chuỗi lẫn object.
+    const g = getGenerator(generatorIdOfPayload(job.payload));
     const sb = latestAsset(ctx, scene.id, 'storyboard');
     const upload = refFiles(ctx, scene);
     if (sb) upload.push(sb.file_path);
@@ -137,8 +144,8 @@ export function computePayload(ctx: AppContext, job: JobRow): Record<string, unk
         video_path: videoPath(project.slug, scene.code, attempt),
         grid_path: gridPath(project.slug, scene.code, attempt),
       },
-      settings: { ...VIDEO_SETTINGS },
-      credits_expected: project.credit_per_video,
+      settings: { ...VIDEO_SETTINGS, duration_s: g.duration_s },
+      generator: { id: g.id, provider: g.provider, model: g.model, label: g.label, max_images: g.max_images },
       requeued,
     };
   }

@@ -67,14 +67,6 @@ export function fmtTimecode(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}.${d}`;
 }
 
-export function fmtCredits(n: number): string {
-  return `${n} credit`;
-}
-
-export function fmtSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
-
 export function pct(part: number, total: number): number {
   return total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
 }

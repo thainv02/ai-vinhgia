@@ -9,7 +9,7 @@ import { lanQueueLoad } from '../src/services/lan-queue.js';
 import { listTrash, restoreProject } from '../src/services/trash.js';
 import { userClient } from './helpers.js';
 import { ffprobeJson } from './final-helpers.js';
-import { libassFfmpeg, seedClipProject, sttConfig, startFakeStt, waitFor, type FakeStt } from './helpers-clips.js';
+import { finishCleanupFixture, libassFfmpeg, seedClipProject, sttConfig, startFakeStt, waitFor, type FakeStt } from './helpers-clips.js';
 import { makeLanEnv, type LanClient, type LanEnv } from './helpers-lan.js';
 import { clip as videoClip } from './helpers-video.js';
 
@@ -52,8 +52,8 @@ const mkProject = async (c: LanClient, name = 'Live LAN', extra: Record<string, 
 const upload = (c: LanClient, id: number, data: Buffer = videoClip(3), name = 'live.mp4') => c.uploadVideo(`/lan/api/projects/${id}/source`, { name, data });
 const lanSource = async (c: LanClient, id: number) => (await c.get(`/lan/api/clip-projects/${id}`)).body.source;
 
-describe('dự án cắt clip trên LAN', () => {
-  it('tạo dự án (source=lan, cookie client), danh sách chỉ có dự án cắt clip của LAN, can_delete theo cookie; kế hoạch prompt và dự án app không lẫn vào', async () => {
+describe('dự án highlight trên LAN', () => {
+  it('tạo dự án (source=lan, cookie client), danh sách chỉ có dự án highlight của LAN, can_delete theo cookie; kế hoạch prompt và dự án app không lẫn vào', async () => {
     const d = await mkProject(a, 'Live tối');
     expect(d.project).toMatchObject({ name: 'Live tối', kind: 'clips', source: 'lan', created_by_name: 'Minh' });
     expect(d).toMatchObject({ can_delete: true, delete_block: null, source: null, clips: [], plan_job: null });
@@ -66,7 +66,7 @@ describe('dự án cắt clip trên LAN', () => {
     expect(list.map((p) => p.name).sort()).toEqual(['Của B', 'Live tối']);
     expect(list.find((p) => p.name === 'Live tối')).toMatchObject({ kind: 'clips', source: 'lan', can_delete: true, clip_count: 0, source_video: null });
     expect(list.find((p) => p.name === 'Của B')!.can_delete).toBe(false);
-    // /lan/api/plans không chứa dự án cắt clip
+    // /lan/api/plans không chứa dự án highlight
     expect(((await a.get('/lan/api/plans')).body as any[]).map((p) => p.name)).toEqual(['Kế hoạch prompt']);
     // cách ly theo loại và nguồn
     expect((await a.get(`/lan/api/clip-projects/${plan.id}`)).status).toBe(404);
@@ -95,7 +95,7 @@ describe('dự án cắt clip trên LAN', () => {
     expect(listTrash(L.env.ctx).map((t) => t.id)).toContain(id);
     restoreProject(L.env.ctx, id);
     expect((await a.get(`/lan/api/clip-projects/${id}`)).status).toBe(200);
-    // đường xoá chung của kế hoạch cũng dùng được cho dự án cắt clip
+    // đường xoá chung của kế hoạch cũng dùng được cho dự án highlight
     expect((await a.del(`/lan/api/plans/${id}`)).status).toBe(200);
   });
 
@@ -198,16 +198,18 @@ describe('tải video nguồn trên LAN', () => {
     expect((await a.get('/lan/api/status')).body.remaining.clip_source).toBe(0);
   });
 
-  it('trần hàng đợi LAN (6) tính cả việc cắt clip: đầy thì tải/AI/dựng đều 429 QUEUE_FULL; việc của app chính không bị chặn', async () => {
+  it('trần hàng đợi LAN (6) tính cả việc highlight: đầy thì tải/AI/dựng đều 429 QUEUE_FULL; việc của app chính không bị chặn', async () => {
     const d = await mkProject(a);
     const seeded = seedClipProject(L.env, { lan: true, video: { seconds: 10 } });
+    const c1 = (await a.post(`/lan/api/projects/${seeded.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
+    finishCleanupFixture(L.env, c1.id);
     const now = L.env.ctx.now();
     for (let i = 0; i < 6; i++) db().prepare("INSERT INTO lan_tool_jobs (kind, status, original_name, client_id_hash, meta, created_at) VALUES ('remove_logo', 'queued', 'x.mp4', 'h', '{}', ?)").run(now);
     expect(lanQueueLoad(L.env.ctx)).toMatchObject({ tools: 6, clips: 0, total: 6, cap: 6 });
     const r = await upload(a, d.project.id);
     expect([r.status, r.body.error.code]).toEqual([429, 'QUEUE_FULL']);
     expect((await a.post(`/lan/api/projects/${seeded.projectId}/clip-plan`, {})).body.error.code).toBe('QUEUE_FULL');
-    const c1 = (await a.post(`/lan/api/projects/${seeded.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
+    expect((await a.post(`/lan/api/projects/${seeded.projectId}/clips`, { start_word: 0, end_word: 23 })).body.error.code).toBe('QUEUE_FULL');
     expect((await a.post(`/lan/api/clips/${c1.id}/render`, { captions_preset: 'none' })).body.error.code).toBe('QUEUE_FULL');
     db().prepare("UPDATE lan_tool_jobs SET status = 'ready'").run();
     expect(lanQueueLoad(L.env.ctx).total).toBe(0);
@@ -218,7 +220,7 @@ describe('tải video nguồn trên LAN', () => {
   });
 });
 
-describe('luồng cắt clip trên LAN và file được phục vụ', () => {
+describe('luồng highlight trên LAN và file được phục vụ', () => {
   it('AI chọn đoạn (hạn mức 6/giờ), duyệt/sửa (120/giờ), dựng, tải: URL qua /lan/files; allowlist chỉ preview, poster, ảnh clip, clip ready (mp4/srt); .ass, transcript, clip chưa ready, dự án khác → 404', async () => {
     const seeded = seedClipProject(L.env, { lan: true, video: { seconds: 40 }, clientHash: 'x' });
     const slug = seeded.slug;
@@ -242,6 +244,7 @@ describe('luồng cắt clip trên LAN và file được phục vụ', () => {
 
     // clip tay → dựng → ready
     const c1 = (await a.post(`/lan/api/projects/${seeded.projectId}/clips`, { start_word: 0, end_word: 23, title: 'Đoạn A' })).body.clip;
+    finishCleanupFixture(L.env, c1.id);
     await thumbsIdle(L.env.ctx);
     const got = (await a.get(`/lan/api/clips/${c1.id}`)).body.clip;
     expect(got.thumb_url).toMatch(new RegExp(`^/lan/files/output/${slug}/clips/thumbs/K1\\.jpg\\?v=\\d+$`));
@@ -303,6 +306,7 @@ describe('hạn lưu video nguồn LAN', () => {
     for (const x of [lanSeed, appSeed, busy]) db().prepare('UPDATE source_videos SET created_at = ? WHERE id = ?').run(old, x.sourceId);
     db().prepare("UPDATE source_videos SET status = 'transcribing' WHERE id = ?").run(busy.sourceId);
     const c1 = (await a.post(`/lan/api/projects/${lanSeed.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
+    finishCleanupFixture(L.env, c1.id);
     const rr = await a.post(`/lan/api/clips/${c1.id}/render`, { captions_preset: 'none' });
     const cut = await waitFor(async () => (await a.get(`/lan/api/clips/${c1.id}`)).body.clip.latest_cut, (c) => c?.status === 'ready', 60_000);
     void rr;
@@ -344,5 +348,36 @@ describe('hạn lưu video nguồn LAN', () => {
     expect(expireClipSources(L.env.ctx).staleTmp).toBe(1);
     expect(fs.existsSync(stale)).toBe(false);
     expect(fs.existsSync(fresh)).toBe(true);
+  });
+});
+
+describe('làm gọn clip trên listener LAN', () => {
+  it('chỉ truy cập dự án LAN; cùng hàng đợi/hạn mức AI, tự áp dụng trước khi hiển thị, khôi phục thủ công và phụ đề/URL không lộ file nguồn', async () => {
+    const { completeCleanup } = await import('../src/services/clips/cleanup.js');
+    const { getJobRow } = await import('../src/services/repo.js');
+    // Cleanup inference uses the managed text worker, never browser/Flow.
+    L.env.ctx.config.workerMode = 'managed';
+    L.env.ctx.config.managedJobTypes = ['clip_plan'];
+    const s = seedClipProject(L.env, { lan: true, sentences: ['hôm nay ừm chúng ta cùng tìm hiểu một điều rất thú vị dành cho tất cả mọi người'], wordS: 0.4, video: false });
+    const appOnly = seedClipProject(L.env, { video: false });
+    const local = (await app().post(`/api/projects/${appOnly.projectId}/clips`, { start_word: 0, end_word: 23 })).body.clip;
+    expect((await a.post(`/lan/api/clips/${local.id}/cleanup-plan`, {})).status).toBe(404);
+    const c = (await a.post(`/lan/api/projects/${s.projectId}/clips`, { start_word: 0, end_word: s.transcript.words.length - 1 })).body.clip;
+    const plan = await a.post(`/lan/api/clips/${c.id}/cleanup-plan`, {});
+    expect(plan.status, plan.raw).toBe(201);
+    expect(lanQueueLoad(L.env.ctx).clips).toBe(1);
+    const status = (await a.get('/lan/api/status')).body;
+    expect(status.remaining.clip_plan).toBe(5);
+    completeCleanup(L.env.ctx, getJobRow(L.env.ctx, plan.body.job.id), { proposals: [{ kind: 'filler', start_word: 2, end_word: 2, quote: 'ừm', confidence: 0.95, reason: 'Tiếng đệm' }], summary: 'Đề xuất một chỗ bỏ' });
+    db().prepare("UPDATE jobs SET status='done' WHERE id=?").run(plan.body.job.id);
+    const before = (await a.get(`/lan/api/clips/${c.id}`)).body.clip;
+    expect(before.cleanup.selected_ids).toEqual([1]);
+    expect(before.edited_duration_s).toBeLessThan(c.duration_s);
+    expect((await a.put(`/lan/api/clips/${c.id}/cleanup`, { job_id: plan.body.job.id, revision: 0, selected_ids: [] })).status).toBe(200);
+    const after = (await a.get(`/lan/api/clips/${c.id}`)).body.clip;
+    expect(after.edited_duration_s).toBe(c.duration_s);
+    expect(after.latest_cut).toBeNull();
+    expect(JSON.stringify(after)).not.toContain(L.env.root);
+    expect((await a.get(`/lan/files/${s.sourceRel}`)).status).toBe(404);
   });
 });

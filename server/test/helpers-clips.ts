@@ -2,6 +2,10 @@ import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { completeCleanup } from '../src/services/clips/cleanup.js';
+import { insertJob } from '../src/services/job-create.js';
+import { getJobRow } from '../src/services/repo.js';
+import { getClipRow } from '../src/services/clips/repo.js';
 import { resolveBinary } from '../src/services/media.js';
 import { hasSubtitlesFilter } from '../src/services/clips/render.js';
 import { buildTranscript, type Transcript } from '../src/services/clips/transcript.js';
@@ -167,7 +171,7 @@ export async function startFakeStt(opts: { words?: FakeWord[] } = {}): Promise<F
   return fake;
 }
 
-// ---------------------------------------------------------------- dữ liệu cắt clip trong DB
+// ---------------------------------------------------------------- dữ liệu highlight trong DB
 
 export const STT_FAST = { sttRetryDelaysMs: [5, 5, 5], sttPollMs: 5 };
 
@@ -207,7 +211,7 @@ export interface Seeded {
   sourceRel: string;
 }
 
-/** Tạo dự án cắt clip + video nguồn + transcript trực tiếp trong DB/đĩa (không qua STT). */
+/** Tạo dự án highlight + video nguồn + transcript trực tiếp trong DB/đĩa (không qua STT). */
 export function seedClipProject(env: Env, o: SeedOpts = {}): Seeded {
   const { ctx, root } = env;
   const now = ctx.now();
@@ -263,4 +267,16 @@ export function seedClipProject(env: Env, o: SeedOpts = {}): Seeded {
       status === 'transcribed' ? now : null,
     );
   return { projectId, slug, sourceId: Number(src.lastInsertRowid), transcript, sourceRel };
+}
+
+/** Complete mandatory cleanup without inference for fixtures testing unrelated render behavior. */
+export function finishCleanupFixture(env: Env, clipId: number): void {
+  const { ctx } = env;
+  ctx.tx(() => {
+    const clip = getClipRow(ctx, clipId);
+    const active = ctx.db.prepare("SELECT id FROM jobs WHERE project_id=? AND type='clip_plan' AND status IN ('queued','claimed','running') AND json_extract(payload,'$.clip_id')=? AND json_extract(payload,'$.edit_revision')=?").get(clip.project_id, clipId, clip.edit_revision) as { id: number } | undefined;
+    const id = active?.id ?? insertJob(ctx, { project_id: clip.project_id, scene_id: null, type: 'clip_plan', requires_approval: false, approved: false, payload: { mode: 'cleanup', clip_id: clip.id, source_id: clip.source_id, edit_revision: clip.edit_revision } });
+    completeCleanup(ctx, getJobRow(ctx, id), { proposals: [], summary: 'Fixture: không có lời thừa.' });
+    ctx.db.prepare("UPDATE jobs SET status='done' WHERE id=?").run(id);
+  });
 }

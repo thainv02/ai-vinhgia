@@ -24,14 +24,12 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
-  /** Số credit sẽ bị tiêu: hiển thị huy hiệu "15 credit" ngay trên nút. */
-  credit?: number;
   /** Lý do vô hiệu hóa: tự đặt disabled và tooltip. */
   disabledReason?: string | null;
   icon?: ReactNode;
 }
 
-export function Button({ variant = 'secondary', size = 'md', loading, credit, disabledReason, icon, className = '', children, disabled, title, ...rest }: Props) {
+export function Button({ variant = 'secondary', size = 'md', loading, disabledReason, icon, className = '', children, disabled, title, ...rest }: Props) {
   const isDisabled = disabled || loading || !!disabledReason;
   return (
     <button
@@ -44,7 +42,6 @@ export function Button({ variant = 'secondary', size = 'md', loading, credit, di
     >
       {loading ? <Spinner /> : icon}
       {children}
-      {credit !== undefined && <span className="spend-chip">{credit} credit</span>}
     </button>
   );
 }

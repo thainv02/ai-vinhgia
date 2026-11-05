@@ -38,7 +38,7 @@ export function registerLanInfoRoute(app: FastifyInstance, ctx: AppContext): voi
       /** Mã truy cập: CHỈ khi `require_code`; mặc định không có mã nên luôn `null`. */
       access_code: c.lanEnabled && c.lanRequireCode && c.lanAccessCode ? c.lanAccessCode : null,
       plan_count: (ctx.db.prepare("SELECT COUNT(*) AS n FROM projects WHERE source = 'lan' AND kind = 'scenes' AND deleted_at IS NULL").get() as { n: number }).n,
-      /** Dự án cắt clip tạo từ trang LAN. */
+      /** Dự án highlight tạo từ trang LAN. */
       clip_project_count: (ctx.db.prepare("SELECT COUNT(*) AS n FROM projects WHERE source = 'lan' AND kind = 'clips' AND deleted_at IS NULL").get() as { n: number }).n,
       /** Việc xoá logo (công cụ độc lập) tạo trong 24 giờ qua. */
       tool_jobs_24h: toolJobsLast24h(ctx),

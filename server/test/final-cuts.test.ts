@@ -36,7 +36,7 @@ async function planAndRender(sc: Scenario, cutId?: number) {
 }
 
 describe('tự kích hoạt', () => {
-  it('chọn video của cảnh cuối → tạo final_cut v1 (planning, claude) + job edit_plan (không duyệt, không credit); không tạo sớm', async () => {
+  it('chọn video của cảnh cuối → tạo final_cut v1 (planning, claude) + job edit_plan (không duyệt); không tạo sớm', async () => {
     const sc = await setupProject(env, { scenes: 2 });
     const [a, b] = sc.scenes.map((s: any) => s.id);
     await toStoryboardReview(sc, a);
@@ -56,14 +56,14 @@ describe('tự kích hoạt', () => {
     expect(c.selection[0]).toMatchObject({ scene_id: a, video_url: expect.stringContaining('/files/output/'), duration_s: 10 });
     const jobs = (await sc.user.get('/api/jobs?type=edit_plan')).body;
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({ id: c.job_id, type: 'edit_plan', status: 'queued', scene_id: null, scene_code: null, requires_approval: false, approved_at: null, credits_cost: 0 });
+    expect(jobs[0]).toMatchObject({ id: c.job_id, type: 'edit_plan', status: 'queued', scene_id: null, scene_code: null, requires_approval: false, approved_at: null, attempt_used: false });
     // project summary
     const p = (await sc.user.get(`/api/projects/${sc.project.id}`)).body;
     expect(p.latest_final_cut).toEqual({ id: c.id, version: 1, status: 'planning', progress: null, stage: null, failed_stage: null, watermark_removed: false, url: null, duration_s: null, outdated: false, error: null, queue_state: null, queue_position: null, ai_queue: { state: 'waiting', position: 1, ahead: 0, running: null, worker: expect.any(Object), wait_reason: null } });
     expect(p.final_cut_block).toEqual({ code: 'FINAL_CUT_ACTIVE', message: 'Đang chọn điểm cắt cho bản hoàn chỉnh v1' });
     expect((await sc.user.get('/api/projects')).body[0].latest_final_cut.version).toBe(1);
-    // không tốn credit
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body).toMatchObject({ used: 30, reserved: 0 });
+    // không tốn lượt của cảnh nào
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.scenes.map((x: any) => x.attempts_used)).toEqual([1, 1]);
   });
 
   it('idempotent: chọn lại cùng video / gọi lại nhiều lần / hai instance cùng lúc không tạo trùng', async () => {
@@ -191,7 +191,7 @@ describe('job edit_plan (worker)', () => {
     expect((await sc.user.get(`/api/projects/${sc.project.id}/scenes`)).body.map((s: any) => s.status)).toEqual(['done', 'done']);
   });
 
-  it('complete với EDL hợp lệ: job done, không credit, bản dựng → rendering → ready; event + dòng log.md + SSE', async () => {
+  it('complete với EDL hợp lệ: job done, không tốn lượt, bản dựng → rendering → ready; event + dòng log.md + SSE', async () => {
     const sc = await setupAllDone(env, { scenes: 2 });
     await env.app.listen({ port: 0, host: '127.0.0.1' });
     const base = `http://127.0.0.1:${(env.app.server.address() as AddressInfo).port}`;
@@ -226,8 +226,8 @@ describe('job edit_plan (worker)', () => {
       void reader.cancel();
     }
 
-    expect((await sc.user.get(`/api/jobs/${job.id}`)).body).toMatchObject({ status: 'done', credits_cost: 0 });
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body).toEqual(before); // không tốn credit
+    expect((await sc.user.get(`/api/jobs/${job.id}`)).body).toMatchObject({ status: 'done' });
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body).toEqual(before); // không tốn lượt
     expect(cut).toMatchObject({
       version: 1,
       status: 'ready',
@@ -343,7 +343,7 @@ describe('job edit_plan (worker)', () => {
     });
   });
 
-  it('job edit_plan không nhận asset; credits_cost bị bỏ qua', async () => {
+  it('job edit_plan không nhận asset; credits_cost (worker cũ) bị bỏ qua', async () => {
     const sc = await setupAllDone(env, { scenes: 1 });
     const job = await claimEditPlan(sc);
     const cut = (await sc.user.get(`/api/final-cuts/${job.payload.final_cut_id}`)).body;
@@ -353,9 +353,9 @@ describe('job edit_plan (worker)', () => {
     expect(bad.body.error.code).toBe('INVALID_ASSET_KIND');
     const ok = await sc.worker.post(`/api/worker/jobs/${job.id}/complete`, { result: { edl: edlFor(sc, cut), summary: 's' }, credits_cost: 15 });
     expect(ok.status).toBe(200);
-    expect(ok.body.job.credits_cost).toBe(0);
+    expect(ok.body.job).not.toHaveProperty('credits_cost');
     await idle();
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/ledger`)).body.totals.used).toBe(15);
+    expect(env.ctx.db.prepare('SELECT COUNT(*) AS n FROM credit_ledger').get()).toEqual({ n: 0 });
   });
 
   it('fail job edit_plan → bản dựng failed kèm lỗi; dựng lại bằng POST được', async () => {
@@ -521,7 +521,7 @@ describe('render', () => {
 });
 
 describe('render lại (người dùng chỉnh EDL)', () => {
-  it('tạo version MỚI (created_by user, cùng lựa chọn video), không qua worker, không tốn credit; giữ bản cũ', async () => {
+  it('tạo version MỚI (created_by user, cùng lựa chọn video), không qua worker; giữ bản cũ', async () => {
     const sc = await setupAllDone(env, { scenes: 2 });
     const { cut } = await planAndRender(sc);
     const edl2 = edlFor(sc, cut, [1, 8]);

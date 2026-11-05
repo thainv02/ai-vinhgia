@@ -17,6 +17,23 @@ export function finalVideoUrl(fc: Pick<FinalCut, 'video_path' | 'video_url'>): s
   return fc.video_path ? `/files/${fc.video_path}` : null;
 }
 
+/**
+ * Bản render chưa xoá logo để vẫn có cái xem khi bước xoá logo Veo lỗi (`failed_stage='clean'`, bản raw được giữ).
+ * null nếu bản dựng không ở tình trạng đó.
+ */
+export function rawFallbackUrl(fc: { status: string; failed_stage?: string | null; raw_video_url?: string | null; raw_video_path?: string | null }): string | null {
+  if (fc.status !== 'failed' || fc.failed_stage !== 'clean') return null;
+  if (fc.raw_video_url) return fc.raw_video_url;
+  return fc.raw_video_path ? `/files/${fc.raw_video_path}` : null;
+}
+
+/** Lỗi xoá logo dễ đọc: tool gwr báo bằng tiếng Trung khi không nhận ra logo Veo (video không phải của Veo, ví dụ tạo bằng Muse). */
+export function cleanErrorText(error: string | null | undefined): string {
+  const e = error ?? '';
+  if (/置信度偏低|低置信/.test(e)) return 'Không nhận ra logo Veo trong video (độ tin cậy thấp), nên tool dừng để tránh xoá nhầm. Video tạo bằng Muse thường không có logo Veo, khi đó dùng luôn bản render là được.';
+  return e.replace(/^Xoá logo Veo thất bại:\s*/, '') || 'Không có chi tiết.';
+}
+
 export function finalContactUrl(fc: Pick<FinalCut, 'contact_sheet_path' | 'contact_sheet_url'>): string | null {
   if (fc.contact_sheet_url) return fc.contact_sheet_url;
   return fc.contact_sheet_path ? `/files/${fc.contact_sheet_path}` : null;

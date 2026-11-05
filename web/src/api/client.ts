@@ -2,6 +2,8 @@ import type {
   ApiErrorBody,
   ApproveAllResult,
   ApprovePreview,
+  VideoGenerator,
+  StoryboardGenerator,
   Asset,
   AppEvent,
   Budget,
@@ -15,7 +17,6 @@ import type {
   GradePreview,
   Job,
   LanInfo,
-  Ledger,
   LibraryRef,
   Meta,
   ReconcileOutcome,
@@ -73,9 +74,8 @@ export interface CreateProjectInput {
   brief?: string;
   style_lock?: string;
   max_attempts_per_scene?: number;
-  credit_per_video?: number;
 }
-export type PatchProjectInput = Partial<CreateProjectInput>;
+export type PatchProjectInput = Partial<CreateProjectInput> & { storyboard_generator?: string };
 
 /** Các API tạo bản dựng có thể trả bản dựng trần hoặc `{ final_cut, job }`: chấp nhận cả hai. */
 function unwrapFinalCut(r: FinalCut | { final_cut: FinalCut }): FinalCut {
@@ -139,7 +139,8 @@ export const api = {
   getScene: (id: number) => get<SceneDetail>(`/api/scenes/${id}`),
   patchPrompt: (id: number, prompt: string, reason?: string) =>
     patch<{ scene: Scene }>(`/api/scenes/${id}/prompt`, { prompt, reason: reason || undefined }),
-  approve: (id: number, stage: Stage) => post<{ scene: Scene; job: Job }>(`/api/scenes/${id}/approve`, { stage }),
+  approve: (id: number, stage: Stage, generator?: string) =>
+    post<{ scene: Scene; job: Job }>(`/api/scenes/${id}/approve`, { stage, ...(generator ? { generator } : {}) }),
   addComment: (id: number, input: { body: string; timecode?: number; action: CommentAction; asset_id?: number }) =>
     post<{ comment: Comment; job: Job | null; scene: Scene }>(`/api/scenes/${id}/comments`, input),
   resolveComment: (id: number, resolved: boolean) => patch<Comment>(`/api/comments/${id}`, { resolved }),
@@ -149,10 +150,13 @@ export const api = {
     post<{ asset: Asset; scene: Scene }>(`/api/assets/${assetId}/verdict`, { verdict, verdict_note: note ?? null }),
 
   // ---- duyệt hàng loạt ----
-  approvePreview: (projectId: number, stage: Stage) =>
-    get<ApprovePreview>(`/api/projects/${projectId}/approve-all/preview${qs({ stage })}`),
-  approveAll: (projectId: number, stage: Stage, expectedCredits: number) =>
-    post<ApproveAllResult>(`/api/projects/${projectId}/approve-all`, { stage, expectedCredits }),
+  approvePreview: (projectId: number, stage: Stage, generator?: string) =>
+    get<ApprovePreview>(`/api/projects/${projectId}/approve-all/preview${qs({ stage, generator })}`),
+  approveAll: (projectId: number, stage: Stage, generator?: string) =>
+    post<ApproveAllResult>(`/api/projects/${projectId}/approve-all`, { stage, ...(generator ? { generator } : {}) }),
+  videoGenerators: () => get<{ generators: VideoGenerator[]; storyboard?: StoryboardGenerator[] }>('/api/video-generators'),
+  /** Xoá logo lại trên ảnh storyboard Google Flow, làm từ ảnh gốc. */
+  removeLogo: (assetId: number) => post<{ asset: Asset; scene: Scene }>(`/api/assets/${assetId}/remove-logo`, {}),
 
   // ---- hàng đợi ----
   listJobs: (q: JobsQuery = {}) => get<Job[]>(`/api/jobs${qs({ projectId: q.projectId, status: q.status, type: q.type, limit: q.limit })}`),
@@ -191,14 +195,12 @@ export const api = {
   },
   regradeFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/regrade`)),
   cancelFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/cancel`)),
-  /** Chạy lại riêng bước xoá logo Veo (không render lại, không tốn credit). */
+  /** Chạy lại riêng bước xoá logo Veo (không render lại). */
   cleanFinalCut: async (id: number) => unwrapFinalCut(await post<FinalCut | { final_cut: FinalCut }>(`/api/final-cuts/${id}/clean`)),
   openInShotcut: (id: number) => post<unknown>(`/api/final-cuts/${id}/open-in-shotcut`),
 
-  // ---- sổ cái, nhật ký ----
-  ledger: (projectId: number) => get<Ledger>(`/api/projects/${projectId}/ledger`),
+  // ---- nhật ký ----
   events: (projectId: number, opts: { sceneId?: number; before?: number; limit?: number } = {}) =>
     get<AppEvent[]>(`/api/projects/${projectId}/events${qs({ sceneId: opts.sceneId, before: opts.before, limit: opts.limit })}`),
-  ledgerCsvUrl: (projectId: number) => `/api/projects/${projectId}/ledger.csv`,
   logMdUrl: (projectId: number) => `/api/projects/${projectId}/log.md`,
 };

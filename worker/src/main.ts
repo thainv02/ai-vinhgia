@@ -36,7 +36,7 @@ try {
   } catch { /* server chưa chạy: vòng lặp bên dưới sẽ thử lại */ }
   while (!stopping) {
     try {
-      const job = await api<Job | null>('GET', `/api/worker/next?mode=managed&types=${encodeURIComponent(types)}`);
+      const job = await api<Job | null>('GET', `/api/worker/next?mode=managed&features=clip_cleanup&types=${encodeURIComponent(types)}`);
       if (job) await handleJob(job, deps);
       if (once) break;
       await sleep(job ? 1000 : 5000);

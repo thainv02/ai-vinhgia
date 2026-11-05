@@ -7,7 +7,7 @@ export type CleanCut = Pick<FinalCut | LatestFinalCut, 'id' | 'version' | 'statu
 
 /**
  * Nút "Xoá logo Veo" / "Thử xoá logo lại" thuần giao diện: nơi dùng truyền hàm gọi API (app chính hoặc trang planner LAN) và lý do khóa
- * (tool xoá logo tắt). Chỉ chạy lại bước xoá logo, không render lại, không tốn credit. Không hiện gì nếu bản dựng không cần.
+ * (tool xoá logo tắt). Chỉ chạy lại bước xoá logo, không render lại. Không hiện gì nếu bản dựng không cần.
  */
 export function CleanLogoView({ fc, size = 'md', loading, disabledReason, onClick }: { fc: CleanCut; size?: 'sm' | 'md'; loading?: boolean; disabledReason?: string | null; onClick: () => void }) {
   const action = cleanAction(fc);

@@ -240,7 +240,7 @@ dv('vòng lặp media end-to-end (video/Flow)', () => {
     act('browser_download', /720p Original/),
   ];
 
-  it('video: precheck chặn khi thiếu upload, rồi đủ điều kiện thì submit một lần, tải 720p, hoàn thành, ledger đúng một lần', async () => {
+  it('video: precheck chặn khi thiếu upload, rồi đủ điều kiện thì submit một lần, tải 720p, hoàn thành, không ghi sổ credit', async () => {
     const ms = await mediaScenario(env);
     const job = await ms.video(); currentJob = job;
     const files = job.payload.upload_files as string[];
@@ -260,8 +260,8 @@ dv('vòng lặp media end-to-end (video/Flow)', () => {
     const toolOut = (i: number) => JSON.parse(received[i + 1]!.messages.filter((m) => m.role === 'tool').at(-1)!.content);
     expect(toolOut(4).error).toMatch(/^PRECHECK_FAILED: uploads/);
     expect(counters.flowGenerate).toBe(1);
-    expect(jobRow(job.id)).toMatchObject({ status: 'done', credits_cost: 15 });
-    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(job.id)).toEqual({ n: 1 });
+    expect(jobRow(job.id)).toMatchObject({ status: 'done', credits_cost: 0 });
+    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(job.id)).toEqual({ n: 0 });
     expect(env.ctx.db.prepare('SELECT kind FROM assets WHERE job_id=? ORDER BY id').all(job.id)).toEqual([{ kind: 'video' }, { kind: 'grid' }]);
     expect(actionStates(job.id).map((a) => a.state)).toEqual(['committed']);
   });
@@ -306,8 +306,8 @@ dv('vòng lặp media end-to-end (video/Flow)', () => {
     const refused = JSON.parse(received[2]!.messages.filter((m) => m.role === 'tool').at(-1)!.content);
     expect(refused.error).toMatch(/Đã có submit intent/);
     expect(counters.flowGenerate).toBe(1); // vẫn đúng một lượt tạo
-    expect(jobRow(job.id)).toMatchObject({ status: 'done', credits_cost: 15 });
-    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(job.id)).toEqual({ n: 1 });
+    expect(jobRow(job.id)).toMatchObject({ status: 'done', credits_cost: 0 });
+    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(job.id)).toEqual({ n: 0 });
     // resume không đẩy lại toàn bộ WORKER.md: chỉ một message tiếp tục ngắn
     const first = received[0]!.messages;
     expect(first.filter((m) => typeof m.content === 'string' && m.content.startsWith('Giao thức worker')).length).toBe(1);

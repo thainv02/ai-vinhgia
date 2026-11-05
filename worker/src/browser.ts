@@ -256,7 +256,7 @@ export class BrowserTools {
     return el.evaluate(readComposerFn) as Promise<ComposerSnapshot>;
   }
 
-  /** Mở popover cài đặt (chip `Video · 720p · 8s · x1`) để đọc lựa chọn đang chọn và dòng credit. Trả chip nếu đã mở. */
+  /** Mở popover cài đặt (chip `Video · 720p · 8s · x1`) để đọc lựa chọn đang chọn. Trả chip nếu đã mở. */
   private async openSettings(page: Page) {
     const chip = page.locator(CHIP_SELECTOR).filter({ hasText: CHIP_TEXT }).last();
     if (!await chip.count() || !await chip.isVisible()) return null;
@@ -284,12 +284,12 @@ export class BrowserTools {
     const evidence: Record<string, unknown> = { uploads: uploaded };
     if (this.job.type === 'video') {
       const want = { ...DEFAULT_VIDEO_SETTINGS, ...(payload.settings ?? {}) };
-      let settings = evaluateVideoSettings(snap, want, payload.credits_expected);
+      let settings = evaluateVideoSettings(snap, want);
       const popoverOpen = snap.options.length > 0 || parseCredits(snap.text).length > 0;
       if (settings.length && !popoverOpen && snap.chips.length) {
         const chip = await this.openSettings(page);
         if (chip) {
-          try { snap = await this.readComposer(el); settings = evaluateVideoSettings(snap, want, payload.credits_expected); }
+          try { snap = await this.readComposer(el); settings = evaluateVideoSettings(snap, want); }
           finally { await this.closeSettings(page, chip, el); }
         }
       }
@@ -297,7 +297,7 @@ export class BrowserTools {
       if (!snap.prompt.found) issues.push({ item: 'prompt', detail: 'không tìm thấy ô prompt (textarea/contenteditable) gần nút gửi' });
       else if (snap.prompt.ambiguous) issues.push({ item: 'prompt', detail: `có ${snap.prompt.candidates} ô nhập cùng gần nút gửi; không xác định được ô prompt` });
       else { const c = comparePrompt(snap.prompt.text, String(payload.scene?.prompt ?? '')); if (c) issues.push(c); }
-      evidence.settings = { chips: snap.chips, credits: parseCredits(snap.text) };
+      evidence.settings = { chips: snap.chips };
       evidence.prompt_sha256 = crypto.createHash('sha256').update(normalizePrompt(String(payload.scene?.prompt ?? ''))).digest('hex');
     } else if (snap.prompt.found && !snap.prompt.ambiguous && !normalizePrompt(snap.prompt.text)) {
       issues.push({ item: 'prompt', detail: 'ô prompt đang trống' });

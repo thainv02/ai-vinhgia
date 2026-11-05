@@ -1,9 +1,9 @@
-import { memo, useMemo, useState } from 'react';
+import { Fragment, memo, useMemo, useState } from 'react';
 import { errorMessage } from '../api/errors';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { InlineError } from '../components/States';
-import { clock } from './lib';
+import { clipParts, clock } from './lib';
 import type { Clip } from './types';
 import type { WordIndex } from './wordIndex';
 
@@ -11,6 +11,8 @@ interface Cell {
   i: number;
   asr: string;
   start: number;
+  /** Đoạn (theo thứ tự phát) chứa từ này. */
+  part: number;
 }
 
 const GROUP = 3;
@@ -41,14 +43,21 @@ interface Props {
 
 /** Sửa chữ phụ đề của clip: mỗi từ một ô, mốc thời gian giữ nguyên, ô trống = ẩn từ. */
 export function CaptionEditor({ open, clip, idx, onClose, onSave, canRender }: Props) {
+  // Clip ghép: các từ của từng đoạn, nối theo thứ tự phát.
+  const parts = clipParts(clip);
+  const partsKey = parts.map((p) => `${p.start_word}-${p.end_word}`).join(',');
   const cells = useMemo<Cell[]>(() => {
     const out: Cell[] = [];
-    for (let i = clip.start_word; i <= clip.end_word; i++) {
-      const w = idx.word(i);
-      if (w) out.push({ i, asr: w.w, start: w.start });
-    }
+    parts.forEach((p, part) => {
+      for (let i = p.start_word; i <= p.end_word; i++) {
+        const w = idx.word(i);
+        if (w) out.push({ i, asr: w.w, start: w.start, part });
+      }
+    });
     return out;
-  }, [clip.start_word, clip.end_word, idx]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partsKey, idx]);
+  const multi = parts.length > 1;
   const initial = useMemo(() => {
     const m: Record<number, string> = {};
     for (const c of cells) m[c.i] = c.asr;
@@ -61,8 +70,13 @@ export function CaptionEditor({ open, clip, idx, onClose, onSave, canRender }: P
   const changed = cells.some((c) => (vals[c.i] ?? c.asr) !== (initial[c.i] ?? c.asr));
   const hiddenCount = cells.filter((c) => (vals[c.i] ?? '').trim() === '').length;
 
+  // Nhóm 3 từ một ô, không nhóm vắt qua ranh giới hai đoạn.
   const groups: Cell[][] = [];
-  for (let k = 0; k < cells.length; k += GROUP) groups.push(cells.slice(k, k + GROUP));
+  for (const c of cells) {
+    const g = groups.at(-1);
+    if (g && g.length < GROUP && g[0]!.part === c.part) g.push(c);
+    else groups.push([c]);
+  }
 
   const run = async (thenRender: boolean) => {
     setBusy(thenRender ? 'render' : 'save');
@@ -113,8 +127,16 @@ export function CaptionEditor({ open, clip, idx, onClose, onSave, canRender }: P
         </p>
         {cells.length === 0 && <InlineError>Chưa tải được lời thoại của clip này. Đợi transcript tải xong rồi mở lại.</InlineError>}
         <div className="flex flex-wrap gap-x-3 gap-y-2.5">
-          {groups.map((g) => (
-            <div key={g[0]!.i} className="rounded-md border border-line bg-surface-2 p-1.5">
+          {groups.map((g, k) => (
+            <Fragment key={g[0]!.i}>
+            {multi && (k === 0 || groups[k - 1]![0]!.part !== g[0]!.part) && (
+              <div className={`flex basis-full items-center gap-2 text-[11px] font-semibold text-violet-fg ${k ? 'mt-1' : ''}`} role="separator" aria-label={`Đoạn ${g[0]!.part + 1}`}>
+                <span className="rounded bg-violet-bg px-1.5 leading-[18px]">Đoạn {g[0]!.part + 1}</span>
+                <span className="font-mono font-normal text-muted">{clock(parts[g[0]!.part]!.start_s)}–{clock(parts[g[0]!.part]!.end_s)}</span>
+                <span aria-hidden="true" className="h-px flex-1 bg-line" />
+              </div>
+            )}
+            <div className="rounded-md border border-line bg-surface-2 p-1.5">
               <div className="mb-1 font-mono text-[10px] leading-none text-muted">{clock(g[0]!.start)}</div>
               <div className="flex flex-wrap gap-1">
                 {g.map((c) => (
@@ -122,6 +144,7 @@ export function CaptionEditor({ open, clip, idx, onClose, onSave, canRender }: P
                 ))}
               </div>
             </div>
+            </Fragment>
           ))}
         </div>
         {error && <InlineError>{error}</InlineError>}

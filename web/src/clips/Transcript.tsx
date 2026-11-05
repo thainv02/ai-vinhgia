@@ -24,10 +24,12 @@ export interface TranscriptHandle {
 interface Props {
   state: TranscriptState;
   store: PlayerStore;
-  /** Vùng của clip đang chọn (tô nhạt). */
-  selected: WordRange | null;
-  /** Vùng đang soạn (tô đậm): clip đang sửa hoặc clip thủ công mới. */
-  draft: WordRange | null;
+  /** Các đoạn của clip đang chọn (tô nhạt); rỗng = không chọn. Clip ghép có nhiều đoạn. */
+  selected: WordRange[];
+  /** Các đoạn đang soạn (tô đậm): clip đang sửa hoặc clip thủ công mới. */
+  draft: WordRange[];
+  /** Các đoạn soạn KHÔNG phải đoạn đang sửa: vẫn tô khi kéo chọn lại đoạn đang sửa. */
+  draftOthers?: WordRange[];
   /** Đang chờ bấm từ đầu/từ cuối của vùng soạn. */
   picking: 'start' | 'end' | null;
   marks: ClipMark[];
@@ -48,7 +50,9 @@ const OVERSCAN = 6;
  * Transcript ảo hoá (chỉ dựng các câu đang thấy): video 3 giờ có tới ~30 nghìn từ.
  * Chiều cao câu đo thật sau khi dựng; câu chưa dựng dùng chiều cao ước lượng theo số ký tự.
  */
-export function Transcript({ state, store, selected, draft, picking, marks, onSeek, onPick, onDragRange, toolbar, className = '', ref }: Props) {
+const NO_RANGES: WordRange[] = [];
+
+export function Transcript({ state, store, selected, draft, draftOthers = NO_RANGES, picking, marks, onSeek, onPick, onDragRange, toolbar, className = '', ref }: Props) {
   const { sentences } = state;
   const box = useRef<HTMLDivElement | null>(null);
   const [boxEl, setBoxEl] = useState<HTMLDivElement | null>(null);
@@ -154,12 +158,13 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
 
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
+    if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
     let delta = 0;
     let changed = false;
     el.querySelectorAll<HTMLElement>('[data-s]').forEach((row) => {
       const idx = Number(row.dataset.s);
       const h = row.offsetHeight;
+      if (h <= 0 || !Number.isFinite(h)) return;
       const prev = heights.current.get(idx);
       const was = prev ?? estimate(sentences[idx]!);
       if (prev === undefined || Math.abs(prev - h) > 0.5) {
@@ -178,9 +183,14 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
   useLayoutEffect(() => {
     const el = boxEl;
     if (!el) return;
-    const ro = new ResizeObserver(() => setView({ h: el.clientHeight, w: el.clientWidth }));
+    const measure = () => {
+      const h = el.clientHeight, w = el.clientWidth;
+      if (!w || !h) return; // Hidden tabs must preserve their last usable measurements.
+      setView((old) => old.h === h && old.w === w ? old : { h, w });
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setView({ h: el.clientHeight, w: el.clientWidth });
+    measure();
     return () => ro.disconnect();
   }, [boxEl]);
 
@@ -229,6 +239,7 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
 
   // ---- kéo chuột để chọn vùng (máy tính) ----
   const [drag, setDrag] = useState<WordRange | null>(null);
+  const shownDraft = useMemo(() => (drag ? [drag, ...draftOthers] : draft), [drag, draftOthers, draft]);
   const dragRef = useRef<{ anchor: number; last: number; moved: boolean; x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
   const scrollDir = useRef(0);
@@ -320,7 +331,7 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
         s={s}
         idx={k}
         selected={selected}
-        draft={drag ?? draft}
+        draft={shownDraft}
         dragging={!!drag}
         matchSet={matchSet.size ? matchSet : null}
         curMatch={curMatch}
@@ -339,7 +350,7 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
     <div className={`flex min-h-0 flex-col rounded-lg border border-line bg-surface ${className}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line p-2">
         <div className="relative min-w-0 flex-1 basis-40">
-          <Icon name="eye" size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Icon name="search" size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="search"
             value={query}
@@ -419,8 +430,8 @@ export function Transcript({ state, store, selected, draft, picking, marks, onSe
 interface RowProps {
   s: TranscriptSentence;
   idx: number;
-  selected: WordRange | null;
-  draft: WordRange | null;
+  selected: WordRange[];
+  draft: WordRange[];
   dragging: boolean;
   matchSet: Set<number> | null;
   curMatch: WordRange | null;
@@ -431,10 +442,11 @@ interface RowProps {
   onSeek: (t: number) => void;
 }
 
-const inRange = (i: number, r: WordRange | null) => !!r && i >= r.start && i <= r.end;
+const inRange = (i: number, rs: WordRange[]) => rs.some((r) => i >= r.start && i <= r.end);
+const isEdge = (i: number, rs: WordRange[]) => rs.some((r) => i === r.start || i === r.end);
 
 const Row = memo(function Row({ s, idx, selected, draft, dragging, matchSet, curMatch, activeWord, picking, marks, onWord, onSeek }: RowProps) {
-  const sentenceDraft = draft && s.words.length && draft.end >= s.words[0]!.i && draft.start <= s.words[s.words.length - 1]!.i;
+  const sentenceDraft = s.words.length > 0 && draft.some((r) => r.end >= s.words[0]!.i && r.start <= s.words[s.words.length - 1]!.i);
   return (
     <div data-s={idx} className={`flex gap-2 px-2 py-[5px] ${sentenceDraft ? 'bg-violet-bg/30' : ''}`}>
       <button
@@ -463,7 +475,7 @@ const Row = memo(function Row({ s, idx, selected, draft, dragging, matchSet, cur
           else if (isHit) cls += 'bg-warn-bg text-warn-fg ';
           else if (isDraft) cls += `${dragging ? 'bg-violet-fg text-surface' : 'bg-violet-bg text-violet-fg'} `;
           else if (isSel) cls += 'bg-info-bg text-info-fg ';
-          if (isDraft && draft && (w.i === draft.start || w.i === draft.end)) cls += 'font-bold underline decoration-2 underline-offset-2 ';
+          if (isDraft && isEdge(w.i, draft)) cls += 'font-bold underline decoration-2 underline-offset-2 ';
           if (!isActive && !isCur && !isHit && !isDraft && !isSel) cls += picking ? 'hover:bg-violet-bg ' : 'hover:bg-surface-3 ';
           return (
             <span key={w.i} data-w={w.i} onClick={() => onWord(w)} className={cls}>

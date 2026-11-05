@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import type { ProjectDetail } from '../api/types';
 import { useDeleteProject, usePatchProject } from '../hooks/mutations';
+import { useVideoGenerators } from '../hooks/queries';
 import { toast } from '../lib/toast';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -76,24 +77,24 @@ export function ProjectSettingsDialog({ project, open, onClose }: { project: Pro
   const patch = usePatchProject({ silent: true });
   const [name, setName] = useState(project.name);
   const [style, setStyle] = useState(project.style_lock);
-  const [perVideo, setPerVideo] = useState(String(project.credit_per_video));
   const [attempts, setAttempts] = useState(String(project.max_attempts_per_scene));
+  const [sbGen, setSbGen] = useState(project.storyboard_generator ?? 'muse');
+  const sbGenerators = useVideoGenerators().data?.storyboard ?? [];
 
   useEffect(() => {
     if (open) {
       setName(project.name);
       setStyle(project.style_lock);
-      setPerVideo(String(project.credit_per_video));
       setAttempts(String(project.max_attempts_per_scene));
+      setSbGen(project.storyboard_generator ?? 'muse');
       patch.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const p = Number(perVideo);
   const a = Number(attempts);
-  const ok = Number.isInteger(p) && p >= 0 && Number.isInteger(a) && a >= 1 && a <= 20;
-  const reason = !name.trim() ? 'Tên dự án không được để trống' : !ok ? 'Kiểm tra lại các con số' : null;
+  const ok = Number.isInteger(a) && a >= 1 && a <= 20;
+  const reason = !name.trim() ? 'Tên dự án không được để trống' : !ok ? 'Số lượt video mỗi cảnh phải từ 1 đến 20' : null;
 
   return (
     <Modal
@@ -109,7 +110,15 @@ export function ProjectSettingsDialog({ project, open, onClose }: { project: Pro
             disabledReason={reason}
             onClick={() =>
               patch.mutate(
-                { projectId: project.id, input: { name: name.trim(), style_lock: style, credit_per_video: p, max_attempts_per_scene: a } },
+                {
+                  projectId: project.id,
+                  input: {
+                    name: name.trim(),
+                    style_lock: style,
+                    max_attempts_per_scene: a,
+                    ...(sbGenerators.length > 0 ? { storyboard_generator: sbGen } : {}),
+                  },
+                },
                 {
                   onSuccess: () => {
                     toast.success('Đã lưu cài đặt dự án');
@@ -133,19 +142,36 @@ export function ProjectSettingsDialog({ project, open, onClose }: { project: Pro
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label htmlFor="s-per" className="mb-1 block text-[13px] font-semibold">
-              Credit mỗi video
-            </label>
-            <input id="s-per" type="number" min={0} step={1} value={perVideo} onChange={(e) => setPerVideo(e.target.value)} />
-          </div>
-          <div>
             <label htmlFor="s-att" className="mb-1 block text-[13px] font-semibold">
               Lượt video mỗi cảnh
             </label>
             <input id="s-att" type="number" min={1} max={20} step={1} value={attempts} onChange={(e) => setAttempts(e.target.value)} />
           </div>
         </div>
-        <p className="-mt-1 text-xs text-muted">Nâng số lượt để mở khóa các cảnh đã dùng hết lượt. Credit mỗi video chỉ ảnh hưởng các video tạo từ giờ.</p>
+        <p className="-mt-1 text-xs text-muted">Nâng số lượt để mở khóa các cảnh đã dùng hết lượt.</p>
+        {sbGenerators.length > 0 && (
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1 text-[13px] font-semibold">Dịch vụ tạo ảnh storyboard</legend>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {sbGenerators.map((g) => {
+                const checked = sbGen === g.id;
+                return (
+                  <label
+                    key={g.id}
+                    className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-[13px] ${checked ? 'border-fg bg-surface-2' : 'border-line hover:bg-surface-2'}`}
+                  >
+                    <input type="radio" name="sb-generator" value={g.id} checked={checked} onChange={() => setSbGen(g.id)} className="mt-0.5" />
+                    <span className="min-w-0">
+                      <span className="font-semibold">{g.label}</span>
+                      <span className="block text-xs text-muted">{g.note}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted">Áp dụng cho các lần tạo storyboard sau khi lưu; ảnh đã có giữ nguyên. Dịch vụ tạo video chọn khi bấm «Tạo video».</p>
+          </fieldset>
+        )}
         <div>
           <label htmlFor="s-style" className="mb-1 block text-[13px] font-semibold">
             Khóa nhất quán (style lock)

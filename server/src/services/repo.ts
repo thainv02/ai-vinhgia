@@ -1,11 +1,11 @@
 import type { AppContext } from '../context.js';
+import { AI_API_ALIAS, AI_API_PROVIDER } from '../config.js';
 import { notFound } from '../lib/errors.js';
 import type {
   AssetRow,
   CommentRow,
   EventRow,
   JobRow,
-  LedgerRow,
   ProjectRow,
   PromptVersionRow,
   RefRow,
@@ -155,19 +155,6 @@ export function promptVersionJson(row: PromptVersionRow) {
   };
 }
 
-export function ledgerJson(row: LedgerRow & { scene_code?: string | null }) {
-  return {
-    id: row.id,
-    project_id: row.project_id,
-    scene_id: row.scene_id,
-    scene_code: row.scene_code ?? null,
-    job_id: row.job_id,
-    delta: row.delta,
-    note: row.note,
-    created_at: row.created_at,
-  };
-}
-
 type JobJoinRow = JobRow & { scene_code: string | null; project_name: string; ai_info?: string | null; action_state?: string | null };
 
 /**
@@ -177,7 +164,7 @@ type JobJoinRow = JobRow & { scene_code: string | null; project_name: string; ai
 function lightPayload(row: JobRow, full: boolean): Record<string, unknown> {
   const payload = parseJson<Record<string, unknown>>(row.payload, {});
   if (full || row.type !== 'clip_plan') return payload;
-  const { sentences, windows, ...rest } = payload;
+  const { sentences, windows, words, ...rest } = payload;
   return { ...rest, sentence_count: Array.isArray(sentences) ? sentences.length : 0, window_count: Array.isArray(windows) ? windows.length : 0 };
 }
 
@@ -199,7 +186,8 @@ export function jobJsonFromRow(row: JobJoinRow, opts: { full?: boolean } = {}) {
     heartbeat_at: row.heartbeat_at,
     created_at: row.created_at,
     finished_at: row.finished_at,
-    credits_cost: row.credits_cost,
+    /** Job video failed vẫn tính một lượt của cảnh (dữ liệu cũ: credits_cost > 0). */
+    attempt_used: row.type === 'video' && row.status === 'failed' && (row.credits_cost > 0 || parseJson<Record<string, unknown> | null>(row.result, null)?.attempt_used === true),
     requires_approval: !!row.requires_approval,
     approved_at: row.approved_at,
     requeue_count: row.requeue_count,
@@ -219,7 +207,7 @@ export function jobJsonFromRow(row: JobJoinRow, opts: { full?: boolean } = {}) {
 export type JobJson = ReturnType<typeof jobJsonFromRow>;
 
 const JOB_SELECT = `SELECT j.*, s.code AS scene_code, p.name AS project_name,
-  (SELECT json_object('alias',a.alias,'provider',a.provider,'model',r.model,'outcome',r.outcome) FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=j.id ORDER BY r.id DESC LIMIT 1) AS ai_info,
+  (SELECT json_object('alias',COALESCE(a.alias,'${AI_API_ALIAS}'),'provider',COALESCE(a.provider,'${AI_API_PROVIDER}'),'model',r.model,'outcome',r.outcome) FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=j.id ORDER BY r.id DESC LIMIT 1) AS ai_info,
   (SELECT e.state FROM external_actions e WHERE e.job_id=j.id AND e.state<>'abandoned' ORDER BY e.created_at DESC, e.rowid DESC LIMIT 1) AS action_state
   FROM jobs j
   LEFT JOIN scenes s ON s.id = j.scene_id

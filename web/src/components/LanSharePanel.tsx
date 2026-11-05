@@ -49,7 +49,7 @@ function LanSettings({ info }: { info: LanInfo }) {
         <p>
           Chia sẻ qua LAN <strong>đang tắt</strong>. Khi bật, đồng nghiệp trong cùng mạng mở một trang riêng để nhập yêu cầu và ảnh tham chiếu, nhận prompt cho ChatGPT (storyboard) và Google Flow (video), rồi tự tạo ảnh/video bằng tài khoản của họ.
         </p>
-        <p className="text-muted">Trang đó chỉ lập kế hoạch: không tạo storyboard hay video trên máy này, không tốn credit Flow của bạn.</p>
+        <p className="text-muted">Trang đó chỉ lập kế hoạch: không tạo storyboard hay video trên máy này.</p>
         <div>
           <div className="mb-1 text-xs font-semibold text-muted">Để bật: thêm vào file .env rồi khởi động lại server</div>
           <pre className="whitespace-pre-wrap break-words rounded-md border border-line bg-surface-2 p-3 font-mono text-[13px] leading-relaxed">{`LAN_ENABLED=true

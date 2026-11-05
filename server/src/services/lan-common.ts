@@ -6,6 +6,19 @@ import { activeJobOf } from './rules.js';
 /** Giá trị `assets.meta.source` của storyboard/video do người dùng LAN tải lên; chỉ các asset này được phục vụ qua listener LAN. */
 export const LAN_UPLOAD_SOURCE = 'lan_upload';
 
+/**
+ * File `rel` là storyboard/video/lưới khung hình do worker tạo cho cảnh của dự án Autovideo (LAN, `lan_mode='auto'`) chưa bị xoá.
+ * Ảnh gốc còn logo (`meta.logo.raw_path`) không phải asset nên không bao giờ khớp.
+ */
+export function isLanAutoAsset(ctx: AppContext, rel: string): boolean {
+  return !!ctx.db
+    .prepare(
+      `SELECT 1 FROM assets a JOIN scenes s ON s.id = a.scene_id JOIN projects p ON p.id = s.project_id
+       WHERE a.file_path = ? AND a.kind IN ('storyboard','video','grid') AND p.source = 'lan' AND p.lan_mode = 'auto' AND p.deleted_at IS NULL LIMIT 1`,
+    )
+    .get(rel);
+}
+
 /** URL tệp trên listener LAN (khác `/files/...` của app chính). */
 export const lanFileUrl = (filePath: string): string => '/lan/files/' + filePath.split('/').map(encodeURIComponent).join('/');
 

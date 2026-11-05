@@ -45,7 +45,7 @@ export interface StreamOptions {
   fieldNames?: readonly string[];
   /** Thông báo khi vượt dung lượng. */
   tooLargeMessage: string;
-  /** `mp4` (mặc định): chỉ mp4/mov; `video`: thêm mkv/webm/avi (video nguồn của dự án cắt clip). */
+  /** `mp4` (mặc định): chỉ mp4/mov; `video`: thêm mkv/webm/avi (video nguồn của dự án highlight). */
   magic?: 'mp4' | 'video';
   /** Tính sha256 trong lúc nhận (không đọc lại file). */
   hash?: boolean;

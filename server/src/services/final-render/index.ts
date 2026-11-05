@@ -260,7 +260,7 @@ export class FinalRenderService {
   }
 
   /**
-   * Việc của dự án cắt clip (`clip`: bản dựng clip; `preview`: bản xem thử 480p của video nguồn LAN): cùng hàng đợi, cùng `RENDER_CONCURRENCY`;
+   * Việc của dự án highlight (`clip`: bản dựng clip; `preview`: bản xem thử 480p của video nguồn LAN): cùng hàng đợi, cùng `RENDER_CONCURRENCY`;
    * việc của app đứng trước việc LAN đang chờ. `run` tự cập nhật DB của việc.
    */
   enqueueClipTask(kind: 'clip' | 'preview', id: number, lan: boolean, run: (abort: AbortController) => Promise<void>): void {

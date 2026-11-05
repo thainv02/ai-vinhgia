@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
+    "media": "tsx src/media/main.ts",
     "login": "tsx src/proxy.ts login",
     "proxy": "tsx src/proxy.ts serve",
     "setup": "tsx src/setup.ts",

@@ -6,7 +6,7 @@ import { AppError } from '../lib/errors.js';
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const ALLOWED_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Chặn Host lạ (DNS rebinding) và Origin lạ trên request ghi (trang web khác gọi API tốn credit). */
+/** Chặn Host lạ (DNS rebinding) và Origin lạ trên request ghi (trang web khác gọi API tạo ảnh/video). */
 export function registerSecurity(app: FastifyInstance, ctx: AppContext): void {
   const origins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...ctx.config.extraAllowedOrigins].map((o) => o.toLowerCase()));
   app.addHook('onRequest', async (req) => {

@@ -40,7 +40,7 @@ const mkProject = async (extra: Record<string, unknown> = {}) => (await u().post
 const source = async (pid: number) => (await u().get(`/api/clip-projects/${pid}`)).body.source;
 const settled = (pid: number, status = 'transcribed') => waitFor(() => source(pid), (s) => s?.status === status, 20_000, `video ${status}`);
 
-describe('dự án cắt clip', () => {
+describe('dự án highlight', () => {
   it('POST /api/clip-projects → 201 ClipProjectDetail; danh sách /api/projects có kind', async () => {
     const r = await u().post('/api/clip-projects', { name: '  Live cacao tối  ', stt_terms: 'Cacao, Actiso' });
     expect(r.status).toBe(201);
@@ -54,7 +54,7 @@ describe('dự án cắt clip', () => {
     expect(mine).toMatchObject({ kind: 'clips', clip_count: 0, source_video: null, stt_terms: 'Cacao, Actiso' });
   });
 
-  it('GET/PATCH: đổi tên và tên riêng; dự án kind=scenes trả 404 ở các route cắt clip; thiếu tên → 400', async () => {
+  it('GET/PATCH: đổi tên và tên riêng; dự án kind=scenes trả 404 ở các route highlight; thiếu tên → 400', async () => {
     const id = await mkProject();
     const g = await u().get(`/api/clip-projects/${id}`);
     expect(g.status).toBe(200);

@@ -10,6 +10,8 @@ import { PlanListPage } from './PlanListPage';
 import { PlanPage } from './PlanPage';
 import { ToolPage } from './ToolPage';
 import { ClipProjectPage, ClipsPage } from './ClipsPage';
+import { AutoListPage } from './AutoListPage';
+import { AutoProjectPage } from './AutoProjectPage';
 import { hrefOf, useHashRoute } from './useHashRoute';
 
 /** `onLogout` chỉ có khi trang đòi mã truy cập (LAN_REQUIRE_CODE=true); không cần mã thì không có phiên nên không có nút "Thoát". */
@@ -49,8 +51,9 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
       <nav aria-label="Chức năng" className="border-b border-line bg-surface">
         <div className="planner-shell flex gap-4 overflow-x-auto sm:gap-5">
           {[
+            { href: hrefOf({ name: 'auto' }), label: 'Autovideo', icon: 'star' as const, on: route.name === 'auto' || route.name === 'autoNew' || route.name === 'autoProject' },
             { href: hrefOf({ name: 'list' }), label: 'Kế hoạch prompt', icon: 'film' as const, on: route.name === 'list' || route.name === 'new' || route.name === 'plan' },
-            { href: hrefOf({ name: 'clips' }), label: 'Cắt clip', icon: 'play' as const, on: route.name === 'clips' || route.name === 'clip' },
+            { href: hrefOf({ name: 'clips' }), label: 'Highlight', icon: 'play' as const, on: route.name === 'clips' || route.name === 'clip' },
             { href: hrefOf({ name: 'tool' }), label: 'Xoá logo Veo', icon: 'edit' as const, on: route.name === 'tool' },
           ].map((t) => (
             <a
@@ -66,7 +69,7 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
         </div>
       </nav>
       <main className="planner-shell pb-16 pt-7">
-        {status.data && !ready && route.name !== 'plan' && route.name !== 'tool' && route.name !== 'clip' && (
+        {status.data && !ready && route.name !== 'plan' && route.name !== 'tool' && route.name !== 'clip' && route.name !== 'autoProject' && (
           <div role="status" className="mb-4 flex items-center gap-2 rounded-lg bg-warn-bg px-3 py-2.5 text-[13px] text-warn-fg">
             <Icon name="alert" size={16} />
             <span>
@@ -74,7 +77,25 @@ function Shell({ onLogout }: { onLogout?: () => void }) {
             </span>
           </div>
         )}
-        {route.name === 'new' ? <NewPlanPage /> : route.name === 'plan' ? <PlanPage key={route.id} id={route.id} /> : route.name === 'tool' ? <ToolPage /> : route.name === 'clips' ? <ClipsPage /> : route.name === 'clip' ? <ClipProjectPage key={route.id} id={route.id} /> : <PlanListPage />}
+        {route.name === 'new' ? (
+          <NewPlanPage />
+        ) : route.name === 'plan' ? (
+          <PlanPage key={route.id} id={route.id} />
+        ) : route.name === 'tool' ? (
+          <ToolPage />
+        ) : route.name === 'clips' ? (
+          <ClipsPage />
+        ) : route.name === 'clip' ? (
+          <ClipProjectPage key={route.id} id={route.id} />
+        ) : route.name === 'auto' ? (
+          <AutoListPage />
+        ) : route.name === 'autoNew' ? (
+          <NewPlanPage key="auto" mode="auto" />
+        ) : route.name === 'autoProject' ? (
+          <AutoProjectPage key={route.id} id={route.id} />
+        ) : (
+          <PlanListPage />
+        )}
       </main>
       <Toaster />
     </div>

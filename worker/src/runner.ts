@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ApiFailure } from './api-failure.js';
+import { cleanupSystem, cleanupUserContent, parseCleanupResult, type CleanupPayload } from './clip-cleanup.js';
 import type { Job } from './client.js';
 import { liveActionOf, type BrowserTools } from './browser.js';
 import { MAX_MESSAGES, compactMessages, dropScreenshots, forInference, repairToolPairs, summarizeJournal, type Msg } from './conversation.js';
@@ -77,6 +78,27 @@ export async function handleJob(job: Job, deps: RunnerDeps): Promise<void> {
     await alive();
     if (job.checkpoint?.complete) {
       await api('POST', `/api/worker/jobs/${job.id}/complete`, job.checkpoint.complete, job.lease_id, job.id, { 'Idempotency-Key': `complete-${job.id}` }); return;
+    }
+    if (job.type === 'clip_plan' && job.payload.mode === 'cleanup') {
+      const payload = job.payload as CleanupPayload;
+      let result = job.checkpoint?.cleanup_result as ReturnType<typeof parseCleanupResult> | undefined;
+      let account: unknown = job.checkpoint?.provenance;
+      for (let attempt = 0; !result && attempt < 3; attempt++) {
+        await alive();
+        const reply = await api<any>('POST', `/api/worker/jobs/${job.id}/infer`, {
+          messages: [{ role: 'system', content: cleanupSystem(payload) }, { role: 'user', content: cleanupUserContent(payload) }],
+          tools: [], capabilities: ['text'],
+        }, job.lease_id);
+        account = reply.account;
+        try { result = parseCleanupResult(reply.message.content ?? '', payload); }
+        catch (e) { if (attempt === 2) throw e; }
+      }
+      if (!result) throw new Error('AI chưa trả được đề xuất làm gọn hợp lệ');
+      const complete = { result: { ...result, provenance: account } };
+      await checkpoint({ cleanup_result: result, provenance: account, complete, step: 'complete' });
+      await alive();
+      await api('POST', `/api/worker/jobs/${job.id}/complete`, complete, job.lease_id, job.id, { 'Idempotency-Key': `complete-${job.id}` });
+      return;
     }
     if (job.type === 'clip_plan') {
       // AI chọn đoạn clip: nhiều lời gọi /infer trong một job, checkpoint sau mỗi bước tốn kém (xem clip-plan.ts). AI chỉ trả ID câu; server tự tính giây.
@@ -217,7 +239,6 @@ export async function handleJob(job: Job, deps: RunnerDeps): Promise<void> {
         const ff = spawnSync(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-i', abs, '-vf', 'fps=2,scale=216:-2,tile=5x4', '-frames:v', '1', grid], { timeout: 30000 });
         if (ff.status !== 0) throw new Error('Không tạo được grid kiểm tra video');
         complete.assets.push({ kind: 'grid', file_path: job.payload.output.grid_path });
-        complete.credits_cost = job.payload.credits_expected;
       }
     }
     await checkpoint({ result, provenance, complete, step: 'complete' });

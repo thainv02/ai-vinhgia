@@ -26,13 +26,13 @@ describe('log.md', () => {
     await toVideoReview(sc, id, { verdict: 'fix_in_edit', verdict_note: 'Chữ bị méo | xuống dòng\nthứ hai' });
     const lines = fs.readFileSync(logPath(), 'utf8').trimEnd().split('\n');
     expect(lines).toHaveLength(4);
-    expect(lines[3]).toBe('| C1 | 1 | video (Flow; 9:16, 10s, x1, 720p) | Chữ bị méo / xuống dòng thứ hai | Sửa khi dựng |');
+    expect(lines[3]).toBe('| C1 | 1 | video (Muse; 9:16, 10s, x1, 720p) | Chữ bị méo / xuống dòng thứ hai | Sửa khi dựng |');
     expect(lines.filter((l) => l.startsWith('| clip'))).toHaveLength(1);
     // lượt 2 của video
     await sc.user.post(`/api/scenes/${id}/comments`, { body: 'lại', action: 'regenerate_same' });
     await finish(sc, await claim(sc), { verdict: 'pass', verdict_note: 'tốt hơn' });
     const after = fs.readFileSync(logPath(), 'utf8').trimEnd().split('\n');
-    expect(after.at(-1)).toBe('| C1 | 2 | video (Flow; 9:16, 10s, x1, 720p) | tốt hơn | Đạt |');
+    expect(after.at(-1)).toBe('| C1 | 2 | video (Muse; 9:16, 10s, x1, 720p) | tốt hơn | Đạt |');
   });
 
   it('không ghi đè log.md có sẵn (dữ liệu cũ); chỉ nối thêm; log của dự án khác tách biệt theo slug', async () => {
@@ -59,38 +59,21 @@ describe('log.md', () => {
     expect(r.raw).toBe(
       '| clip | lần | loại | lỗi thấy được | kết luận |\n|---|---|---|---|---|\n' +
         '| C1 | 1 | storyboard | ok | Chưa đánh giá |\n' +
-        '| C1 | 1 | video (Flow; 9:16, 10s, x1, 720p) | ổn | Đạt |\n',
+        '| C1 | 1 | video (Muse; 9:16, 10s, x1, 720p) | ổn | Đạt |\n',
     );
   });
 });
 
-describe('sổ cái credit', () => {
-  it('ledger.csv: UTF-8 có BOM, header tiếng Việt, escape đúng dấu phẩy/ngoặc kép; lũy kế đã dùng khớp', async () => {
-    const sc = await setupProject(env, { scenes: 2 });
-    await toStoryboardReview(sc, sc.scenes[0].id);
-    await toVideoReview(sc, sc.scenes[0].id);
-    env.ctx.db
-      .prepare('INSERT INTO credit_ledger (project_id, scene_id, delta, note, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(sc.project.id, sc.scenes[1].id, -5, 'có "ngoặc kép", dấu phẩy\nvà xuống dòng', env.ctx.now());
-    const r = await userClient(env.app).get(`/api/projects/${sc.project.id}/ledger.csv`);
-    expect(r.status).toBe(200);
-    expect(r.headers['content-type']).toBe('text/csv; charset=utf-8');
-    expect(r.headers['content-disposition']).toBe('attachment; filename="ledger-cacao-actiso-plus.csv"');
-    expect(r.raw.charCodeAt(0)).toBe(0xfeff);
-    const lines = r.raw.slice(1).split('\r\n');
-    expect(lines[0]).toBe('STT,Thời gian,Cảnh,Job,Credit,Lũy kế đã dùng,Ghi chú');
-    expect(lines[1]).toMatch(/^1,2026-01-01T00:00:00\.000Z,C1,\d+,-15,15,Video C1 lượt 1 \(job #\d+\)$/);
-    expect(lines[2]).toBe('2,2026-01-01T00:00:00.000Z,C2,,-5,20,"có ""ngoặc kép"", dấu phẩy\nvà xuống dòng"');
-    expect(lines.at(-1)).toBe('');
-  });
-
-  it('GET /ledger: tổng hợp và danh sách có số dư chạy', async () => {
+describe('nhật ký (không còn sổ cái credit)', () => {
+  it('/ledger và /ledger.csv đã bỏ (404); /events vẫn trả nhật ký; video xong không thêm dòng credit_ledger', async () => {
     const sc = await setupProject(env, { scenes: 1 });
     await toStoryboardReview(sc, sc.scenes[0].id);
-    await sc.user.post(`/api/scenes/${sc.scenes[0].id}/approve`, { stage: 'video' });
-    const l = (await sc.user.get(`/api/projects/${sc.project.id}/ledger`)).body;
-    expect(l.totals).toEqual({ used: 0, reserved: 15 });
-    expect(l.entries).toEqual([]);
+    await toVideoReview(sc, sc.scenes[0].id);
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/ledger`)).status).toBe(404);
+    expect((await userClient(env.app).get(`/api/projects/${sc.project.id}/ledger.csv`)).status).toBe(404);
+    const ev = (await sc.user.get(`/api/projects/${sc.project.id}/events`)).body;
+    expect(ev.length).toBeGreaterThan(0);
+    expect(env.ctx.db.prepare('SELECT COUNT(*) AS n FROM credit_ledger').get()).toEqual({ n: 0 });
   });
 });
 
@@ -98,7 +81,7 @@ describe('DB: migration, ràng buộc, sao lưu', () => {
   it('migration chạy lặp lại không đổi gì và ghi schema_migrations', async () => {
     expect(runMigrations(env.ctx.db)).toEqual([]);
     const rows = env.ctx.db.prepare('SELECT version FROM schema_migrations').all();
-    expect(rows).toEqual([{ version: '001_init' }, { version: '002_ref_library' }, { version: '003_final_cuts' }, { version: '004_watermark' }, { version: '005_managed_workers' }, { version: '006_account_identity' }, { version: '007_account_quota' }, { version: '008_job_reconciliations' }, { version: '009_lan_planner' }, { version: '010_lan_tools' }, { version: '011_project_trash' }, { version: '012_final_cut_feedback' }, { version: '013_color_refs' }, { version: '014_clips' }]);
+    expect(rows).toEqual([{ version: '001_init' }, { version: '002_ref_library' }, { version: '003_final_cuts' }, { version: '004_watermark' }, { version: '005_managed_workers' }, { version: '006_account_identity' }, { version: '007_account_quota' }, { version: '008_job_reconciliations' }, { version: '009_lan_planner' }, { version: '010_lan_tools' }, { version: '011_project_trash' }, { version: '012_final_cut_feedback' }, { version: '013_color_refs' }, { version: '014_clips' }, { version: '015_clip_cleanup' }, { version: '016_cleanup_routing' }, { version: '017_clip_parts' }, { version: '018_storyboard_generator' }, { version: '019_lan_autovideo' }]);
     const pragma = env.ctx.db.pragma('journal_mode', { simple: true });
     expect(pragma).toBe('wal');
     expect(env.ctx.db.pragma('foreign_keys', { simple: true })).toBe(1);

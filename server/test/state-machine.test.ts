@@ -142,7 +142,7 @@ describe('đi hết máy trạng thái qua HTTP', () => {
     const vj = await claim(sc);
     expect(vj.type).toBe('video');
     expect(vj.payload.attempt).toBe(1);
-    expect(vj.payload.credits_expected).toBe(15);
+    expect(vj.payload).not.toHaveProperty('credits_expected');
     expect(vj.payload.upload_files).toEqual(['output/du-an-moi/storyboard/C1_storyboard.png']);
     expect(vj.payload.settings).toEqual({ aspect: '9:16', duration_s: 10, count: 1, resolution: '720p' });
     expect((await scene(sc, c1)).status).toBe('video_running');
@@ -159,9 +159,9 @@ describe('đi hết máy trạng thái qua HTTP', () => {
     expect(sel.body.scene.status).toBe('done');
     expect(sel.body.scene.selected_video_id).toBe(sv.video.id);
 
-    // credit: đã dùng 15
+    // lượt: đã dùng 1/2
     const budget = (await u.get(`/api/projects/${created.id}/budget`)).body;
-    expect(budget).toMatchObject({ used: 15, reserved: 0, credit_per_video: 15, max_attempts: 2 });
+    expect(budget).toEqual({ max_attempts: 2, scenes: expect.any(Array) });
     expect(budget.scenes[0]).toEqual({ scene_id: c1, code: 'C1', attempts_used: 1, max_attempts: 2 });
 
     // toàn bộ đường đi đã được ghi trong events
@@ -239,10 +239,10 @@ describe('comment và tạo lại', () => {
     expect(c.body.comment).toMatchObject({ author: 'user', action: 'revise_and_regenerate', timecode: 1.5, resolved: false, asset_id: before.video.id });
     expect(c.body.job).toMatchObject({ type: 'revise_prompt', status: 'queued', requires_approval: false });
     expect(c.body.scene.status).toBe('needs_revision');
-    // không có job video nào đang hoạt động, credit không bị đặt trước
+    // không có job video nào đang hoạt động, không chiếm thêm lượt
     const jobs = (await sc.user.get(`/api/jobs?projectId=${sc.project.id}&status=queued,claimed,running`)).body;
     expect(jobs.map((j: any) => j.type)).toEqual(['revise_prompt']);
-    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.reserved).toBe(0);
+    expect((await sc.user.get(`/api/projects/${sc.project.id}/budget`)).body.scenes[0].attempts_used).toBe(1);
 
     const rj = await claim(sc);
     expect(rj.type).toBe('revise_prompt');
@@ -264,7 +264,7 @@ describe('comment và tạo lại', () => {
     expect(after.assets.filter((a: any) => a.kind === 'video')).toHaveLength(1);
     expect((await sc.user.get(`/api/jobs?projectId=${sc.project.id}&type=video&status=queued,claimed,running`)).body).toHaveLength(0);
 
-    // chỉ sau khi duyệt (tốn credit) mới tạo video, và attempt = 2
+    // chỉ sau khi duyệt mới tạo video, và attempt = 2
     const a = await sc.user.post(`/api/scenes/${id}/approve`, { stage: 'video' });
     expect(a.status).toBe(200);
     const vj = await claim(sc);
@@ -276,7 +276,7 @@ describe('comment và tạo lại', () => {
     expect(fin.attempts_used).toBe(2);
   });
 
-  it('regenerate_same đi qua kiểm tra approveVideo (credit/lượt)', async () => {
+  it('regenerate_same đi qua kiểm tra approveVideo (lượt)', async () => {
     const { sc, id } = await toVideoReviewScene();
     const ok = await sc.user.post(`/api/scenes/${id}/comments`, { body: 'Tạo lại y nguyên', action: 'regenerate_same' });
     expect(ok.status).toBe(201);

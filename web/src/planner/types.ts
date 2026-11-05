@@ -16,13 +16,16 @@ export interface AnalysisInfo {
 
 export interface PlanSummary {
   id: number;
-  /** 'clips': dự án cắt clip (hiện ở tab Cắt clip, không phải ở danh sách kế hoạch). */
+  /** 'clips': dự án highlight (hiện ở tab Highlight, không phải ở danh sách kế hoạch). */
   kind?: 'scenes' | 'clips';
   name: string;
   created_by_name: string | null;
   status: PlanStatus;
   scene_count: number;
   ref_count: number;
+  thumbnail_url?: string | null;
+  progress?: { storyboards: number; prompts: number; videos: number; final_status: string | null; final_current: boolean };
+  next_action?: import('../../../server/src/lib/plan-progress').PlanNextAction | null;
   created_at: string;
   updated_at: string;
   analysis: AnalysisInfo;
@@ -58,7 +61,6 @@ export interface VideoSettings {
   duration_s: number;
   count: number;
   resolution: string;
-  estimated_credits: number;
 }
 
 export interface ScenePlanView {
@@ -102,7 +104,7 @@ export interface SceneVideos {
 }
 
 export interface PlanDetail {
-  plan: PlanSummary & { brief: string; style_lock: string; credit_per_video: number };
+  plan: PlanSummary & { brief: string; style_lock: string };
   refs: PlanRefInfo[];
   settings: VideoSettings;
   scenes: ScenePlanView[];
@@ -113,7 +115,7 @@ export interface PlanDetail {
     max_refs: number;
     max_upload_bytes: number;
     max_storyboard_uploads_per_scene: number;
-    video: Omit<VideoSettings, 'estimated_credits'>;
+    video: VideoSettings;
     scene_video: { max_bytes: number; max_per_scene: number; min_s: number; max_s: number };
   };
   /** Khối "Bản hoàn chỉnh": điều kiện dựng, bản đang chạy, tool xoá logo có bật không. */
@@ -200,7 +202,84 @@ export interface PlannerStatus {
   remaining: { analyze: number; upload_video: number; create_final: number; remove_logo: number; feedback?: number; grade?: number; grade_preview?: number; color_ref?: number; [key: string]: number | undefined };
   /** Việc từ LAN đang trong hàng đợi / trần toàn cục. */
   queue: QueueLoad;
+  /** Tab Autovideo: công tắc của chủ máy, máy tạo ảnh/video, hàng đợi (không có ở server cũ). */
+  autovideo?: AutoMediaStatus;
   server_time: string;
+}
+
+// ---------------------------------------------------------------- tab Autovideo (/lan/api/auto/...)
+
+export interface AutoMediaStatus {
+  enabled: boolean;
+  /** Worker tạo ảnh/video của chủ máy có đang nhận việc không. */
+  online: boolean;
+  paused: boolean;
+  /** Câu giải thích chung khi hàng đợi tạm dừng. */
+  pause_text: string | null;
+  /** Số việc ảnh/video từ LAN đang chờ/chạy / trần. */
+  load: number;
+  cap: number;
+}
+
+export interface AutoSummary {
+  id: number;
+  name: string;
+  created_by_name: string | null;
+  status: PlanStatus;
+  scene_count: number;
+  thumbnail_url: string | null;
+  progress: { storyboards: number; videos: number; active: number; final_status: string | null };
+  storyboard_generator: string;
+  created_at: string;
+  updated_at: string;
+  analysis: AnalysisInfo;
+  can_delete: boolean;
+  delete_block: string | null;
+}
+
+export interface AutoVideo {
+  id: number;
+  attempt: number;
+  url: string;
+  grid_url: string | null;
+  created_at: string;
+  duration_s: number | null;
+  generator: string | null;
+  selected: boolean;
+}
+
+export interface AutoScene {
+  id: number;
+  code: string;
+  title: string;
+  order_index: number;
+  status: string;
+  status_label: string;
+  prompt: string;
+  use_prev_storyboard: boolean;
+  refs: { id: number; label: string; url: string }[];
+  /** Số ảnh job video gửi kèm (ảnh sản phẩm + storyboard). */
+  image_count: number;
+  storyboard: { id: number; url: string; attempt: number; created_at: string; logo: string | null } | null;
+  storyboard_count: number;
+  videos: AutoVideo[];
+  selected_video_id: number | null;
+  attempts_used: number;
+  max_attempts: number;
+  job: { type: 'storyboard' | 'video'; state: 'queued' | 'running'; position: number | null; generator: string; created_at: string; started_at: string | null; can_cancel: boolean } | null;
+  error: string | null;
+  /** Lý do chưa bấm được (null = được). `video` chưa tính giới hạn ảnh của từng dịch vụ (giao diện tính theo `image_count`). */
+  blocks: { storyboard: string | null; video: string | null; select: string | null; prompt: string | null };
+}
+
+export interface AutoDetail {
+  project: AutoSummary & { brief: string; style_lock: string; max_attempts_per_scene: number };
+  refs: PlanRefInfo[];
+  scenes: AutoScene[];
+  analysis: AnalysisInfo;
+  worker: { online: boolean; queue_paused: boolean };
+  media: AutoMediaStatus;
+  final: PlanDetail['final'];
 }
 
 export interface LanLibraryItem {

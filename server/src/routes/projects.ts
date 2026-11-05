@@ -1,13 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { badRequest } from '../lib/errors.js';
 import { readImageUploads } from '../lib/uploads.js';
 import { intParam, optionalIntParam, parse } from '../lib/validate.js';
 import type { EventRow, ProjectRow, RefRow } from '../db/types.js';
 import { approveAll, previewApproveAll } from '../services/approvals.js';
+import { GENERATOR_IDS, STORYBOARD_GENERATORS, VIDEO_GENERATORS } from '../services/generators.js';
 import { budgetSummary } from '../services/budget.js';
-import { ledgerCsv, ledgerView } from '../services/exports.js';
 import { generateLogMd } from '../services/logmd.js';
 import {
   createProjectBody,
@@ -130,20 +129,22 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
   // ---- duyệt hàng loạt ----
   app.get('/api/projects/:id/approve-all/preview', async (req) => {
     const id = intParam((req.params as { id: string }).id);
-    const stage = parse(stageSchema, (req.query as { stage?: string }).stage, 'Tham số stage');
-    return previewApproveAll(ctx, id, stage);
+    const q = req.query as { stage?: string; generator?: string };
+    const stage = parse(stageSchema, q.stage, 'Tham số stage');
+    const generator = parse(z.enum(GENERATOR_IDS).optional(), q.generator || undefined, 'Tham số generator');
+    return previewApproveAll(ctx, id, stage, generator);
   });
 
   app.post('/api/projects/:id/approve-all', async (req) => {
     const id = intParam((req.params as { id: string }).id);
-    const body = parse(z.object({ stage: stageSchema, expectedCredits: z.number().int().min(0).optional() }), req.body);
-    if (body.stage === 'video' && body.expectedCredits === undefined) {
-      throw badRequest('VALIDATION_ERROR', 'Cần expectedCredits (tổng credit người dùng đã xác nhận) khi duyệt video hàng loạt');
-    }
-    return approveAll(ctx, id, body.stage, body.expectedCredits);
+    // expectedCredits (client cũ) được chấp nhận và bỏ qua: không còn xác nhận credit.
+    const body = parse(z.object({ stage: stageSchema, generator: z.enum(GENERATOR_IDS).optional(), expectedCredits: z.unknown().optional() }), req.body);
+    return approveAll(ctx, id, body.stage, body.generator);
   });
 
-  // ---- dòng thời gian, sổ cái, xuất file ----
+  app.get('/api/video-generators', async () => ({ generators: VIDEO_GENERATORS, storyboard: STORYBOARD_GENERATORS }));
+
+  // ---- dòng thời gian (nhật ký), xuất file ----
   app.get('/api/projects/:id/events', async (req) => {
     const id = intParam((req.params as { id: string }).id);
     getProject(ctx, id);
@@ -169,17 +170,6 @@ export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): vo
       )
       .all(...args) as (EventRow & { scene_code: string | null })[];
     return rows.map(eventJson);
-  });
-
-  app.get('/api/projects/:id/ledger', async (req) => ledgerView(ctx, intParam((req.params as { id: string }).id)));
-
-  app.get('/api/projects/:id/ledger.csv', async (req, reply) => {
-    const id = intParam((req.params as { id: string }).id);
-    const project = getProject(ctx, id);
-    return reply
-      .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="ledger-${project.slug}.csv"`)
-      .send(ledgerCsv(ctx, id));
   });
 
   app.get('/api/projects/:id/log.md', async (req, reply) => {

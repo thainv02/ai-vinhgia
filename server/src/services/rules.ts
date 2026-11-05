@@ -2,6 +2,7 @@ import type { AppContext } from '../context.js';
 import { AppError } from '../lib/errors.js';
 import { ACTIVE_JOB_STATUSES, SCENE_STATUS_LABEL, type JobRow, type ProjectRow, type SceneRow, type SceneStatus } from '../db/types.js';
 import { attemptsUsed } from './budget.js';
+import { DEFAULT_GENERATOR_ID, getGenerator } from './generators.js';
 
 /** Trạng thái cho phép bấm "tạo video" (duyệt video). */
 export const VIDEO_APPROVABLE: SceneStatus[] = [
@@ -53,7 +54,7 @@ export const JOB_TYPE_LABEL: Record<string, string> = {
   video: 'video',
   revise_prompt: 'sửa prompt',
   edit_plan: 'chọn điểm cắt bản hoàn chỉnh',
-  clip_plan: 'chọn đoạn clip từ video dài',
+  clip_plan: 'đề xuất highlight từ video dài',
 };
 
 function activeJobError(scene: SceneRow, job: JobRow): AppError {
@@ -66,9 +67,9 @@ function activeJobError(scene: SceneRow, job: JobRow): AppError {
 
 /**
  * Kiểm tra việc tạo job video cho cảnh (đường DUY NHẤT tạo job video).
- * Trả về lỗi (chưa ném) hoặc null nếu hợp lệ. Thứ tự: job đang chạy → trạng thái → có storyboard → số lượt. KHÔNG kiểm tra hạn mức credit (đã bỏ).
+ * Trả về lỗi (chưa ném) hoặc null nếu hợp lệ. Thứ tự: job đang chạy → trạng thái → có storyboard → số lượt. Không có kiểm tra credit.
  */
-export function videoApproveError(ctx: AppContext, scene: SceneRow, project: ProjectRow): AppError | null {
+export function videoApproveError(ctx: AppContext, scene: SceneRow, project: ProjectRow, generatorId = DEFAULT_GENERATOR_ID): AppError | null {
   const active = activeJobOf(ctx, scene.id);
   if (active) return activeJobError(scene, active);
   if (!VIDEO_APPROVABLE.includes(scene.status)) {
@@ -85,7 +86,27 @@ export function videoApproveError(ctx: AppContext, scene: SceneRow, project: Pro
   if (used >= project.max_attempts_per_scene) {
     return new AppError('ATTEMPTS_EXCEEDED', `Cảnh ${scene.code} đã dùng ${used}/${project.max_attempts_per_scene} lượt`, 409);
   }
+  const g = getGenerator(generatorId);
+  const images = videoImageCount(scene);
+  if (images > g.max_images) {
+    return new AppError(
+      'TOO_MANY_IMAGES',
+      `Cảnh ${scene.code} cần gửi ${images} ảnh (ảnh sản phẩm + storyboard), ${g.label} nhận tối đa ${g.max_images}; bớt ảnh của cảnh hoặc chọn dịch vụ khác`,
+      409,
+    );
+  }
   return null;
+}
+
+/** Số ảnh job video sẽ gửi: ảnh tham chiếu của cảnh + 1 storyboard (cùng cách tính với payload video). */
+export function videoImageCount(scene: SceneRow): number {
+  let ids: unknown = [];
+  try {
+    ids = JSON.parse(scene.upload_refs ?? '[]');
+  } catch {
+    ids = [];
+  }
+  return (Array.isArray(ids) ? ids.length : 0) + 1;
 }
 
 export function storyboardApproveError(ctx: AppContext, scene: SceneRow): AppError | null {

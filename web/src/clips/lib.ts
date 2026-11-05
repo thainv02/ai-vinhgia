@@ -1,3 +1,6 @@
+import { jobIsActive } from '../../../server/src/lib/job-state';
+import { cleanupSegmentsSpans, type Segment } from '../../../server/src/lib/clip-cleanup';
+import { clipParts, partSpans } from '../../../server/src/lib/clip-parts';
 import type { Clip, ClipCut, ClipProjectDetail, SourceVideo, TranscriptSentence } from './types';
 import { renderQueueTitle } from '../lib/finalCut';
 
@@ -87,7 +90,7 @@ export function cutQueueTitle(cut: Pick<ClipCut, 'queue_position' | 'running_cou
 }
 
 export const cutIsActive = (cut: ClipCut | null | undefined): boolean => cut?.status === 'rendering';
-export const planIsActive = (d: ClipProjectDetail | undefined): boolean => !!d?.plan_job && ['queued', 'claimed', 'running'].includes(d.plan_job.status);
+export const planIsActive = (d: ClipProjectDetail | undefined): boolean => jobIsActive(d?.plan_job);
 export const sourceIsActive = (s: SourceVideo | null | undefined): boolean => !!s && (s.status === 'uploaded' || s.status === 'transcribing');
 
 /** Có việc đang chạy thì làm mới đều (SSE là chính, đây là lưới an toàn; trang LAN không có SSE). */
@@ -95,7 +98,7 @@ export function projectNeedsPolling(d: ClipProjectDetail | undefined): boolean {
   if (!d) return false;
   // LAN: bản xem thử 480p được sinh sau khi tải lên; chưa có thì hỏi lại cho tới khi có.
   const previewPending = d.project.source === 'lan' && d.source?.status === 'transcribed' && !d.source.video_url && !d.source.source_deleted;
-  return previewPending || sourceIsActive(d.source) || planIsActive(d) || d.clips.some((c) => cutIsActive(c.latest_cut));
+  return previewPending || sourceIsActive(d.source) || planIsActive(d) || d.clips.some((c) => cutIsActive(c.latest_cut) || jobIsActive(c.cleanup_job));
 }
 
 /** Chỉ số câu chứa từ `wordIdx` (nhị phân theo từ đầu mỗi câu). `starts[k]` là chỉ số từ đầu của câu k. */
@@ -133,4 +136,22 @@ export function clipById(d: ClipProjectDetail | undefined, id: number): Clip | u
 }
 
 /** Số clip đã dựng xong (bản mới nhất `ready`) để bật nút ZIP (server gói mọi clip có bản `ready`, kể cả clip đã bỏ). */
-export const readyClipCount = (clips: Clip[]): number => clips.filter((c) => c.latest_cut?.status === 'ready').length;
+export const readyClipCount = (clips: Clip[]): number => clips.filter((c) => c.latest_cut?.status === 'ready' && !c.latest_cut_stale).length;
+
+export { jobIsActive, planQuotaBlock } from './jobState';
+export { clipParts, isMultiPart, partSpans, partIndexOfWord, partWordIndices, wordRangesOverlap, MAX_CLIP_PARTS, MIN_PART_S } from '../../../server/src/lib/clip-parts';
+
+/** Các khoảng nguồn được giữ của clip theo thứ tự phát (đã trừ chỗ bỏ khi làm gọn). Lỗi dữ liệu thì dùng nguyên các đoạn. */
+export function clipPlaySegments(c: Clip): Segment[] {
+  if (c.retained_segments?.length) return c.retained_segments;
+  const spans = partSpans(clipParts(c));
+  if (!c.cleanup) return spans;
+  try {
+    return cleanupSegmentsSpans(spans, c.cleanup.proposals, c.cleanup.selected_ids);
+  } catch {
+    return spans;
+  }
+}
+
+/** Đoạn thời gian gọn của một đoạn nguồn: «45:10–45:22». */
+export const spanLabel = (a: number, b: number): string => `${clock(a)}–${clock(b)}`;

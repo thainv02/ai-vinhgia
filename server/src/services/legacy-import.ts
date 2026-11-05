@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import type { AppContext } from '../context.js';
 import type { AssetKind, ProjectRow, RefRow, SceneRow, SceneStatus, Verdict } from '../db/types.js';
 import { slugify } from '../lib/paths.js';
-import { attemptsUsed, budgetNumbers } from './budget.js';
+import { attemptsUsed } from './budget.js';
 import { finalPaths, selectionSignature, type Edl, type SelectionItem } from './final-cuts.js';
 import { hashBuffer } from './refs.js';
 import { detectImageType, sanitizeBaseName, type ImageType } from './refs.js';
@@ -317,12 +317,10 @@ export interface LegacyImportSummary {
     prompt_versions: number;
     comments: number;
     events: number;
-    ledger_entries: number;
     final_cuts: number;
   };
   /** Số hàng MỚI trong mỗi bảng của lần chạy này (lần chạy lặp lại = toàn 0). */
   created: Record<string, number>;
-  credits: { used: number; reserved: number; per_video: number };
   scenes: {
     code: string;
     status: SceneStatus;
@@ -335,7 +333,7 @@ export interface LegacyImportSummary {
   warnings: string[];
 }
 
-const COUNTED_TABLES = ['projects', 'project_refs', 'scenes', 'scene_prompt_versions', 'jobs', 'assets', 'comments', 'events', 'credit_ledger', 'final_cuts'] as const;
+const COUNTED_TABLES = ['projects', 'project_refs', 'scenes', 'scene_prompt_versions', 'jobs', 'assets', 'comments', 'events', 'final_cuts'] as const;
 
 export function tableCounts(ctx: AppContext): Record<string, number> {
   const out: Record<string, number> = {};
@@ -443,8 +441,8 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
       const now = ctx.now();
       const info = db
         .prepare(
-          `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, credit_per_video, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 2, 15, 'active', ?, ?)`,
+          `INSERT INTO projects (slug, name, brief, style_lock, max_attempts_per_scene, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 2, 'active', ?, ?)`,
         )
         .run(slug, LEGACY_PROJECT_NAME, parsed.brief, parsed.style_lock, now, now);
       project = getProject(ctx, Number(info.lastInsertRowid));
@@ -657,23 +655,6 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
       if (!matchedLog.has(k)) warn(`log.md: dòng ${e.clip} lần ${e.attempt} ${e.kind} không có file tương ứng`);
     }
 
-    // sổ cái: mỗi video −credit_per_video
-    for (const f of files) {
-      if (f.kind !== 'video') continue;
-      const scene = sceneByCode.get(f.code);
-      if (!scene) continue;
-      const lKey = key(`ledger:${f.code}:${f.attempt}`);
-      if (db.prepare('SELECT 1 FROM credit_ledger WHERE ext_key = ?').get(lKey)) continue;
-      db.prepare('INSERT INTO credit_ledger (project_id, scene_id, job_id, delta, note, created_at, ext_key) VALUES (?, ?, NULL, ?, ?, ?, ?)').run(
-        pid,
-        scene.id,
-        -project.credit_per_video,
-        `Nhập từ log.md: ${f.code} lượt ${f.attempt}`,
-        isoOrNow(ctx, f.mtime),
-        lKey,
-      );
-    }
-
     // ---- ghi chú "prompt chưa được lưu" cho lượt dùng prompt đã sửa
     for (const e of logEntries) {
       if (e.kind !== 'video' || e.attempt < 2 || !/prompt\s+(đã\s+)?sửa/i.test(nfc(e.type))) continue;
@@ -847,7 +828,6 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
   const after = tableCounts(ctx);
   const created: Record<string, number> = {};
   for (const t of COUNTED_TABLES) created[t] = (after[t] ?? 0) - (before[t] ?? 0);
-  const { used, reserved } = budgetNumbers(ctx, project);
   const sceneRows = db.prepare('SELECT * FROM scenes WHERE project_id = ? ORDER BY order_index, id').all(pid) as SceneRow[];
   return {
     project: { id: pid, slug: project.slug, name: project.name, created: projectCreated },
@@ -860,11 +840,9 @@ export function importLegacy(ctx: AppContext, opts: LegacyImportOptions = {}): L
       prompt_versions: scalar('SELECT COUNT(*) AS n FROM scene_prompt_versions v JOIN scenes s ON s.id = v.scene_id WHERE s.project_id = ?'),
       comments: scalar('SELECT COUNT(*) AS n FROM comments c JOIN scenes s ON s.id = c.scene_id WHERE s.project_id = ?'),
       events: scalar('SELECT COUNT(*) AS n FROM events WHERE project_id = ?'),
-      ledger_entries: scalar('SELECT COUNT(*) AS n FROM credit_ledger WHERE project_id = ?'),
       final_cuts: scalar('SELECT COUNT(*) AS n FROM final_cuts WHERE project_id = ?'),
     },
     created,
-    credits: { used, reserved, per_video: project.credit_per_video },
     scenes: sceneRows.map((s) => ({
       code: s.code,
       status: s.status,
@@ -885,11 +863,10 @@ export function formatSummary(s: LegacyImportSummary, dbLabel: string): string {
   const lines = [
     `Nhập dữ liệu cũ: "${s.project.name}" (slug ${s.project.slug}, id ${s.project.id}) — ${s.project.created ? 'tạo mới' : 'dự án đã có, cập nhật bổ sung'}`,
     `DB: ${dbLabel}`,
-    `Hiện có: ${c.scenes} cảnh, ${c.storyboards} storyboard, ${c.videos} video, ${c.grids} ảnh lưới, ${c.refs} ảnh tham chiếu, ${c.prompt_versions} version prompt, ${c.comments} comment, ${c.ledger_entries} dòng sổ cái, ${c.final_cuts} bản dựng hoàn chỉnh, ${c.events} sự kiện`,
+    `Hiện có: ${c.scenes} cảnh, ${c.storyboards} storyboard, ${c.videos} video, ${c.grids} ảnh lưới, ${c.refs} ảnh tham chiếu, ${c.prompt_versions} version prompt, ${c.comments} comment, ${c.final_cuts} bản dựng hoàn chỉnh, ${c.events} sự kiện`,
     nonZero.length
       ? `Hàng mới ở lần chạy này: ${nonZero.map(([t, n]) => `${t} ${n > 0 ? '+' : ''}${n}`).join(', ')}`
       : 'Hàng mới ở lần chạy này: không có (dữ liệu đã được nhập trước đó)',
-    `Credit: đã dùng ${s.credits.used}, đặt trước ${s.credits.reserved} (${s.credits.per_video} credit/video)`,
     ...s.scenes.map(
       (sc) =>
         `  ${sc.code}: ${sc.status}, lượt ${sc.attempts_used}/${sc.max_attempts}, video chọn ${sc.selected_attempt ? 'v' + sc.selected_attempt : '(chưa)'}, prompt v${sc.prompt_version}`,

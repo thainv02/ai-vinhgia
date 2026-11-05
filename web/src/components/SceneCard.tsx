@@ -108,7 +108,7 @@ function AttemptPips({ used, max }: { used: number; max: number }) {
   );
 }
 
-export function SceneCard({ scene, projectId, creditPerVideo }: { scene: Scene; projectId: number; creditPerVideo: number }) {
+export function SceneCard({ scene, projectId }: { scene: Scene; projectId: number }) {
   const info = sceneStatusInfo(scene.status);
   const href = `/projects/${projectId}/scenes/${scene.id}`;
   const job = scene.active_job;
@@ -156,7 +156,7 @@ export function SceneCard({ scene, projectId, creditPerVideo }: { scene: Scene; 
         </div>
       </div>
       <div className="mt-3">
-        <SceneActions scene={scene} creditPerVideo={creditPerVideo} variant="card" />
+        <SceneActions scene={scene} variant="card" />
       </div>
     </article>
   );

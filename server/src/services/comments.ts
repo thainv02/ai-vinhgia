@@ -21,7 +21,7 @@ export type CommentInput = z.infer<typeof commentBody>;
  * Tạo comment. Với người dùng, `action` có tác dụng phụ (trong CÙNG transaction, nếu lỗi thì comment cũng không được lưu):
  *  - note: chỉ lưu
  *  - revise_and_regenerate: cảnh → needs_revision + job revise_prompt (KHÔNG tạo job video)
- *  - regenerate_same: approveVideo (kiểm tra credit/lượt)
+ *  - regenerate_same: approveVideo (kiểm tra lượt)
  *  - regenerate_storyboard: approveStoryboard
  * Comment của AI (author='claude') luôn là ghi chú, không có tác dụng phụ.
  */

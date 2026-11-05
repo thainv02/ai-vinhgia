@@ -643,7 +643,7 @@ export function cancelCutForJob(ctx: AppContext, jobId: number): void {
 
 export const rerenderBody = z.object({ edl: z.unknown().optional(), note: z.string().trim().max(2000).optional() });
 
-/** Người dùng chỉnh EDL → version MỚI (created_by `user`, cùng lựa chọn video như bản gốc), render ngay, không qua worker, không tốn credit. */
+/** Người dùng chỉnh EDL → version MỚI (created_by `user`, cùng lựa chọn video như bản gốc), render ngay, không qua worker. */
 export function rerenderFinalCut(ctx: AppContext, sourceId: number, input: { edl: unknown; note?: string }): number {
   return ctx.tx(() => {
     const src = getFinalCutRow(ctx, sourceId);
@@ -824,7 +824,7 @@ export function tmpCleanPath(rootDir: string, mainRel: string): string {
 }
 
 /**
- * `POST /api/final-cuts/:id/clean`: chạy lại RIÊNG bước xoá logo Veo (không render lại, không tốn credit).
+ * `POST /api/final-cuts/:id/clean`: chạy lại RIÊNG bước xoá logo Veo (không render lại).
  * Cho phép khi `failed_stage='clean'` (failed hoặc cancelled giữa chừng) hoặc khi `ready` mà `watermark_removed=0`.
  * Bản cũ chưa có `raw_video_path` (render trước khi có bước này): đổi tên `<slug>_final_v<n>.mp4` → `_raw.mp4` TRƯỚC
  * (nguyên tử, cập nhật DB), rồi xoá logo ra tên chính. Route phải kiểm tra tool khả dụng trước khi gọi.

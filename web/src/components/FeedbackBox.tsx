@@ -111,7 +111,7 @@ export function FeedbackBox({
         <Button variant="primary" icon={<Icon name="send" size={14} />} loading={send.isPending} disabledReason={reason} onClick={submit}>
           Gửi góp ý cho AI
         </Button>
-        <span className="text-xs text-muted">Chỉ đổi màu thì xong sau vài giây, không tốn credit Flow.</span>
+        <span className="text-xs text-muted">Chỉ đổi màu thì xong sau vài giây.</span>
       </div>
       {blockReason && (
         <p className="mt-1.5 flex items-start gap-1 text-xs text-warn-fg">

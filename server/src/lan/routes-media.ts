@@ -98,7 +98,7 @@ export function registerLanMediaRoutes(app: FastifyInstance, ctx: AppContext, L:
     return reply.code(201).send({ final_cut: lanFinalCutJson(ctx, lanFinalCutRow(ctx, p, id)), rate: { create_final_remaining: remaining(L.createFinal, ip) } });
   });
 
-  // Render lại với điểm cắt người dùng sửa (version mới; không qua worker, không tốn credit). Dùng chung hạn mức với "dựng".
+  // Render lại với điểm cắt người dùng sửa (version mới; không qua worker). Dùng chung hạn mức với "dựng".
   app.post('/lan/api/plans/:id/final-cuts/:cutId/rerender', async (req, reply) => {
     const ip = lanIp(req);
     const p = lanProject(ctx, planId(req));

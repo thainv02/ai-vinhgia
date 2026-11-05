@@ -40,7 +40,7 @@ export class AppContext {
   public lastEmittedOnline: boolean | null = null;
   /** Dịch vụ render bản hoàn chỉnh (nền). Gán trong buildApp; null trong script/test không cần render. */
   public finalRender: FinalRenderService | null = null;
-  /** Dịch vụ nhận dạng lời nói cho dự án cắt clip (hàng đợi một việc một lúc). Gán trong buildApp. */
+  /** Dịch vụ nhận dạng lời nói cho dự án highlight (hàng đợi một việc một lúc). Gán trong buildApp. */
   public stt: SttService | null = null;
   /** Trạng thái listener LAN (do index.ts đặt); null = chưa/không bật. Chỉ để app chính hiển thị khối "Chia sẻ qua LAN". */
   public lan: { listening: boolean; host: string; port: number; error: string | null } | null = null;

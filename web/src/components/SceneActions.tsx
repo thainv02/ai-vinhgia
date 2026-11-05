@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { errorMessage, type ApiError } from '../api/client';
 import type { JobType, Scene } from '../api/types';
 import { useApproveScene, useCancelJob, useResetScene, useSelectVideo } from '../hooks/mutations';
+import { useVideoGenerators } from '../hooks/queries';
+import { effectiveGenerator, GeneratorPicker, useGeneratorChoice } from './GeneratorPicker';
+import { logoPending } from './StoryboardLogo';
 import { JOB_TYPE_LABEL } from '../lib/status';
 import { Button, type ButtonVariant } from './Button';
 import { ConfirmDialog } from './Modal';
@@ -12,7 +15,6 @@ interface ActionSpec {
   key: string;
   label: string;
   variant: ButtonVariant;
-  credit?: number;
   reason?: string | null;
   loading?: boolean;
   onClick: () => void;
@@ -22,7 +24,6 @@ interface ActionSpec {
 
 interface Props {
   scene: Scene;
-  creditPerVideo: number;
   variant: 'card' | 'detail';
   /** Loại job gần nhất của cảnh (chỉ trang chi tiết có) để "Thử lại" đúng bước. */
   lastJobType?: JobType;
@@ -30,14 +31,18 @@ interface Props {
   viewingVideoId?: number;
 }
 
-/** Nút theo trạng thái của một cảnh. Mọi nút tốn credit ghi rõ số credit và qua hộp xác nhận. */
-export function SceneActions({ scene, creditPerVideo, variant, lastJobType, viewingVideoId }: Props) {
+/** Nút theo trạng thái của một cảnh. Mọi nút tạo video đều qua hộp xác nhận (ghi rõ lượt sẽ dùng). */
+export function SceneActions({ scene, variant, lastJobType, viewingVideoId }: Props) {
   const [confirm, setConfirm] = useState<'video' | 'cancel' | 'reconcile' | null>(null);
   const approveStoryboard = useApproveScene();
   const approveVideo = useApproveScene({ silent: true });
   const cancel = useCancelJob({ silent: true });
   const reset = useResetScene();
   const select = useSelectVideo();
+  const [generatorChoice, setGeneratorChoice] = useGeneratorChoice();
+  const generators = useVideoGenerators().data?.generators ?? [];
+  const imageCount = scene.upload_refs.length + 1;
+  const generator = effectiveGenerator(generators, generatorChoice, imageCount);
 
   const sb = scene.storyboard_block;
   const vb = scene.video_block;
@@ -57,7 +62,6 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
     key: 'video',
     label,
     variant: variantName,
-    credit: creditPerVideo,
     reason: vb?.message ?? null,
     onClick: () => {
       approveVideo.reset();
@@ -114,7 +118,7 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
     case 'video_running':
     case 'needs_revision':
       if (scene.active_job?.reconcile_required) {
-        // Job đã gửi lệnh tạo sang Flow/ChatGPT nhưng chưa rõ kết quả: hủy bị chặn, phải đối soát để credit/lượt ghi đúng.
+        // Job đã gửi lệnh tạo sang Flow/ChatGPT nhưng chưa rõ kết quả: hủy bị chặn, phải đối soát để lượt tạo được ghi đúng.
         actions.push({ key: 'reconcile', label: 'Đối soát', variant: 'primary', onClick: () => setConfirm('reconcile') });
       } else if (scene.active_job) {
         actions.push({ key: 'cancel', label: 'Hủy job', variant: 'danger', reason: cancelBlockedReason(scene.active_job), onClick: () => setConfirm('cancel') });
@@ -135,7 +139,6 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
           <div key={a.key} className={variant === 'card' ? 'w-full' : ''}>
             <Button
               variant={a.variant}
-              credit={a.credit}
               loading={a.loading}
               disabledReason={a.reason}
               onClick={a.onClick}
@@ -158,18 +161,24 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
         onClose={() => setConfirm(null)}
         title={`Tạo video cho ${scene.code}?`}
         confirmLabel="Xác nhận tạo video"
-        credit={creditPerVideo}
         pending={approveVideo.isPending}
         error={approveVideo.isError ? errorMessage(approveVideo.error) : null}
         confirmDisabledReason={vb?.message ?? null}
         onConfirm={() =>
           approveVideo.mutate(
-            { sceneId, stage: 'video' },
+            { sceneId, stage: 'video', generator: generator?.id },
             { onSuccess: () => setConfirm(null) },
           )
         }
       >
-        <VideoCostSummary scene={scene} creditPerVideo={creditPerVideo} />
+        <VideoCostSummary scene={scene} />
+        {logoPending(scene.storyboard) && (
+          <p className="flex items-start gap-1.5 rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+            <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
+            <span>Storyboard tạo bằng Google Flow chưa được xoá logo, video có thể dính logo. Bấm «Xoá logo lại» dưới ảnh storyboard ở trang cảnh trước khi tạo video.</span>
+          </p>
+        )}
+        <GeneratorPicker value={generatorChoice} onChange={setGeneratorChoice} imageCount={imageCount} />
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -191,13 +200,12 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
       >
         {job?.status === 'queued' ? (
           <p>
-            Job chưa được worker nhận.{' '}
-            {job.type === 'video' ? `Phần credit đã đặt trước (${creditPerVideo}) sẽ được trả lại.` : 'Không mất credit.'} Cảnh quay về trạng thái ổn định trước đó.
+            Job chưa được worker nhận.{job.type === 'video' ? ' Lượt tạo video đã giữ cho job này được trả lại.' : ''} Cảnh quay về trạng thái ổn định trước đó.
           </p>
         ) : (
           <p>
             Worker đang xử lý job này và sẽ dừng ở lần báo tiếp theo.
-            {job?.type === 'video' ? ' Nếu Flow đã bắt đầu tạo video thì credit có thể đã bị tính.' : ''}
+            {job?.type === 'video' ? ' Nếu video đã bắt đầu được tạo thì lượt này có thể vẫn bị tính.' : ''}
           </p>
         )}
       </ConfirmDialog>
@@ -207,12 +215,12 @@ export function SceneActions({ scene, creditPerVideo, variant, lastJobType, view
   );
 }
 
-/** Nội dung xác nhận chi phí cho mọi thao tác tạo video: số credit sắp tiêu và lượt dùng. */
-export function VideoCostSummary({ scene, creditPerVideo }: { scene: Scene; creditPerVideo: number }) {
+/** Nội dung xác nhận cho mọi thao tác tạo video: tạo video dùng một lượt của cảnh. */
+export function VideoCostSummary({ scene }: { scene: Scene }) {
   return (
     <>
       <p>
-        Tạo 1 video 9:16 cho <strong>{scene.code}: {scene.title}</strong>. Việc này tiêu <strong className="text-spend">{creditPerVideo} credit</strong> thật trên Google Flow.
+        Tạo 1 video 9:16 cho <strong>{scene.code}: {scene.title}</strong>. Việc này dùng <strong>1 lượt</strong> tạo video của cảnh.
       </p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md bg-surface-2 px-3 py-2 text-[13px]">
         <dt className="text-muted">Lượt video của cảnh</dt>
@@ -221,7 +229,7 @@ export function VideoCostSummary({ scene, creditPerVideo }: { scene: Scene; cred
         </dd>
       </dl>
       <p className="text-[13px] text-muted">
-        Credit được đặt trước ngay khi bạn xác nhận. Nếu hủy job trước khi worker chạy, phần đặt trước được trả lại. Các video cũ vẫn được giữ.
+        Lượt được tính ngay khi bạn xác nhận. Nếu hủy job trước khi worker chạy, lượt được trả lại. Các video cũ vẫn được giữ.
       </p>
     </>
   );

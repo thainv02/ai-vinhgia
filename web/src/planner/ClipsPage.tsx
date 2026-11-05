@@ -55,9 +55,9 @@ const AnchorLink: LinkComp = ({ id, className, children }) => (
   </a>
 );
 
-/** Tab "Cắt clip" của trang LAN: danh sách dự án của mọi người trong mạng + tạo dự án mới. */
+/** Tab "Highlight" của trang LAN: danh sách dự án của mọi người trong mạng + tạo dự án mới. */
 export function ClipsPage() {
-  useDocumentTitle('Cắt clip');
+  useDocumentTitle('Highlight');
   const env = useLanClipEnv();
   return (
     <ClipEnvProvider value={env}>
@@ -73,11 +73,11 @@ function ClipsList() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Cắt clip từ video dài</h1>
-          <p className="text-[13px] text-muted">Tải lên video dài có tiếng nói, AI chọn các đoạn hay, bạn duyệt rồi dựng clip 9:16 có phụ đề tiếng Việt và tải về.</p>
+          <h1 className="text-xl font-bold tracking-tight">Highlight từ video dài</h1>
+          <p className="text-[13px] text-muted">Tải lên video dài có tiếng nói, AI đề xuất các đoạn highlight, bạn duyệt rồi dựng clip 9:16 có phụ đề tiếng Việt và tải về.</p>
         </div>
         <Button variant="primary" icon={<Icon name="plus" />} onClick={() => setCreating(true)}>
-          Dự án cắt clip mới
+          Dự án highlight mới
         </Button>
       </div>
       <ClipProjectList projects={q.data} loading={q.isLoading} error={q.error} onRetry={() => void q.refetch()} onCreate={() => setCreating(true)} Link={AnchorLink} />
@@ -86,7 +86,7 @@ function ClipsList() {
   );
 }
 
-/** Trang một dự án cắt clip trên LAN: cùng luồng với app chính (gọn hơn), kèm số lượt còn lại. */
+/** Trang một dự án highlight trên LAN: cùng luồng với app chính (gọn hơn), kèm số lượt còn lại. */
 export function ClipProjectPage({ id }: { id: number }) {
   const env = useLanClipEnv();
   return (
@@ -95,7 +95,7 @@ export function ClipProjectPage({ id }: { id: number }) {
         projectId={id}
         back={
           <a href={hrefOf({ name: 'clips' })} className="inline-flex items-center gap-1 text-[13px] text-muted hover:text-fg">
-            <Icon name="arrowLeft" size={14} /> Cắt clip
+            <Icon name="arrowLeft" size={14} /> Highlight
           </a>
         }
         onDeleted={() => {

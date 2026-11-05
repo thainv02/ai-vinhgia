@@ -62,7 +62,7 @@ Tất cả chạy trên DB/ROOT tạm, gateway AI giả, và **Chrome headless r
 | Mục | Test chính |
 |---|---|
 | F1 phân loại nút, site theo loại job | `browser-policy.test.ts` (nhãn thật `Generated image 1`/`Share…`/`Edit…`, động từ đứng riêng, icon ligature, form submit, mua/nâng cấp, mục tải bị cấm, site theo loại job) và `browser-executor.test.ts` (ChatGPT: click ảnh sinh ra được, Send bị chặn, `browser_open/select/submit` sai site → `WRONG_SITE`) |
-| F2 kiểm tra cứng trước submit | `worker-logic.test.ts` (chip, credit, prompt, upload, fail-safe khi không xác minh được) và `browser-executor.test.ts` (Flow: 9:16/10s/x1/720p/credit/prompt/upload từng mục sai → `PRECHECK_FAILED`, không journal, không click; upload qua showOpenFilePicker/filechooser/không có hộp chọn file; menu Download, `720p Original` tải được, `1080p Upscaled`/`4K (Upgrade)`/`270p GIF` không bị bấm) |
+| F2 kiểm tra cứng trước submit | `worker-logic.test.ts` (chip, prompt, upload, fail-safe khi không xác minh được; từ 04/11/2026 không còn đối chiếu dòng credit) và `browser-executor.test.ts` (Flow: 9:16/10s/x1/720p/prompt/upload từng mục sai → `PRECHECK_FAILED`, không journal, không click; upload qua showOpenFilePicker/filechooser/không có hộp chọn file; menu Download, `720p Original` tải được, `1080p Upscaled`/`4K (Upgrade)`/`270p GIF` không bị bấm) |
 | F3 chế độ kết hợp | `mixed-mode.test.ts` (claim theo loại, WORKER.md legacy chạy như cũ, endpoint ghi theo job, `MANAGED_JOB_TYPES`), `managed-worker.test.ts` |
 | F4 đối soát | `reconcile.test.ts` (ba lựa chọn, idempotent, transaction, hủy bị chặn, ledger một lần); giao diện kiểm tra bằng Chrome headless trên server tạm (Hàng đợi, thẻ cảnh, chi tiết cảnh, hộp thoại; không lỗi JS) |
 | F5 ngân sách lượt | `worker-logic.test.ts` (nén ngữ cảnh, không tool_call_id mồ côi), `browser-executor.test.ts` (`browser_wait`), `worker-runner.test.ts` (vòng lặp đầy đủ: nén khi > 60 message, hết 60 lượt báo lỗi rõ ràng) |
@@ -90,3 +90,48 @@ Kiểm tra cuối tại repo: `npm test` với ffmpeg có libass → **846 đạ
 - Mất lease, hủy job, hết tài khoản AI và lỗi request không bị thử lại theo lỗi mạng. Lỗi mạng/timeout chỉ thử lại tối đa hai lần, chờ 1/2 s; sau đó áp dụng xử lý thất bại/chưa kiểm định sẵn có của từng bước.
 
 Chưa kiểm định lại chất lượng chọn clip bằng Gemini thật; cần người dùng yêu cầu chạy thử để tạo job. Worker đang chạy từ trước cần khởi động lại để nạp mã mới vào lần vận hành tiếp theo; phiên sửa mã không tự khởi động worker.
+
+## Làm gọn lời nói trong clip (2026-10-27)
+
+Bổ sung đề xuất tiếng đệm/nói vấp/nói lại, nghe thử và duyệt riêng; render cắt cả hình/tiếng và tính lại ASS/SRT. Không chạy worker sản xuất, không gọi inference/Flow thật, không dựng lại video cúm.
+
+- `clips-cleanup.test.ts`: 16 kiểm tra gồm ID/câu trích/độ chắc chắn, từ có nội dung bị gán nhầm filler, khoảng chồng, phần nói lại cần giữ, giới hạn tổng bỏ, retime cả từ gộp/ẩn; API + managed runner với inference giả, worker cũ không nhận cleanup, checkpoint/complete replay không ghi đè lựa chọn đã duyệt, undo và chống stale/ABA. Video ffmpeg thật kiểm tra hình đã bỏ ở giữa, có/không audio; snapshot hàng đợi giữ đúng điểm bỏ và chữ phụ đề dù người dùng đổi trước khi ffmpeg chạy, bản v1 giữ nguyên khi dựng v2.
+- `clips-lan.test.ts`: thêm kiểm tra cách ly app/LAN, hạn mức AI và trần hàng đợi, đề xuất chưa tự áp dụng, duyệt riêng, không lộ file nguồn/đường dẫn máy chủ.
+- Migration 015: DB 014 tạm có clip/cut cũ giữ nguyên dữ liệu. Kiểm tra thêm trên bản sao riêng của DB hiện tại: hash các cột cũ của cả 24 bảng không đổi, `foreign_key_check` rỗng, `integrity_check=ok`; bản sao đã được xoá sau kiểm tra.
+- Chrome headless riêng, API/DB/video tạm và chặn mọi request ngoài localhost: desktop/mobile, nghe thử, duyệt, tải lại trang giữ lựa chọn, hoàn tác, không tràn ngang; không lỗi JavaScript hoặc request ngoài. Nghe thử trên nguồn dùng thao tác tua qua đoạn bỏ, không thay thế kiểm tra file dựng.
+- Kiểm tra cuối tại workspace: `AUTOVIDEO_TEST_LIBASS_FFMPEG=/Users/thainv/miniconda3/envs/lab-adsvideo/bin/ffmpeg npm test -- -- --maxWorkers=4` → **863 đạt, 1 bỏ qua, 68 bộ test đạt**. `npm run typecheck`, `npm run build`, `git diff --check` đều qua. Các bài tích hợp Shotcut/xoá logo thật chạy trên media/DB tạm cũng qua.
+- Hai lượt chạy mặc định trước đó có lỗi phụ thuộc tải máy ở test có sẵn: dò PID con trong `final-watermark.test.ts`, rồi timeout 30s khi dựng ba bản trong `clips-render.test.ts`. Lượt giới hạn 4 worker hoàn tất sạch; không đổi renderer xoá logo, timeout hay nội dung các bài kiểm tra này.
+
+Ở mốc kiểm thử ban đầu này chưa chạy model thật; lần chạy thực tế 2026-10-28 được ghi bên dưới. AI chỉ thấy những gì STT nhận dạng, nên có thể bỏ sót âm đệm bị STT lược bỏ. Cần khởi động lại server/managed worker để nạp mã mới khi dùng; server sao lưu DB trước migration, worker mới quảng bá `features=clip_cleanup`.
+
+## Làm gọn bắt buộc và timeline chỉnh tay (2026-10-28)
+
+- Tạo clip tự nối cleanup tuần tự, complete tự áp dụng, render chặn clip chưa xử lý; lỗi không retry vô hạn, endpoint tiếp tục xử lý clip cũ.
+- Chỉnh điểm bỏ theo chỉ số từ, từ chối ngoài clip/phần nói lại được bảo vệ; lưu/khôi phục, stale revision, snapshot dựng và ZIP loại bản cũ.
+- Bộ test dùng inference giả, DB/video tạm; xử lý 3 clip cúm thật được chạy riêng theo yêu cầu người dùng.
+
+Kết quả hoàn tất 2026-10-28:
+
+- `AUTOVIDEO_TEST_LIBASS_FFMPEG=… npm test -- -- --maxWorkers=4`: 68 file, 866 đạt, 1 bỏ qua; `npm run typecheck`, `npm run build`, `git diff --check` đạt. DB thật: integrity `ok`, không có lỗi foreign key.
+- Chrome headless với DB/video tạm: clip pending bị ẩn; complete tự hiện timeline; kéo điểm cuối, lưu/tải lại, khôi phục/lưu/tải lại; preview bỏ qua khoảng đã cắt; viewport 390px không tràn ngang, không có lỗi JavaScript.
+- Theo yêu cầu người dùng, dự án cúm #15 chạy cleanup thật #69–71: K1 bỏ 1 chỗ (0,489s), K2 bỏ 5 chỗ (3,174s), K3 bỏ 1 chỗ (0,200s). Bản v2 #7–9 đều ready, có video/audio, thời lượng thực 51,817 / 55,283 / 41,717s; mọi cue SRT nằm trong đồng hồ mới. ZIP gồm 3 MP4 + 3 SRT, CRC hợp lệ; v1 vẫn giữ.
+- Đã cập nhật app, khởi động lại server/worker và account proxy supervisor đang tắt. Manifest và ảnh giao diện thật: `output/ung-pho-voi-cum-cat-clip/clips/cleanup-run-20261028.json`, `cleanup-timeline.png`, `cleanup-K2.png`.
+
+## Sửa lỗi sau review làm gọn (2026-10-28)
+
+- `npm test -- -- --maxWorkers=4` với ffmpeg libass chỉ định: 68 file, 878 đạt, 1 bỏ qua; `npm run typecheck`, `npm run build`, `git diff --check` đạt. Test dùng DB/video/inference giả; không tạo thêm job sản xuất.
+- Regression: worker cũ/legacy không nhận cleanup → hết hạn 5 phút, mở khóa chọn clip; worker hỗ trợ/backlog, quota wait và queue pause không hết hạn. Chặn lưu lựa chọn cũ trong cùng clip đang chạy AI; giữ revision, dấu job mới và polling.
+- ASR zero-duration giữ ở khoảng giữ, loại ở khoảng bỏ và không nhân đôi mối nối; SRT/ASS giữ chữ. Clip cũ dùng đúng source/transcript ngay cả khi dự án có nguồn mới; range/caption edits cũng theo nguồn clip.
+- 25 fps/31 đoạn: trường hợp không tiếng trước sửa chỉ còn 3,72s thay vì 4,619s; sau sửa video 4,60s, có tiếng 4,619s. Đã chạy qua API với 30 điểm bỏ thật trên video tạm và kiểm tra cả hình/tiếng.
+- Polling nhiều clip và payload chọn đoạn lớn: một truy vấn cleanup cho dự án; EXPLAIN xác nhận partial index. Server trả retained_segments; cùng thuật toán dùng cho render/timeline, jobIsActive dùng chung. Nút làm gọn lấy quota plan. Cờ stale tồn tại sau đổi phụ đề và mở kết nối khác, kể cả bản legacy.
+- Chrome headless: kéo/lưu/tải lại, khôi phục, preview bỏ khoảng cắt; viewport 390px không tràn; chạy lại AI khóa chỉnh sửa, complete cập nhật lựa chọn của job mới và vẫn polling, reload giữ đúng; không lỗi JavaScript.
+- Migration 016 từ DB 015 giữ nguyên job/worker cũ. Chạy thử trên bản sao DB thật: 72 jobs, 6 clips, 9 clip_cuts giữ nguyên; integrity ok, foreign key check sạch. Giữ nguyên migration 015 đã áp dụng.
+
+## Gọn giao diện LAN desktop (2026-10-28)
+
+- Sửa đo lời thoại khi khung bị ẩn/chiều cao bằng 0. Chrome headless dùng lời thoại dài thật của dự án #18, đổi tab và chiều rộng 390/640/768/1023/1024/1440px: không còn React #185 hoặc lỗi JavaScript. Không làm các thay đổi giao diện chỉ dành cho điện thoại.
+- Thẻ clip thu gọn phần làm gọn, lý do/lời thoại và bản dựng; một điểm AI, nút Duyệt & dựng, menu phụ, gợi ý thêm clip. Cùng ba clip ở 1440px, chiều cao trang giảm từ khoảng 2690px xuống 1696px. Kiểm tra mở lại timeline, duyệt lỗi không gọi render, duyệt thành công trước render, dựng hàng loạt dừng khi lỗi và tiếp tục không xếp lại clip đã nhận. Mọi request ghi trong kiểm tra trình duyệt đều giả lập, không gửi sang ứng dụng thật.
+- Kế hoạch dùng thanh bước chung, nút chính dẫn đúng cảnh/bước, nhãn ảnh rõ hơn; danh sách có tiến độ, thumbnail, bước tiếp theo, tìm kiếm và lọc theo tên đã lưu. Form điền ngày, đổi nhãn nhất quán; công cụ xoá logo tách cảnh báo cookie. Thẻ dự án clip có poster và số clip đã dựng.
+- Regression API trên DB/media tạm: tiến độ theo storyboard/video LAN, loại asset nội bộ, phục vụ thumbnail đúng quyền; bản hoàn chỉnh cũ trở thành stale sau đổi lựa chọn, không tạo job sản xuất. Thêm xử lý lỗi mutation cho LAN để lỗi duyệt/dựng được hiển thị.
+- `AUTOVIDEO_TEST_LIBASS_FFMPEG=… npm test -- -- --maxWorkers=4`: **68 file, 879 đạt, 1 bỏ qua**. `npm run typecheck`, `npm run build`, `git diff --check` đạt. Không gọi inference/Flow thật, không thêm migration.
+- Sau cập nhật và khởi động lại web/server: kiểm tra đọc trên cả sáu trang LAN, metadata thật, mở timeline, dẫn tới cảnh tiếp theo và đổi chiều rộng; không lỗi JavaScript, không request ghi. Ảnh desktop: `/private/tmp/autovideo-desktop-ux-results-live/`.

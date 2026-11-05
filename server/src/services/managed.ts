@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
 import type { AppContext } from '../context.js';
+import { AI_API_PROVIDER } from '../config.js';
 import { conflict } from '../lib/errors.js';
 import { getJobRow, parseJson, emitJob } from './repo.js';
 
 export interface Lease { worker: string | null; lease: string | null }
 
-/** Trạng thái action còn "sống": đã có thể phát sinh generation/credit bên ngoài và chưa được đối soát/hoàn tất. */
+/** Trạng thái action còn "sống": đã có thể phát sinh generation bên ngoài và chưa được đối soát/hoàn tất. */
 export const LIVE_ACTION_STATES = ['intent', 'uncertain', 'submitted', 'downloaded'] as const;
 export interface ActionRow { id: string; state: string; evidence: string }
 
@@ -93,8 +94,9 @@ export function browserLease(ctx: AppContext, id: number, owner: Lease, profile:
 export function completionHash(value: unknown): string { return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
 export function stampProvenance(ctx: AppContext, jobId: number, sceneIds: number[] = [], commentId?: number) {
-  const info = ctx.db.prepare(`SELECT a.provider,r.model,r.account_id FROM ai_attempts r JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=? AND r.outcome='ok' ORDER BY r.id DESC LIMIT 1`)
-    .get(jobId) as { provider: string; model: string; account_id: number } | undefined;
+  // account_id NULL = lượt gọi AI API dùng chung (xem AI_API_PROVIDER).
+  const info = ctx.db.prepare(`SELECT COALESCE(a.provider,'${AI_API_PROVIDER}') AS provider,r.model,r.account_id FROM ai_attempts r LEFT JOIN ai_accounts a ON a.id=r.account_id WHERE r.job_id=? AND r.outcome='ok' ORDER BY r.id DESC LIMIT 1`)
+    .get(jobId) as { provider: string; model: string; account_id: number | null } | undefined;
   if (!info) return;
   for (const id of sceneIds) ctx.db.prepare("UPDATE scene_prompt_versions SET provider=?,model=?,account_id=? WHERE scene_id=? AND version=(SELECT MAX(version) FROM scene_prompt_versions WHERE scene_id=?) AND created_by='agent'")
     .run(info.provider, info.model, info.account_id, id, id);

@@ -15,7 +15,7 @@ export default function ProjectListPage() {
         <h1 className="text-xl font-bold tracking-tight">Dự án</h1>
         <div className="flex flex-wrap gap-2">
           <LinkButton to="/clips?new=1" icon={<Icon name="film" />}>
-            Dự án cắt clip mới
+            Dự án highlight mới
           </LinkButton>
           <LinkButton to="/projects/new" variant="primary" icon={<Icon name="plus" />}>
             Dự án mới

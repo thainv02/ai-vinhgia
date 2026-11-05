@@ -14,7 +14,7 @@ import { ConfirmDialog } from '../components/Modal';
 import { Alert, InlineError } from '../components/States';
 import { Badge } from '../components/StatusBadge';
 import { VideoPlayer, type PlayerHandle, type TimeMarker } from '../components/VideoPlayer';
-import { aiQueueNote, buildTimeline, cleanAction, creatorText, finalStatusLabel, fmtSeconds, isWaitingToRender, logoStatusText, renderQueueNote, revisionBlockReason, stageProgressLabel } from '../lib/finalCut';
+import { aiQueueNote, buildTimeline, cleanAction, cleanErrorText, creatorText, finalStatusLabel, fmtSeconds, isWaitingToRender, logoStatusText, rawFallbackUrl, renderQueueNote, revisionBlockReason, stageProgressLabel } from '../lib/finalCut';
 import { gradeChips } from '../lib/grade';
 import type { RevisionApi } from '../lib/revisionApi';
 import { fmtDateTime } from '../lib/format';
@@ -172,7 +172,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: LanFinalCut; workerOnline
             <Icon name="alert" size={22} />
           </span>
           <p className="font-semibold">{fc.failed_stage === 'clean' ? 'Xoá logo Veo không thành công' : fc.failed_stage === 'grade' ? 'Chỉnh màu không thành công' : fc.parent_id ? 'Góp ý không thành công' : 'Edit tự động không thành công'}</p>
-          <p className="text-[13px] text-muted">{fc.error ?? 'Không có chi tiết.'}</p>
+          <p className="text-[13px] text-muted">{fc.failed_stage === 'clean' ? cleanErrorText(fc.error) : (fc.error ?? 'Không có chi tiết.')}</p>
           {fc.failed_stage === 'clean' && <p className="text-[13px] text-muted">Bản render còn nguyên nên không cần dựng lại.</p>}
           {fc.failed_stage === 'grade' && <p className="text-[13px] text-muted">Bản sạch còn nguyên: bấm «Thử chỉnh màu lại» trong lịch sử phiên bản bên dưới.</p>}
         </>
@@ -188,7 +188,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: LanFinalCut; workerOnline
  * xem/tải, timeline cắt kèm lý do, chỉnh điểm cắt rồi render lại, các phiên bản. Dùng lại FinalTimeline/EdlEditor của app chính.
  * Cập nhật bằng polling 3 giây khi có bản đang chạy.
  */
-export function FinalBlock({ detail }: { detail: PlanDetail }) {
+export function FinalBlock({ detail }: { detail: Pick<PlanDetail, 'final' | 'worker'> & { plan: { id: number; name: string } } }) {
   const planId = detail.plan.id;
   const qc = useQueryClient();
   const status = useQuery({ queryKey: ['status'], queryFn: planner.status, refetchInterval: 10_000 });
@@ -220,6 +220,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['final-cuts', planId] });
     void qc.invalidateQueries({ queryKey: ['plan', planId] });
+    void qc.invalidateQueries({ queryKey: ['auto', planId] });
     void qc.invalidateQueries({ queryKey: ['status'] });
   };
   const create = useMutation({
@@ -307,7 +308,9 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
   const baseRevisionBlock = fc ? revisionBlockReason(fc, list, wm.active) : null;
   const feedbackBlock = baseRevisionBlock ?? (st && st.remaining.feedback !== undefined && st.remaining.feedback <= 0 ? `Bạn đã gửi ${st.rate.feedback?.max ?? 20} góp ý trong giờ này, hãy thử lại sau` : queueFull ? 'Hàng đợi đang đầy, thử lại sau' : null);
   const gradeBlock = baseRevisionBlock ?? (st && st.remaining.grade !== undefined && st.remaining.grade <= 0 ? `Bạn đã chỉnh màu ${st.rate.grade?.max ?? 30} lần trong giờ này, hãy thử lại sau` : queueFull ? 'Hàng đợi đang đầy, thử lại sau' : null);
-  const videoUrl = fc?.status === 'ready' ? fc.video_url : null;
+  /** Xoá logo lỗi: vẫn cho xem/tải bản render (chưa xoá logo), báo lỗi bên cạnh. */
+  const rawUrl = fc ? rawFallbackUrl(fc) : null;
+  const videoUrl = fc?.status === 'ready' ? fc.video_url : rawUrl;
   const info = fc ? FINAL_STATUS[fc.status] : null;
   const action = fc ? cleanAction(fc) : null;
   const active = isActive(fc);
@@ -329,7 +332,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
             )}
             {fc?.outdated && <Badge tone="warn">Đã cũ vì đổi video</Badge>}
           </div>
-          <p className="mt-0.5 text-[13px] text-muted">Tải video từng cảnh ở Bước 3 rồi bấm «Edit tự động»: AI cắt bỏ đoạn thừa, ghép các cảnh, tự xoá logo Veo. Xong là xem và tải ngay bản không logo, rồi góp ý để AI chỉnh màu hoặc điểm cắt (tạo phiên bản mới, bản cũ được giữ). Không tốn credit Flow.</p>
+          <p className="mt-0.5 text-[13px] text-muted">Tải video từng cảnh ở Bước 3 rồi bấm «Edit tự động»: AI cắt bỏ đoạn thừa, ghép các cảnh, tự xoá logo Veo. Xong là xem và tải ngay bản không logo, rồi góp ý để AI chỉnh màu hoặc điểm cắt (tạo phiên bản mới, bản cũ được giữ).</p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
           <Button variant="primary" icon={<Icon name="film" size={15} />} loading={create.isPending} disabledReason={buildReason} onClick={() => create.mutate()}>
@@ -378,6 +381,13 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
               </div>
 
               <div className="min-w-0 space-y-3">
+                {rawUrl && (
+                  <Alert tone="warn" icon="alert">
+                    <strong>Bản v{fc.version}: chưa xoá được logo Veo.</strong> {cleanErrorText(fc.error)}
+                    <span className="mt-1 block">Trình phát đang hiện bản render (chưa xoá logo), xem và tải về được bình thường.</span>
+                    <a href={rawUrl} download={`${planName}_v${fc.version}.mp4`} className="mt-1 inline-block font-semibold underline">Tải bản render</a>
+                  </Alert>
+                )}
                 <div>
                   <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Các phiên bản bản hoàn chỉnh">
                     {[...list].reverse().map((v) => {
@@ -445,7 +455,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
                 </dl>
                 {fc.error && fc.status !== 'ready' && (
                   <Alert tone="danger">
-                    <strong>Lỗi:</strong> {fc.error}
+                    <strong>Lỗi:</strong> {fc.failed_stage === 'clean' ? `Xoá logo Veo: ${cleanErrorText(fc.error)}` : fc.error}
                   </Alert>
                 )}
                 {(clean.isError || cancel.isError) && <InlineError>{errorMessage(clean.error ?? cancel.error)}</InlineError>}
@@ -563,8 +573,7 @@ export function FinalBlock({ detail }: { detail: PlanDetail }) {
               ? 'Việc xoá logo Veo sẽ bị dừng. Bản render còn logo được giữ lại để bấm «Thử xoá logo lại».'
               : fc?.stage === 'grade'
                 ? 'Việc chỉnh màu sẽ bị dừng. Bản sạch được giữ lại để bấm «Thử chỉnh màu lại» trong lịch sử phiên bản.'
-                : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Edit lại tự động» để làm lại.'}{' '}
-          Không mất credit.
+                : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Edit lại tự động» để làm lại.'}
         </p>
       </ConfirmDialog>
     </section>

@@ -1,7 +1,7 @@
 /**
  * Bước 3 của planner LAN: người dùng tải lên video cảnh họ tự tạo trên Google Flow. Video lưu thành asset `video` bình thường của cảnh
  * (`output/<slug>/video/<code>_v<n>.mp4`, `job_id=NULL`, `meta.source='lan_upload'`) và TRỞ THÀNH video được chọn của cảnh.
- * KHÔNG đổi trạng thái cảnh (không qua `transition`), không tạo job, không tốn credit; điều kiện dựng bản hoàn chỉnh của dự án LAN chỉ
+ * KHÔNG đổi trạng thái cảnh (không qua `transition`), không tạo job, không tốn lượt; điều kiện dựng bản hoàn chỉnh của dự án LAN chỉ
  * là "mọi cảnh có video được chọn" (xem lan-final.ts). Dự án `app` không đi qua file này.
  */
 import fs from 'node:fs';
@@ -127,6 +127,7 @@ export interface NewLanVideo {
 export function addLanVideo(ctx: AppContext, p: ProjectRow, sceneId: number, up: NewLanVideo): AssetRow {
   const scene = getScene(ctx, sceneId);
   if (scene.project_id !== p.id) throw notFound('cảnh');
+  if (p.lan_mode === 'auto') throw conflict('AUTO_PROJECT', 'Dự án Autovideo tạo video tự động, không nhận video tải lên tay');
   let finalAbs: string | null = null;
   try {
     return ctx.tx(() => {

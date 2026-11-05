@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, buttonClass } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { InlineError } from '../components/States';
 import { Badge } from '../components/StatusBadge';
 import { ProgressBar } from '../planner/parts';
-import { CAPTION_PRESETS, CONTENT_TYPE_LABEL, REFRAME_OPTIONS, clock, cutIsActive, cutQueueTitle, isVerticalSource, pct100, spokenDuration } from './lib';
+import { CAPTION_PRESETS, CONTENT_TYPE_LABEL, REFRAME_OPTIONS, clipParts, clock, cutIsActive, cutQueueTitle, isVerticalSource, jobIsActive, pct100, spanLabel, spokenDuration } from './lib';
 import { Segmented } from './Segmented';
 import type { CaptionPreset, Clip, ClipCut, ReframeMode, SourceVideo } from './types';
 
@@ -26,17 +26,15 @@ const DIAGNOSIS: Record<string, string> = {
 function VerifyBadge({ clip }: { clip: Clip }) {
   const v = clip.verify;
   if (!v) return clip.created_by === 'user' ? <Badge tone="violet">Tự tạo</Badge> : null;
-  const score = v.standalone_score !== null && v.standalone_score !== undefined ? ` (${v.standalone_score.toFixed(2).replace('.', ',')})` : '';
-  if (v.status === 'kept') return <Badge tone="ok" title="AI đã xem cả lời thoại lẫn hình ảnh và thấy clip hiểu được khi đứng một mình">AI kiểm định: đạt{score}</Badge>;
-  if (v.status === 'repaired') return <Badge tone="info" title="AI đã nhích điểm đầu/cuối để clip trọn ý hơn">AI đã chỉnh điểm cắt{score}</Badge>;
-  return (
-    <Badge tone="warn" title="Bước kiểm định bị lỗi hoặc chưa chạy: hãy tự xem clip trước khi dùng">
-      Chưa kiểm định{v.diagnosis && DIAGNOSIS[v.diagnosis] ? `: ${DIAGNOSIS[v.diagnosis]}` : ''}
-    </Badge>
-  );
+  const score = clip.score !== null ? `${Math.round(clip.score)}/100 · ` : '';
+  const detail = `Điểm lựa chọn: ${clip.score ?? 'chưa chấm'}/100. Kiểm định độc lập: ${v.standalone_score?.toFixed(2) ?? 'chưa chấm'}. ${v.diagnosis ? DIAGNOSIS[v.diagnosis] ?? v.diagnosis : ''}`;
+  if (v.status === 'kept') return <Badge tone="ok" title={detail}>{score}Đạt</Badge>;
+  if (v.status === 'repaired') return <Badge tone="info" title={detail}>{score}Đã chỉnh điểm cắt</Badge>;
+  return <Badge tone="warn" title={detail}>{score}Chưa kiểm định</Badge>;
 }
 
 function CutBlock({ cut, clip, fileBase, onCancel, cancelling }: { cut: ClipCut; clip: Clip; fileBase: string; onCancel: () => void; cancelling: boolean }) {
+  const [preview, setPreview] = useState(false);
   const reframe = REFRAME_OPTIONS.find((o) => o.value === cut.reframe?.mode)?.label;
   const caps = CAPTION_PRESETS.find((o) => o.value === cut.captions?.preset)?.label;
   if (cut.status === 'rendering') {
@@ -73,40 +71,14 @@ function CutBlock({ cut, clip, fileBase, onCancel, cancelling }: { cut: ClipCut;
     );
   }
   if (cut.status === 'cancelled') return <p className="text-[13px] text-muted">v{cut.version} đã hủy.{cut.error ? ` ${cut.error}` : ''}</p>;
-  return (
-    <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-      <div className="mx-auto w-full max-w-[200px] overflow-hidden rounded-md bg-black sm:mx-0 sm:w-[170px]">
-        {cut.video_url ? (
-          <video src={`${cut.video_url}#t=0.1`} controls preload="metadata" playsInline aria-label={`Clip ${clip.code} bản dựng v${cut.version}`} className="aspect-[9/16] w-full object-contain" />
-        ) : (
-          <div className="grid aspect-[9/16] place-items-center text-xs text-white/70">Không còn file</div>
-        )}
-      </div>
-      <div className="min-w-0 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="ok">v{cut.version} sẵn sàng</Badge>
-          <span className="text-xs text-muted">
-            {cut.duration_s ? spokenDuration(cut.duration_s) : ''}
-            {reframe ? ` · ${reframe}` : ''}
-            {caps ? ` · ${caps}` : ''}
-            {clip.cuts_count > 1 ? ` · ${clip.cuts_count} bản dựng` : ''}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {cut.video_url && (
-            <a href={cut.video_url} download={`${fileBase}_${clip.code}_v${cut.version}.mp4`} className={buttonClass('primary', 'md')}>
-              <Icon name="download" /> Tải mp4
-            </a>
-          )}
-          {cut.srt_url && (
-            <a href={cut.srt_url} download={`${fileBase}_${clip.code}_v${cut.version}.srt`} className={buttonClass('secondary', 'md')}>
-              <Icon name="download" /> Tải srt
-            </a>
-          )}
-        </div>
-      </div>
+  return <div className="space-y-2">
+    <div className="flex flex-wrap items-center gap-2"><Badge tone="ok">v{cut.version} sẵn sàng</Badge><span className="text-xs text-muted">{spokenDuration(cut.duration_s ?? 0)}{reframe ? ` · ${reframe}` : ''}{caps ? ` · ${caps}` : ''}</span></div>
+    <div className="flex flex-wrap gap-2">
+      {cut.video_url && <a href={cut.video_url} download={`${fileBase}_${clip.code}_v${cut.version}.mp4`} className={buttonClass('primary', 'sm')}><Icon name="download" size={14} />Tải mp4</a>}
+      {cut.srt_url && <a href={cut.srt_url} download={`${fileBase}_${clip.code}_v${cut.version}.srt`} className={buttonClass('secondary', 'sm')}>Tải srt</a>}
     </div>
-  );
+    {cut.video_url && <details onToggle={(e) => setPreview(e.currentTarget.open)} className="text-xs text-muted"><summary className="cursor-pointer">Xem bản dựng v{cut.version}</summary>{preview && <video src={cut.video_url} controls preload="metadata" playsInline aria-label={`Clip ${clip.code} bản dựng v${cut.version}`} className="mt-2 max-h-80 w-full rounded-md bg-black object-contain" />}</details>}
+  </div>;
 }
 
 interface Props {
@@ -125,12 +97,14 @@ interface Props {
   onSetStatus: (s: Clip['status']) => void;
   onEditRange: () => void;
   onEditCaptions: () => void;
-  onRender: (opts: { reframe_mode?: ReframeMode; captions_preset: CaptionPreset }) => void;
+  timeline: ReactNode;
+  onApproveRender: (opts: { reframe_mode?: ReframeMode; captions_preset: CaptionPreset }) => void;
+
   onCancel: (cutId: number) => void;
 }
 
 /** Thẻ một clip: thông tin AI, xem thử đoạn, duyệt/bỏ, sửa điểm cắt, dựng 9:16, tải về, sửa phụ đề. */
-export function ClipCard({ clip, source, fileBase, selected, renderBlock, captionsStale, captionsAvailable, busy, onSelect, onPreview, onSetStatus, onEditRange, onEditCaptions, onRender, onCancel }: Props) {
+export function ClipCard({ clip, source, fileBase, selected, renderBlock, captionsStale, captionsAvailable, busy, onSelect, onPreview, onSetStatus, onEditRange, onEditCaptions, timeline, onApproveRender, onCancel }: Props) {
   const st = STATUS[clip.status];
   const cut = clip.latest_cut;
   const vertical = isVerticalSource(source);
@@ -138,9 +112,12 @@ export function ClipCard({ clip, source, fileBase, selected, renderBlock, captio
   const noCaps = captionsAvailable?.ok === false;
   const [captionsPick, setCaptions] = useState<CaptionPreset>((cut?.captions?.preset as CaptionPreset | undefined) ?? 'highlight');
   const captions: CaptionPreset = noCaps ? 'none' : captionsPick;
-  const [open, setOpen] = useState(clip.status === 'approved' && !cut);
+  const [open, setOpen] = useState(false);
+  const [cleanupSeen, setCleanupSeen] = useState(false);
   const rejected = clip.status === 'rejected';
   const active = cutIsActive(cut);
+  const parts = clipParts(clip);
+  const multi = parts.length > 1;
 
   return (
     <article
@@ -157,71 +134,70 @@ export function ClipCard({ clip, source, fileBase, selected, renderBlock, captio
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone={st.tone}>{st.label}</Badge>
             <VerifyBadge clip={clip} />
-            {clip.score !== null && (
-              <span className="text-xs font-semibold text-muted" title="Điểm AI chấm (0-100)">
-                Điểm {Math.round(clip.score)}
-              </span>
-            )}
+            {!clip.verify && clip.score !== null && <Badge tone="neutral" title="Điểm lựa chọn AI (0–100)">{Math.round(clip.score)}/100</Badge>}
+            {multi && <Badge tone="violet" title="Clip nối nhiều đoạn của video dài, phát theo thứ tự bên dưới"><Icon name="link" size={11} />Ghép {parts.length} đoạn</Badge>}
           </div>
           <h3 className="mt-1 text-[15px] font-semibold leading-snug">{clip.title || `Clip ${clip.code}`}</h3>
           {clip.hook && <p className="mt-0.5 text-[13px] italic text-fg/80">“{clip.hook}”</p>}
-          <p className="mt-1 text-xs text-muted">
-            {clock(clip.start_s)} → {clock(clip.end_s)}
-            {clip.content_type ? ` · ${CONTENT_TYPE_LABEL[clip.content_type] ?? clip.content_type}` : ''}
-            {clip.caption_edited ? ' · đã sửa phụ đề' : ''}
-          </p>
-        </div>
-      </div>
-      {clip.reason && <p className="mt-2 text-[13px] text-muted">{clip.reason}</p>}
-      {clip.transcript_excerpt && (
-        <details className="mt-1.5 text-[13px]">
-          <summary className="text-xs font-medium text-muted">Lời thoại đầu clip</summary>
-          <p className="mt-1 rounded-md bg-surface-2 p-2 leading-relaxed">{clip.transcript_excerpt}</p>
-        </details>
-      )}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <Button size="sm" icon={<Icon name="play" size={13} />} onClick={onPreview} disabledReason={source?.video_url ? null : 'Không còn video nguồn để xem'}>
-          Xem đoạn
-        </Button>
-        {clip.status !== 'approved' && (
-          <Button size="sm" variant="primary" icon={<Icon name="check" size={14} />} loading={busy.status} onClick={() => onSetStatus('approved')}>
-            Duyệt
-          </Button>
-        )}
-        {clip.status === 'approved' && (
-          <Button size="sm" loading={busy.status} onClick={() => onSetStatus('proposed')}>
-            Bỏ duyệt
-          </Button>
-        )}
-        {!rejected ? (
-          <Button size="sm" variant="danger" icon={<Icon name="x" size={14} />} loading={busy.status} onClick={() => onSetStatus('rejected')}>
-            Bỏ
-          </Button>
-        ) : (
-          <Button size="sm" loading={busy.status} onClick={() => onSetStatus('proposed')}>
-            Khôi phục
-          </Button>
-        )}
-        <Button size="sm" icon={<Icon name="edit" size={13} />} onClick={onEditRange}>
-          Sửa điểm cắt
-        </Button>
-        {!rejected && (
-          <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open} icon={<Icon name="chevronDown" size={14} className={open ? 'rotate-180' : ''} />}>
-            Dựng 9:16
-          </Button>
-        )}
-      </div>
-
-      {!rejected && (cut || open || clip.status === 'approved') && (
-        <div className="mt-3 space-y-3 border-t border-line pt-3">
-          {cut && <CutBlock cut={cut} clip={clip} fileBase={fileBase} onCancel={() => onCancel(cut.id)} cancelling={!!busy.cancel} />}
-          {captionsStale && cut?.status === 'ready' && (
-            <p className="rounded-md bg-warn-bg px-2.5 py-1.5 text-xs text-warn-fg" role="status">
-              Phụ đề vừa đổi nhưng bản dựng này chưa có thay đổi đó. Bấm «Dựng lại» để áp dụng.
+          {multi && (
+            <ol className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted" aria-label={`Các đoạn của ${clip.code} theo thứ tự phát`}>
+              {parts.map((p, k) => (
+                <li key={k} className="whitespace-nowrap">
+                  <span className="font-semibold text-fg/80">Đoạn {k + 1}</span> · <span className="font-mono tabular-nums">{spanLabel(p.start_s, p.end_s)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {(!multi || clip.content_type || clip.caption_edited) && (
+            <p className="mt-1 text-xs text-muted">
+              {[
+                multi ? null : `${clock(clip.start_s)} → ${clock(clip.end_s)}`,
+                clip.content_type ? CONTENT_TYPE_LABEL[clip.content_type] ?? clip.content_type : null,
+                clip.caption_edited ? 'đã sửa phụ đề' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           )}
-          {(open || !cut || cut.status !== 'ready') && !active && (
+        </div>
+      </div>
+      {(clip.reason || clip.transcript_excerpt) && <details className="mt-2 text-xs text-muted"><summary className="cursor-pointer">Lý do chọn & lời thoại</summary>{clip.reason && <p className="mt-2 leading-relaxed">{clip.reason}</p>}{clip.transcript_excerpt && <p className="mt-2 rounded-md bg-surface-2 p-2 leading-relaxed">{clip.transcript_excerpt}</p>}</details>}
+      <details className="group/cleanup mt-2.5 rounded-lg border border-line bg-surface-2 text-xs open:bg-surface-2" aria-label={`Làm gọn ${clip.code}`} onToggle={(e) => { if (e.currentTarget.open) setCleanupSeen(true); }}>
+        <summary className="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+          <Icon name="scissors" size={13} className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1">
+            Làm gọn lời nói: {clip.cleanup?.selected_ids.length ? <>bỏ <strong className="font-semibold">{clip.cleanup.selected_ids.length} chỗ</strong> · −{Math.max(0, clip.duration_s - (clip.edited_duration_s ?? clip.duration_s)).toFixed(2).replace('.', ',')} s</> : 'không có chỗ cần bỏ'}
+          </span>
+          <span className="font-semibold">Xem / sửa</span>
+          <Icon name="chevronDown" size={13} className="transition-transform group-open/cleanup:rotate-180" />
+        </summary>
+        {cleanupSeen && <div className="p-1.5 pt-0">{timeline}</div>}
+      </details>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <Button size="sm" icon={<Icon name="play" size={12} />} onClick={onPreview} disabledReason={source?.video_url ? null : 'Không còn video nguồn để xem'} aria-label={`Xem clip ${clip.code}`}><span className="max-[420px]:sr-only">Xem</span></Button>
+        {!rejected && <Button size="sm" icon={<Icon name="scissors" size={13} />} onClick={onEditRange}>Sửa điểm cắt</Button>}
+        {rejected ? <Button size="sm" loading={busy.status} onClick={() => onSetStatus('proposed')}>Khôi phục clip</Button> : <Button size="sm" variant={cut?.status === 'ready' && !captionsStale ? 'secondary' : 'primary'} icon={<Icon name="film" size={14} />} loading={busy.status || busy.render} disabledReason={renderBlock ?? (active ? 'Clip này đang được dựng' : null)} onClick={() => onApproveRender({ reframe_mode: vertical ? undefined : reframe, captions_preset: captions })}>{clip.status !== 'approved' ? 'Duyệt & dựng' : cut ? 'Dựng lại' : 'Dựng clip'}</Button>}
+        <details className="relative ml-auto" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false; }}>
+          <summary className={`${buttonClass('ghost', 'sm')} list-none cursor-pointer [&::-webkit-details-marker]:hidden`} aria-label={`Thao tác khác cho clip ${clip.code}`}><span className="max-[480px]:hidden">Thêm</span> <Icon name="chevronDown" size={13} /></summary>
+          <div className="absolute right-0 top-full z-30 mt-1 grid w-52 gap-1 rounded-lg border border-line bg-surface p-1.5 shadow-lg" onClick={(e) => { if ((e.target as HTMLElement).closest('button')) e.currentTarget.parentElement!.removeAttribute('open'); }}>
+            {rejected && <Button size="sm" variant="ghost" className="justify-start" onClick={onEditRange}>Sửa điểm cắt</Button>}
+            <Button size="sm" variant="ghost" className="justify-start" onClick={onEditCaptions}>Sửa phụ đề</Button>
+            {!rejected && <Button size="sm" variant="ghost" className="justify-start" onClick={() => setOpen((o) => !o)}>{open ? 'Ẩn tùy chọn dựng' : 'Tùy chọn dựng'}</Button>}
+            {!rejected && <Button size="sm" variant="ghost" className="justify-start" loading={busy.status} onClick={() => onSetStatus(clip.status === 'approved' ? 'proposed' : 'approved')}>{clip.status === 'approved' ? 'Bỏ duyệt' : 'Chỉ duyệt, chưa dựng'}</Button>}
+            {!rejected && <><hr className="my-0.5 border-line" /><Button size="sm" variant="ghost" className="justify-start text-danger-fg hover:bg-danger-bg" loading={busy.status} onClick={() => onSetStatus('rejected')}>Bỏ clip</Button></>}
+          </div>
+        </details>
+      </div>
+      {jobIsActive(clip.cleanup_job) && <p className="mt-2 text-xs text-info-fg" role="status">AI đang chờ / phân tích làm gọn lời nói…</p>}
+      {!rejected && (cut || open) && (
+        <div className="mt-3 space-y-3 border-t border-line pt-3">
+          {cut && (cut.status !== 'ready' || !captionsStale) && <CutBlock cut={cut} clip={clip} fileBase={fileBase} onCancel={() => onCancel(cut.id)} cancelling={!!busy.cancel} />}
+          {captionsStale && cut?.status === 'ready' && (
+            <p className="rounded-md bg-warn-bg px-2.5 py-1.5 text-xs text-warn-fg" role="status">
+              Nội dung hoặc phụ đề vừa đổi nhưng bản dựng này chưa có thay đổi đó. Bấm «Dựng lại» để áp dụng.
+            </p>
+          )}
+          {open && !active && (
             <div className="space-y-3">
               {vertical ? (
                 <p className="text-xs text-muted">Video nguồn đã là khung dọc nên giữ nguyên khung hình, không cần chọn Nền mờ hay Cắt giữa.</p>
@@ -233,25 +209,6 @@ export function ClipCard({ clip, source, fileBase, selected, renderBlock, captio
               </Segmented>
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={cut?.status === 'ready' ? 'secondary' : 'primary'}
-              icon={<Icon name={cut ? 'refresh' : 'film'} size={14} />}
-              loading={busy.render}
-              disabledReason={renderBlock ?? (active ? 'Clip này đang được dựng' : null)}
-              onClick={() => onRender({ reframe_mode: vertical ? undefined : reframe, captions_preset: captions })}
-            >
-              {cut ? 'Dựng lại' : 'Dựng clip'}
-            </Button>
-            <Button icon={<Icon name="comment" size={14} />} onClick={onEditCaptions}>
-              Sửa phụ đề
-            </Button>
-            {cut?.status === 'ready' && !open && (
-              <button type="button" onClick={() => setOpen(true)} className="text-xs text-muted underline hover:text-fg">
-                Đổi khung hình / kiểu phụ đề
-              </button>
-            )}
-          </div>
           {renderBlock && <p className="text-xs text-warn-fg">{renderBlock}</p>}
         </div>
       )}

@@ -20,15 +20,15 @@ export const needsReconcile = (job: Job | null | undefined): boolean => !!job?.r
 export const canReconcile = (job: Job | null | undefined): boolean =>
   !!job && job.worker_mode === 'managed' && job.status === 'queued' && ['intent', 'uncertain', 'submitted', 'downloaded'].includes(job.action_state ?? '');
 
-/** Hàng đợi/cảnh đã gửi lệnh tạo sang Flow/ChatGPT mà worker không còn giữ: hủy sẽ làm mất ghi sổ credit/lượt. */
+/** Hàng đợi/cảnh đã gửi lệnh tạo sang Flow/ChatGPT mà worker không còn giữ: hủy sẽ làm mất ghi nhận lượt tạo. */
 export const cancelBlockedReason = (job: Job | null | undefined): string | null =>
   job && job.worker_mode === 'managed' && ['intent', 'uncertain', 'submitted', 'downloaded'].includes(job.action_state ?? '') && !job.reconcile_required
-    ? 'Worker đã gửi lệnh tạo sang Flow/ChatGPT. Không hủy được (sẽ mất ghi sổ credit/lượt); đợi worker xong hoặc dừng để đối soát.'
+    ? 'Worker đã gửi lệnh tạo sang Flow/ChatGPT. Không hủy được (sẽ mất ghi nhận lượt tạo); đợi worker xong hoặc dừng để đối soát.'
     : null;
 
 /**
  * Hộp thoại đối soát job `needs_reconciliation`. Không có lựa chọn mặc định: người dùng phải tự chọn sau khi kiểm tra
- * Flow/ChatGPT. Mỗi lựa chọn giải thích hệ quả; lựa chọn "chạy lại từ đầu" ghi rõ có thể tốn thêm credit.
+ * Flow/ChatGPT. Mỗi lựa chọn giải thích hệ quả; lựa chọn "chạy lại từ đầu" ghi rõ có thể tạo thêm một lần.
  */
 export function ReconcileDialog({ job, open, onClose }: { job: Job | null; open: boolean; onClose: () => void }) {
   const [outcome, setOutcome] = useState<ReconcileOutcome | null>(null);
@@ -37,7 +37,6 @@ export function ReconcileDialog({ job, open, onClose }: { job: Job | null; open:
   useEffect(() => { if (open) { setOutcome(null); setNote(''); reconcile.reset(); } }, [open, job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!job) return null;
   const isVideo = job.type === 'video';
-  const credits = typeof job.payload?.credits_expected === 'number' ? job.payload.credits_expected : null;
   const site = isVideo ? 'Google Flow' : 'ChatGPT';
   const options: { value: ReconcileOutcome; title: string; body: string }[] = [
     {
@@ -48,13 +47,13 @@ export function ReconcileDialog({ job, open, onClose }: { job: Job | null; open:
     {
       value: 'nothing_created',
       title: 'Không có gì được tạo: chạy lại từ đầu',
-      body: `Chỉ chọn khi bạn đã kiểm tra ${site} và chắc chắn không có lượt tạo nào. Job chạy lại từ đầu với lệnh tạo mới${isVideo && credits !== null ? ` và có thể tốn thêm ${credits} credit` : ''}. Nếu thực ra đã có lượt tạo, bạn sẽ tốn credit hai lần.`,
+      body: `Chỉ chọn khi bạn đã kiểm tra ${site} và chắc chắn không có lượt tạo nào. Job chạy lại từ đầu với lệnh tạo mới. Nếu thực ra đã có lượt tạo, nội dung sẽ bị tạo hai lần.`,
     },
     ...(isVideo
       ? [{
           value: 'charge_and_fail' as const,
-          title: 'Đã tốn credit nhưng không lấy được kết quả',
-          body: `Ghi nhận ${credits ?? 'số'} credit đã dùng và một lượt tạo video cho cảnh; job báo lỗi và cảnh về trạng thái Lỗi. Chọn khi ${site} đã trừ credit mà không có video dùng được.`,
+          title: 'Đã tạo nhưng không lấy được kết quả',
+          body: `Ghi nhận một lượt tạo video đã dùng cho cảnh; job báo lỗi và cảnh về trạng thái Lỗi. Chọn khi ${site} đã nhận lệnh tạo mà không có video dùng được.`,
         }]
       : []),
   ];
@@ -76,7 +75,7 @@ export function ReconcileDialog({ job, open, onClose }: { job: Job | null; open:
     >
       <div className="space-y-3 text-sm">
         <p>
-          Job này đã gửi lệnh tạo sang {site}: {ACTION_TEXT[job.action_state ?? ''] ?? 'chưa rõ kết quả'}. Hệ thống không tự bấm tạo lại để tránh tốn credit hai lần.
+          Job này đã gửi lệnh tạo sang {site}: {ACTION_TEXT[job.action_state ?? ''] ?? 'chưa rõ kết quả'}. Hệ thống không tự bấm tạo lại để tránh tạo hai lần.
         </p>
         <p className="text-[13px] text-muted">
           Mở {site} bằng cửa sổ trình duyệt media (<code>npm run ai:browser</code>), kiểm tra {isVideo ? 'dự án/lịch sử tạo video' : 'hội thoại'} của cảnh này, rồi chọn kết quả đúng với những gì bạn thấy.

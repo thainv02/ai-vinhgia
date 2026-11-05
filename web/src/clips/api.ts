@@ -6,6 +6,7 @@ import type {
   ClipServerStatus,
   CaptionWord,
   PlanInput,
+  PartInput,
   PlanJob,
   RenderInput,
   SourceVideo,
@@ -21,10 +22,21 @@ export interface ClipIo {
   upload<T>(path: string, form: FormData, onProgress: (loaded: number, total: number) => void): { promise: Promise<T>; abort: () => void };
 }
 
+/** Sửa clip. `parts` (1–6 đoạn, theo thứ tự phát) thay toàn bộ các đoạn; `start_word/end_word` đưa clip về một đoạn. */
+export interface ClipPatchInput {
+  status?: Clip['status'];
+  title?: string;
+  start_word?: number;
+  end_word?: number;
+  parts?: PartInput[];
+}
+/** Tạo clip thủ công: một đoạn (`start_word/end_word`) hoặc ghép nhiều đoạn (`parts`). */
+export type ClipCreateInput = ({ start_word: number; end_word: number; parts?: never } | { parts: PartInput[]; start_word?: never; end_word?: never }) & { title?: string };
+
 const unwrap = <K extends string, T>(r: T | Record<K, T>, key: K): T => (r && typeof r === 'object' && key in (r as object) ? (r as Record<K, T>)[key] : (r as T));
 
 /**
- * API cắt clip. `base` là `/api` (app chính) hoặc `/lan/api` (trang LAN): hai nơi dùng cùng đường dẫn con (hợp đồng mục 5).
+ * API highlight. `base` là `/api` (app chính) hoặc `/lan/api` (trang LAN): hai nơi dùng cùng đường dẫn con (hợp đồng mục 5).
  * Nhiều route chưa chốt dạng phản hồi (bản ghi trần hay bọc `{clip}` / `{cut}`) nên `unwrap` nhận cả hai.
  */
 export function makeClipApi(base: '/api' | '/lan/api', io: ClipIo) {
@@ -50,12 +62,15 @@ export function makeClipApi(base: '/api' | '/lan/api', io: ClipIo) {
     transcript: (sourceId: number, from: number, limit: number) => io.get<TranscriptPage>(`${base}/sources/${sourceId}/transcript?from=${from}&limit=${limit}`),
     transcriptUrl: (sourceId: number, ext: 'srt' | 'txt') => `${base}/sources/${sourceId}/transcript.${ext}`,
     clipPlan: async (projectId: number, input: PlanInput) => unwrap<'job', PlanJob>(await io.post<{ job: PlanJob } | PlanJob>(`${base}/projects/${projectId}/clip-plan`, input), 'job'),
-    patchClip: async (id: number, input: { status?: Clip['status']; title?: string; start_word?: number; end_word?: number }) =>
+    patchClip: async (id: number, input: ClipPatchInput) =>
       unwrap<'clip', Clip>(await io.patch<{ clip: Clip } | Clip>(`${base}/clips/${id}`, input), 'clip'),
-    createClip: async (projectId: number, input: { start_word: number; end_word: number; title?: string }) =>
+    createClip: async (projectId: number, input: ClipCreateInput) =>
       unwrap<'clip', Clip>(await io.post<{ clip: Clip } | Clip>(`${base}/projects/${projectId}/clips`, input), 'clip'),
     putCaptions: async (id: number, words: CaptionWord[]) => unwrap<'clip', Clip>(await io.put<{ clip: Clip } | Clip>(`${base}/clips/${id}/captions`, { words }), 'clip'),
     renderClip: async (id: number, input: RenderInput) => unwrap<'cut', ClipCut>(await io.post<{ cut: ClipCut } | ClipCut>(`${base}/clips/${id}/render`, input), 'cut'),
+    processClips: (projectId: number) => io.post(`${base}/projects/${projectId}/process-clips`, {}),
+    cleanupPlan: async (id: number) => unwrap<'job', PlanJob>(await io.post<{ job: PlanJob }>(`${base}/clips/${id}/cleanup-plan`, {}), 'job'),
+    applyCleanup: async (id: number, body: { job_id: number; revision: number; selected_ids: number[]; edits?: import('../../../server/src/lib/clip-cleanup').CleanupEdit[] }) => unwrap<'clip', Clip>(await io.put<{ clip: Clip }>(`${base}/clips/${id}/cleanup`, body), 'clip'),
     clipStatus: () => io.get<ClipServerStatus>(`${base}/clip-status`),
     cancelCut: (id: number) => io.post<unknown>(`${base}/clip-cuts/${id}/cancel`),
     zipUrl: (projectId: number) => `${base}/projects/${projectId}/clips.zip`,

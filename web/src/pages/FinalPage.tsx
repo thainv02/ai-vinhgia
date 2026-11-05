@@ -16,7 +16,7 @@ import { Badge } from '../components/StatusBadge';
 import { VideoPlayer, type PlayerHandle, type TimeMarker } from '../components/VideoPlayer';
 import { mainRevisionApi, useCancelFinalCut, useCreateFinalCut, useOpenInShotcut, useRegradeFinalCut, useRerenderFinalCut, useSyncFinalCut } from '../hooks/mutations';
 import { useFinalCuts, useMeta, useProject, useScenes, useWorkerStatus } from '../hooks/queries';
-import { aiQueueNote, buildTimeline, cleanAction, creatorText, finalBlockReason, finalContactUrl, finalStatusLabel, finalVideoUrl, fmtSeconds, isWaitingToRender, logoStatusText, renderQueueNote, revisionBlockReason, stageProgressLabel } from '../lib/finalCut';
+import { aiQueueNote, buildTimeline, cleanAction, cleanErrorText, creatorText, finalBlockReason, finalContactUrl, finalStatusLabel, finalVideoUrl, fmtSeconds, isWaitingToRender, logoStatusText, rawFallbackUrl, renderQueueNote, revisionBlockReason, stageProgressLabel } from '../lib/finalCut';
 import { gradeChips } from '../lib/grade';
 import { fmtDateTime } from '../lib/format';
 import { FINAL_STATUS } from '../lib/status';
@@ -106,7 +106,7 @@ function PlayerPlaceholder({ fc, workerOnline }: { fc: FinalCut; workerOnline: b
             <Icon name="alert" size={22} />
           </span>
           <p className="font-semibold">{fc.failed_stage === 'clean' ? 'Xoá logo Veo không thành công' : fc.failed_stage === 'grade' ? 'Chỉnh màu không thành công' : fc.parent_id ? 'Góp ý không thành công' : 'Dựng không thành công'}</p>
-          <p className="text-[13px] text-muted">{fc.error ?? 'Không có chi tiết.'}</p>
+          <p className="text-[13px] text-muted">{fc.failed_stage === 'clean' ? cleanErrorText(fc.error) : (fc.error ?? 'Không có chi tiết.')}</p>
           {fc.failed_stage === 'clean' && (
             <>
               <p className="text-[13px] text-muted">Bản render vẫn còn nên không cần dựng lại.</p>
@@ -175,6 +175,8 @@ export default function FinalPage() {
 
   const blockReason = finalBlockReason(scenes.data, list[0], project.data?.final_cut_block, project.data?.source);
   const videoUrl = fc ? finalVideoUrl(fc) : null;
+  /** Xoá logo lỗi: vẫn cho xem/tải bản render (chưa xoá logo), báo lỗi bên cạnh. */
+  const rawUrl = fc ? rawFallbackUrl(fc) : null;
   const contactUrl = fc ? finalContactUrl(fc) : null;
   const active = fc && (fc.status === 'planning' || fc.status === 'rendering');
   const fr = meta.data?.final_renderer;
@@ -252,7 +254,7 @@ export default function FinalPage() {
         <div className="space-y-4">
           {cleanAction(fc) === 'clean' && (
             <Alert tone="warn" icon="alert">
-              <strong>Bản v{fc.version} còn logo Veo.</strong> Bản này render trước khi có bước xoá logo (hoặc lúc tool xoá logo đang tắt). Bấm «Xoá logo Veo» để xử lý, không cần render lại và không tốn credit.
+              <strong>Bản v{fc.version} còn logo Veo.</strong> Bản này render trước khi có bước xoá logo (hoặc lúc tool xoá logo đang tắt). Bấm «Xoá logo Veo» để xử lý, không cần render lại.
             </Alert>
           )}
           {fc.outdated && (
@@ -265,12 +267,25 @@ export default function FinalPage() {
             <div className="lg:sticky lg:top-16">
               {fc.status === 'ready' && videoUrl ? (
                 <VideoPlayer ref={playerRef} src={videoUrl} markers={markers} seekRequest={seekReq} onTimeChange={() => undefined} onTick={setPlayT} />
+              ) : rawUrl ? (
+                <VideoPlayer ref={playerRef} src={rawUrl} markers={markers} seekRequest={seekReq} onTimeChange={() => undefined} onTick={setPlayT} />
               ) : (
                 <PlayerPlaceholder fc={fc} workerOnline={!!worker.data?.online} />
               )}
             </div>
 
             <div className="min-w-0 space-y-4">
+              {rawUrl && (
+                <Alert tone="warn" icon="alert">
+                  <strong>Bản v{fc.version}: chưa xoá được logo Veo.</strong> {cleanErrorText(fc.error)}
+                  <span className="mt-1 block">Trình phát đang hiện bản render (chưa xoá logo), xem và tải về được bình thường.</span>
+                  <span className="mt-2 flex flex-wrap items-center gap-2">
+                    <a href={rawUrl} download={`${project.data?.slug ?? 'ban-hoan-chinh'}_final_v${fc.version}.mp4`} className={buttonClass('secondary', 'sm')}>
+                      <Icon name="download" size={14} /> Tải bản render
+                    </a>
+                  </span>
+                </Alert>
+              )}
               <Card title="Các phiên bản" id="fv-h">
                 <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Các phiên bản bản hoàn chỉnh">
                   {[...list].reverse().map((v) => {
@@ -345,7 +360,7 @@ export default function FinalPage() {
                 {fc.error && (
                   <div className="mt-3">
                     <Alert tone="danger">
-                      <strong>Lỗi:</strong> {fc.error}
+                      <strong>Lỗi:</strong> {fc.failed_stage === 'clean' ? `Xoá logo Veo: ${cleanErrorText(fc.error)}` : fc.error}
                     </Alert>
                   </div>
                 )}
@@ -457,8 +472,7 @@ export default function FinalPage() {
               ? 'Việc xoá logo Veo sẽ bị dừng. Bản render còn logo được giữ lại để bấm «Thử xoá logo lại».'
               : fc?.stage === 'grade'
                 ? 'Việc chỉnh màu sẽ bị dừng. Bản sạch được giữ lại để bấm «Thử chỉnh màu lại» trong lịch sử phiên bản.'
-                : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Dựng bản mới» để dựng lại.'}{' '}
-          Không mất credit.
+                : 'Việc render đang chạy sẽ bị dừng. Bạn có thể bấm «Dựng bản mới» để dựng lại.'}
         </p>
       </ConfirmDialog>
       <ImageLightbox src={lightbox} title="Lưới khung hình bản hoàn chỉnh" onClose={() => setLightbox(null)} />

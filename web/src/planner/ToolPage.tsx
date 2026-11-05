@@ -289,8 +289,9 @@ export function ToolPage() {
           <UploadCard status={status.data} onCreated={refresh} />
           <p className="text-xs text-muted" aria-live="polite">
             {status.data.render ? `Máy chủ đang chạy ${status.data.render.running_count}/${status.data.render.concurrency} việc, ${status.data.render.waiting_count} việc đang chờ. ` : ''}
-            Hàng đợi LAN: {status.data.queue.total}/{status.data.queue.cap} việc ({status.data.queue.cuts} bản dựng, {status.data.queue.tools} xoá logo). Chỉ trình duyệt này thấy các việc bên dưới; xoá cookie hoặc đổi trình duyệt sẽ không xem lại được.
+            Hàng đợi LAN: {status.data.queue.total}/{status.data.queue.cap} việc ({status.data.queue.cuts} bản dựng, {status.data.queue.tools} xoá logo).
           </p>
+          <div className="mt-3 rounded-lg border border-warn-fg/25 bg-warn-bg px-3 py-2 text-[13px] text-warn-fg" role="note"><strong>Giữ lại trình duyệt đang dùng.</strong> Danh sách việc được gắn với trình duyệt này. Nếu xoá cookie hoặc đổi trình duyệt, bạn sẽ không xem lại được các việc đã gửi.</div>
 
           <section aria-labelledby="tool-jobs-h">
             <h2 id="tool-jobs-h" className="mb-2 text-[15px] font-semibold">

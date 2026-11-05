@@ -137,7 +137,7 @@ export function createFeedbackRevision(ctx: AppContext, sourceId: number, feedba
   });
 }
 
-/** `POST /api/final-cuts/:id/grade`: chỉnh màu thủ công → phiên bản mới `rendering` (stage `grade`), không qua AI, không tốn credit. */
+/** `POST /api/final-cuts/:id/grade`: chỉnh màu thủ công → phiên bản mới `rendering` (stage `grade`), không qua AI. */
 export function createGradeRevision(ctx: AppContext, sourceId: number, gradeInput: unknown, note: string | undefined, wm: { active: boolean }): number {
   return ctx.tx(() => {
     const src = getFinalCutRow(ctx, sourceId);

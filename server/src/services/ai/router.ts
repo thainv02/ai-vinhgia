@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AppContext } from '../../context.js';
+import { AI_API_ALIAS, AI_API_PROVIDER, type AiApiConfig } from '../../config.js';
 import { AppError } from '../../lib/errors.js';
 import { keyOf, account, projectPolicy, localUrl, secretDir, type Account } from './accounts.js';
 import { parseJson } from '../repo.js';
@@ -58,7 +59,51 @@ export async function probeAccount(ctx: AppContext, id: number) {
   }
 }
 
+/** Một lời gọi tới AI API dùng chung, không chọn tài khoản/model khác. Lỗi tạm → AI_UNAVAILABLE để worker cho job chờ rồi thử lại. */
+async function inferApi(ctx: AppContext, api: AiApiConfig, jobId: number, messages: unknown[], tools: unknown[]) {
+  const unavailable = (message: string, retryAt: string | null) => new AppError('AI_UNAVAILABLE', message, 503,
+    { retry_at: retryAt ?? new Date(ctx.clock.now() + 60_000).toISOString() });
+  const start = Date.now(); let outcome = 'network_error';
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${api.baseUrl}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${api.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: api.model, messages, stream: false, ...(tools.length ? { tools, parallel_tool_calls: false } : {}) }),
+        signal: AbortSignal.timeout(api.timeoutMs), redirect: 'error' });
+    } catch {
+      throw unavailable('Không kết nối được AI API', new Date(ctx.clock.now() + 30_000).toISOString());
+    }
+    const raw = await res.text();
+    if (raw.length > 4_000_000) { outcome = 'response_too_large'; throw unavailable('AI API trả phản hồi quá lớn', null); }
+    if (!res.ok) {
+      const failure = normalizeFailure(res.status, raw, res.headers.get('retry-after'), ctx.clock.now());
+      outcome = failure.code;
+      if (failure.code === 'invalid_request') throw new AppError('AI_INVALID_REQUEST', `AI API từ chối request (HTTP ${res.status}); kiểm tra AI_API_MODEL/định dạng`, 400);
+      if (failure.state === 'login_required' || failure.state === 'access_denied') {
+        // Key sai/bị thu hồi: giữ job chờ (không mất việc) và thử lại sau 5 phút; sửa AI_API_KEY rồi restart server.
+        ctx.publish('ai.updated', null, { job_id: jobId, state: failure.state });
+        throw unavailable('AI API từ chối key; kiểm tra AI_API_KEY', new Date(ctx.clock.now() + 300_000).toISOString());
+      }
+      throw unavailable(failure.code === 'quota_exhausted' || failure.code === 'rate_limited' ? 'Đã hết token AI trên tất cả tài khoản' : 'AI API đang lỗi', failure.retryAt);
+    }
+    let body: { choices?: { message?: { content?: string | null; tool_calls?: unknown[] } }[]; usage?: unknown };
+    try { body = JSON.parse(raw); } catch { body = {}; }
+    const message = body.choices?.[0]?.message;
+    if (!message || (typeof message.content !== 'string' && !Array.isArray(message.tool_calls))) {
+      outcome = 'invalid_response';
+      throw unavailable('AI API trả phản hồi không hợp lệ', new Date(ctx.clock.now() + 30_000).toISOString());
+    }
+    outcome = 'ok';
+    ctx.publish('ai.updated', null, { job_id: jobId, state: 'ready' });
+    return { message, account: { id: null, alias: AI_API_ALIAS, provider: AI_API_PROVIDER, model: api.model }, usage: body.usage ?? null };
+  } finally {
+    ctx.db.prepare('INSERT INTO ai_attempts(account_id,job_id,model,outcome,latency_ms,created_at) VALUES(NULL,?,?,?,?,?)')
+      .run(jobId, api.model, outcome, Date.now() - start, ctx.now());
+  }
+}
+
 export async function infer(ctx: AppContext, jobId: number, projectId: number, messages: unknown[], tools: unknown[], capabilities: string[]) {
+  if (ctx.config.aiApi) return inferApi(ctx, ctx.config.aiApi, jobId, messages, tools);
   const policy = projectPolicy(ctx, projectId);
   const all = (ctx.db.prepare('SELECT * FROM ai_accounts WHERE enabled=1 ORDER BY priority,id').all() as Account[])
     .filter((a) => capabilities.every((c) => parseJson<string[]>(a.capabilities, []).includes(c)))

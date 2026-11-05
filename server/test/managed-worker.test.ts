@@ -209,7 +209,7 @@ describe('account admin and normalized failures', () => {
     expect(normalizeFailure(429, 'quota exhausted', null, now).code).toBe('quota_exhausted');
     expect(normalizeFailure(401, 'secret-token', null, now)).toMatchObject({ code: 'login_required', retryAt: null });
   });
-  it('video complete hai lần chỉ ghi một asset/ledger', async () => {
+  it('video complete hai lần chỉ ghi một asset; không ghi sổ credit', async () => {
     env.ctx.config.workerMode = 'legacy';
     const sc = await setupProject(env);
     const id = sc.scenes[0].id;
@@ -225,6 +225,6 @@ describe('account admin and normalized failures', () => {
     expect((await w.post(`/api/worker/jobs/${j.id}/complete`, data, { 'idempotency-key': 'video' })).status).toBe(200);
     expect((await w.post(`/api/worker/jobs/${j.id}/complete`, data, { 'idempotency-key': 'video' })).status).toBe(200);
     expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM assets WHERE job_id=?').get(j.id)).toEqual({ n: 1 });
-    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(j.id)).toEqual({ n: 1 });
+    expect(env.ctx.db.prepare('SELECT COUNT(*) n FROM credit_ledger WHERE job_id=?').get(j.id)).toEqual({ n: 0 });
   });
 });

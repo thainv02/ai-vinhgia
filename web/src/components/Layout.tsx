@@ -30,13 +30,12 @@ export function Layout() {
               Dự án
             </NavLink>
             <NavLink to="/clips" className={navCls}>
-              Cắt clip
+              Highlight
             </NavLink>
             <NavLink to="/queue" className={navCls}>
               Hàng đợi
               {activeCount > 0 && <span className="ml-1.5 rounded bg-white/20 px-1.5 py-px text-[11px] font-bold">{activeCount}</span>}
             </NavLink>
-            <NavLink to="/accounts" className={navCls}>Tài khoản AI</NavLink>
             <NavLink to="/trash" className={navCls}>
               Thùng rác
               {trashCount > 0 && <span className="ml-1.5 rounded bg-white/20 px-1.5 py-px text-[11px] font-bold">{trashCount}</span>}

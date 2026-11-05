@@ -29,7 +29,7 @@ const snap = (over: Partial<ComposerSnapshot> = {}): ComposerSnapshot => ({
   ...over,
 });
 
-describe('F2 precheck: chip, credit, prompt, upload (hàm thuần)', () => {
+describe('F2 precheck: chip, prompt, upload (hàm thuần)', () => {
   it('đọc chip thật `Video · 720p · 8s · x1` và các biến thể "10 s"/"10 giây"', () => {
     expect(parseChip('Video · 720p · 8s · x1')).toMatchObject({ resolution: 720, duration: 8, count: 1 });
     expect(parseChip('Video · 9:16 · 720p · 10 s · x2')).toMatchObject({ resolution: 720, duration: 10, count: 2, aspect: '9:16' });
@@ -43,33 +43,31 @@ describe('F2 precheck: chip, credit, prompt, upload (hàm thuần)', () => {
     expect(parseCredits('You have 1200 credits left')).toEqual([]);
     expect(parseCredits('will use 15 credits ... costs 20 credits')).toEqual([15, 20]);
   });
-  it('khớp tất cả → không có vấn đề', () => {
-    expect(evaluateVideoSettings(snap(), WANT, 15)).toEqual([]);
+  it('khớp tất cả → không có vấn đề (không còn đối chiếu dòng credit)', () => {
+    expect(evaluateVideoSettings(snap(), WANT)).toEqual([]);
     // "10 s"/"10 giây" cũng đạt
-    expect(evaluateVideoSettings(snap({ chips: ['Video · 720p · 10 giây · x1'] }), WANT, 15)).toEqual([]);
+    expect(evaluateVideoSettings(snap({ chips: ['Video · 720p · 10 giây · x1'] }), WANT)).toEqual([]);
+    // trang không có hoặc có nhiều dòng credit không còn là lỗi
+    expect(evaluateVideoSettings(snap({ text: '' }), WANT)).toEqual([]);
+    expect(evaluateVideoSettings(snap({ text: 'will use 15 credits; will use 20 credits' }), WANT)).toEqual([]);
   });
-  it('từng mục sai → đúng tên mục trong lỗi (aspect_ratio, duration, count, resolution, credits)', () => {
-    const items = (s: ComposerSnapshot, credits = 15) => evaluateVideoSettings(s, WANT, credits).map((i) => i.item);
+  it('từng mục sai → đúng tên mục trong lỗi (aspect_ratio, duration, count, resolution)', () => {
+    const items = (s: ComposerSnapshot) => evaluateVideoSettings(s, WANT).map((i) => i.item);
     expect(items(snap({ chips: ['Video · 720p · 8s · x1'] }))).toEqual(['duration']);
     expect(items(snap({ chips: ['Video · 720p · 10s · x2'] }))).toEqual(['count']);
     expect(items(snap({ chips: ['Video · 1080p · 10s · x1'] }))).toEqual(['resolution']);
     expect(items(snap({ options: [opt('aspect', '16:9', true), opt('aspect', '9:16', false)] }))).toEqual(['aspect_ratio']);
-    expect(items(snap(), 20)).toEqual(['credits']);
-    expect(items(snap({ text: 'không có dòng credit' }))).toEqual(['credits']);
-    expect(items(snap({ text: 'will use 15 credits; will use 20 credits' }))).toEqual(['credits']);
   });
   it('fail-safe: chỉ liệt kê "10s" trong popover không chứng minh đang chọn 10s', () => {
     // không có chip, các nút không có trạng thái → không xác minh được
     const s = snap({ chips: [], options: [opt('duration', 4, null), opt('duration', 8, null), opt('duration', 10, null), opt('aspect', '9:16', null), opt('aspect', '16:9', null), opt('count', 1, null), opt('resolution', 720, null)] });
-    expect(evaluateVideoSettings(s, WANT, 15).map((i) => i.item)).toEqual(['aspect_ratio', 'duration']); // count/resolution chỉ có một nhãn: là giá trị đang hiển thị
+    expect(evaluateVideoSettings(s, WANT).map((i) => i.item)).toEqual(['aspect_ratio', 'duration']); // count/resolution chỉ có một nhãn: là giá trị đang hiển thị
     const multi = snap({ chips: [], options: [opt('count', 1, null), opt('count', 2, null), opt('resolution', 720, null), opt('resolution', 1080, null), opt('duration', 10, true), opt('aspect', '9:16', true)] });
-    expect(evaluateVideoSettings(multi, WANT, 15).map((i) => i.item)).toEqual(['count', 'resolution']);
+    expect(evaluateVideoSettings(multi, WANT).map((i) => i.item)).toEqual(['count', 'resolution']);
     // nhãn đơn lẻ (không có lựa chọn thay thế) được chấp nhận
-    expect(evaluateVideoSettings(snap({ chips: [], options: [opt('aspect', '9:16', null), opt('duration', 10, true), opt('count', 1, true), opt('resolution', 720, true)] }), WANT, 15)).toEqual([]);
+    expect(evaluateVideoSettings(snap({ chips: [], options: [opt('aspect', '9:16', null), opt('duration', 10, true), opt('count', 1, true), opt('resolution', 720, true)] }), WANT)).toEqual([]);
     // chip mâu thuẫn với trạng thái chọn
-    expect(evaluateVideoSettings(snap({ chips: ['Video · 720p · 10s · x1'], options: [opt('duration', 8, true), opt('duration', 10, false), opt('aspect', '9:16', true)] }), WANT, 15).map((i) => i.item)).toEqual(['duration']);
-    // thiếu credits_expected trong payload
-    expect(evaluateVideoSettings(snap(), WANT, undefined).map((i) => i.item)).toEqual(['credits']);
+    expect(evaluateVideoSettings(snap({ chips: ['Video · 720p · 10s · x1'], options: [opt('duration', 8, true), opt('duration', 10, false), opt('aspect', '9:16', true)] }), WANT).map((i) => i.item)).toEqual(['duration']);
   });
   it('prompt: so sánh sau khi chuẩn hóa khoảng trắng và dấu typographic; khác nội dung thì từ chối', () => {
     expect(comparePrompt('Style:  warm\n kitchen. Shot 1', 'Style: warm kitchen. Shot 1')).toBeNull();

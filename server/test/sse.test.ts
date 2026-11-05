@@ -118,8 +118,8 @@ describe('SSE /api/stream', () => {
     await s.waitFor((e) => e.event === 'worker.status');
     await sc.user.patch(`/api/projects/${sc.project.id}`, { name: 'Tên mới SSE' });
     const pu = await s.waitFor((e) => e.event === 'project.updated' && e.data.project.name === 'Tên mới SSE');
-    expect(pu.data.project).toMatchObject({ id: sc.project.id, scene_count: 1, credits_used: 0, credits_reserved: 0 });
-    expect(pu.data.project).not.toHaveProperty('credits_remaining');
+    expect(pu.data.project).toMatchObject({ id: sc.project.id, scene_count: 1 });
+    expect(pu.data.project).not.toHaveProperty('credits_used');
     await sc.user.post(`/api/projects/${sc.project.id}/brief`, {});
     await s.waitFor((e) => e.event === 'project.updated' && e.data.project.status === 'analyzing');
     const job = await claim(sc);

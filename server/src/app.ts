@@ -61,7 +61,7 @@ export const SWEEP_INTERVAL_MS = 30_000;
 export const WORKER_TICK_MS = 10_000;
 /** Dọn việc công cụ LAN quá 7 ngày (xoá file, đánh dấu expired). */
 export const TOOL_CLEANUP_INTERVAL_MS = 60 * 60_000;
-/** Dọn video nguồn LAN quá hạn lưu và file tải dở của dự án cắt clip (mỗi giờ). */
+/** Dọn video nguồn LAN quá hạn lưu và file tải dở của dự án highlight (mỗi giờ). */
 export const CLIP_CLEANUP_INTERVAL_MS = 60 * 60_000;
 /** Chu kỳ kiểm tra vị trí hàng đợi AI của các bản dựng đang `planning` để phát SSE `final_cut.updated` khi đổi. */
 export const PLANNING_QUEUE_INTERVAL_MS = 3_000;
@@ -166,9 +166,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<App> {
       setInterval(() => {
         try {
           const r = expireClipSources(ctx);
-          if (r.expired || r.staleTmp) app.log.info(`Cắt clip: xoá ${r.expired} video nguồn LAN quá hạn, ${r.staleTmp} file tải dở`);
+          if (r.expired || r.staleTmp) app.log.info(`Highlight: xoá ${r.expired} video nguồn LAN quá hạn, ${r.staleTmp} file tải dở`);
         } catch (err) {
-          app.log.error({ err }, 'Lỗi khi dọn video nguồn cắt clip quá hạn');
+          app.log.error({ err }, 'Lỗi khi dọn video nguồn highlight quá hạn');
         }
       }, CLIP_CLEANUP_INTERVAL_MS),
     );

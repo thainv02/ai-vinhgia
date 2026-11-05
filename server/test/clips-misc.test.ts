@@ -7,7 +7,7 @@ import { MIGRATIONS_DIR, openDb, runMigrations, type DB } from '../src/db/index.
 import { thumbsIdle } from '../src/services/clips/clips.js';
 import { purgeProject, restoreProject } from '../src/services/trash.js';
 import { makeEnv, userClient, type Env } from './helpers.js';
-import { seedClipProject, sttConfig, startFakeStt, waitFor } from './helpers-clips.js';
+import { finishCleanupFixture, seedClipProject, sttConfig, startFakeStt, waitFor } from './helpers-clips.js';
 import { clip as videoClip } from './helpers-video.js';
 
 describe('cấu hình STT_* / CLIP_*', () => {
@@ -114,7 +114,7 @@ describe('migration 014_clips', () => {
     expect(refTables).toEqual(['ai_attempts', 'assets', 'browser_leases', 'credit_ledger', 'external_actions', 'final_cuts', 'job_reconciliations']);
     expect(seqBefore).toBe(3);
 
-    expect(runMigrations(db)).toEqual(['014_clips']);
+    expect(runMigrations(db)).toEqual(['014_clips', '015_clip_cleanup', '016_cleanup_routing', '017_clip_parts', '018_storyboard_generator', '019_lan_autovideo']);
     expect(runMigrations(db)).toEqual([]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
@@ -123,7 +123,7 @@ describe('migration 014_clips', () => {
     expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%REFERENCES jobs(%' ORDER BY name").all() as { name: string }[]).map((t) => t.name)).toEqual([...refTables, 'clips'].sort());
     const countsAfter = Object.fromEntries(tables.map((t) => [t, (db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get() as { n: number }).n]));
     expect({ ...countsAfter, schema_migrations: 0 }).toEqual({ ...countsBefore, schema_migrations: 0 });
-    expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'jobs' ORDER BY name").all() as { name: string }[]).map((i) => i.name)).toEqual(['idx_jobs_project', 'idx_jobs_scene', 'idx_jobs_status', 'idx_jobs_type_status']);
+    expect((db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'jobs' ORDER BY name").all() as { name: string }[]).map((i) => i.name)).toEqual(['idx_jobs_clip_cleanup', 'idx_jobs_clip_discovery', 'idx_jobs_project', 'idx_jobs_scene', 'idx_jobs_status', 'idx_jobs_type_status']);
     // id không được cấp lại; loại mới nhận được; CHECK vẫn chặn loại lạ
     const next = Number(db.prepare("INSERT INTO jobs (project_id, type, created_at) VALUES (1, 'clip_plan', ?)").run(now).lastInsertRowid);
     expect(next).toBe(4);
@@ -164,7 +164,7 @@ describe('migration 014_clips', () => {
   });
 });
 
-describe('thùng rác với dự án cắt clip', () => {
+describe('thùng rác với dự án highlight', () => {
   let env: Env;
   beforeEach(async () => {
     env = await makeEnv({ config: { clipMinFreeGb: 0 } });
@@ -179,6 +179,7 @@ describe('thùng rác với dự án cắt clip', () => {
   it('xoá → cả thư mục output/<slug>/clips (nguồn, transcript, clip) vào thùng rác; /files không phục vụ; khôi phục đúng chỗ cũ; xoá vĩnh viễn dọn sạch dòng DB', async () => {
     const s = seedClipProject(env, { name: 'Live bán hàng', video: { seconds: 20 } });
     const clip = (await user().post(`/api/projects/${s.projectId}/clips`, { start_word: 0, end_word: 23, title: 'Đoạn' })).body.clip;
+    finishCleanupFixture(env, clip.id);
     await thumbsIdle(env.ctx);
     expect((await user().post(`/api/clips/${clip.id}/render`, { captions_preset: 'none' })).status).toBe(201);
     await waitFor(async () => (await user().get(`/api/clips/${clip.id}`)).body.clip.latest_cut, (c) => c?.status === 'ready', 60_000);
@@ -238,7 +239,7 @@ describe('thùng rác với dự án cắt clip', () => {
       expect((await workerClient(e2.app).get('/api/worker/next?worker=w1')).body.id).toBe(plan2.body.job.id);
       const b2 = await c.del(`/api/projects/${pid}`, { confirm_name: 'Đang chạy' });
       expect([b2.status, b2.body.error.code]).toEqual([409, 'PROJECT_BUSY']);
-      expect(b2.body.error.message).toMatch(/chọn đoạn clip từ video dài/);
+      expect(b2.body.error.message).toMatch(/đề xuất highlight từ video dài/);
     } finally {
       await e2.close();
       await fake.close();
