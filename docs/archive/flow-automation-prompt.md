@@ -1,3 +1,7 @@
+# flow-automation-prompt
+
+> **Lưu trữ, không dùng.** Hướng dẫn của lần chạy tay đầu tiên (thao tác ChatGPT và Google Flow trên Chrome cho dự án Cacao). Nhiều điểm trái với luật hiện hành (tạo 3 bản, tự tạo lại, hỏi trước khi bấm). Luồng hiện tại: [README.md](../../README.md).
+
 Bạn sẽ tự động tạo toàn bộ video theo kịch bản trong `cacao-smoothie-prompts.md`, bằng Chrome (browser executor của Claude Code, Codex hoặc Antigravity): dùng ChatGPT để tạo ảnh storyboard, rồi dùng Google Flow để tạo video. Đọc kỹ toàn bộ hướng dẫn này trước khi bắt đầu.
 
 # Tài liệu phải đọc trước

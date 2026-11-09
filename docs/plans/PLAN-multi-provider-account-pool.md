@@ -1,5 +1,7 @@
 # Plan: nhiều provider, nhiều tài khoản và tiếp tục job khi hết quota
 
+> **Tài liệu lịch sử.** Account pool đã triển khai (21/10/2026) nhưng không còn dùng: inference đi qua AI API dùng chung (`AI_API_URL`), trang `/accounts` đã bỏ (29/10/2026), và storyboard/video không do managed worker làm trên trình duyệt mà do worker nền `media-api-1` gọi Muse2API/Flow2API. Hiện trạng: [docs/ai/OPERATIONS.md](../ai/OPERATIONS.md).
+
 Ngày lập: 21/10/2026. Trạng thái: đã triển khai account pool MVP trên nhánh `feat/multi-provider-account-pool`; xem `docs/ai/VALIDATION.md` để biết phần đã kiểm chứng và phần còn cần thử nghiệm. Thiết kế ban đầu bên dưới vẫn làm tài liệu định hướng.
 
 ## 1. Mục tiêu và quyết định đề xuất

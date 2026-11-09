@@ -1,5 +1,7 @@
 # Kế hoạch code: Web quản lý sản xuất video theo cảnh
 
+> **Tài liệu lịch sử (kế hoạch 19/10/2026).** Web đã xây xong và đã đổi nhiều so với kế hoạch: file nằm theo dự án ở `output/<slug>/`, không còn credit, storyboard/video do worker nền `media-api-1` gọi Muse2API/Flow2API thay vì Claude thao tác Chrome. "Thư mục chứa file này" trong bài là thư mục gốc repo (file đã chuyển vào `docs/plans/`). Luồng hiện tại: [README.md](../../README.md); hợp đồng API: [server/API.md](../../server/API.md).
+
 Tài liệu này giao cho AI code. Code vào **chính thư mục chứa file này** (thư mục hiện tại). Thư mục này đã có sẵn `storyboard/`, `video/`, `log.md` từ lần chạy tay đầu tiên, web phải đọc được dữ liệu đó (xem mục 9).
 
 ## 1. Mục tiêu

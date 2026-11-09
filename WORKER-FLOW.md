@@ -1,10 +1,12 @@
-# WORKER-FLOW: tạo video qua Flow2API (Google Flow, dành cho Codex)
+# WORKER-FLOW: tạo storyboard và video qua Flow2API (Google Flow)
 
 Người dùng chọn dịch vụ trên web: video chọn khi bấm «Tạo video», ảnh storyboard chọn trong «Cài đặt dự án». Job có `payload.generator.provider = "flow"` thì làm theo file này:
 - **Job `video`**: mục 1–7, **thay cho mục 5 (5.1–5.4) của [WORKER-MUSE.md](WORKER-MUSE.md)**.
 - **Job `storyboard`**: mục 9, **thay cho mục 4 (bước 4–6) của WORKER-MUSE.md**.
 
 Job có `provider = "muse"` (hoặc không có `generator`) vẫn làm theo WORKER-MUSE.md.
+
+**Ai dùng file này.** Worker nền `media-api-1` (`npm run worker:media`) cài đặt đúng các luật dưới đây và làm mọi job Flow từ 05/11/2026; nó còn tự chờ và gửi lại khi tài khoản Flow2API lỗi trước lúc Flow nhận lệnh, xem [docs/ai/OPERATIONS.md](docs/ai/OPERATIONS.md) mục Worker nền ảnh/video. Các khối lệnh bên dưới dành cho vòng lặp tay của Codex/Claude, chỉ chạy khi người dùng yêu cầu.
 
 Mọi thứ còn lại giữ nguyên như WORKER-MUSE.md: điều kiện chung (mục 1), biến (mục 2), cách nhận job (`types=storyboard,video`), heartbeat, lưới khung hình và kết luận (5.5), cách `complete` (5.6).
 
@@ -16,15 +18,18 @@ Tài liệu gốc của API: `/Users/thainv/code/muse/flow2api/API_GUIDE_VI.md`.
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Flow2API | Container `flow2api-local-flow2api-1`, `http://127.0.0.1:8020`, API kiểu OpenAI Chat Completions + SSE |
-| `veo-3.1-fast-r2v-8s-portrait` (Veo 3.1 Fast, 8 giây, 20 credit Flow) | Flow2API đã thử thật |
-| `veo-3.1-lite-r2v-8s-portrait` (Veo 3.1 Lite, 8 giây, 10 credit) | Suy ra từ bản landscape, chưa thử riêng |
-| `omni-1.1-flash-10s-portrait` + ảnh (Omni, 10 giây, 15 credit) | Suy ra, chưa thử riêng |
-| `gemini-3.1-flash-image-portrait` (ảnh storyboard, mục 9) | Có trong danh sách model, chưa thử tạo thật |
-| Xoá logo Gemini trên ảnh (server, khi `complete`) | Đã kiểm thử bằng ảnh mẫu có logo của tool |
-| Gọi từ autovideo | **Chưa chạy lần nào** |
+Đối chiếu lịch sử job của `media-api-1` ngày 09/11/2026.
 
-Vì vậy **lượt Flow đầu tiên phải có người giám sát**: làm đúng 1 job Flow (storyboard hoặc video), rồi dừng vòng lặp, nhắn người dùng xem kết quả trên web trước khi nhận tiếp job Flow.
+| Hạng mục | Trạng thái |
+|---|---|
+| Flow2API | Container `flow2api-local-flow2api-1`, `http://127.0.0.1:8020` (trang quản lý `/manage`), API kiểu OpenAI Chat Completions + SSE. Hai tài khoản Google, cookie do extension Token Updater đồng bộ từ Chrome của chủ máy |
+| `omni-1.1-flash-10s-portrait` + ảnh (Omni, 10 giây, 15 credit) | **Dùng thật hằng ngày**: 29 video xong, 3 lỗi (từ 05/11/2026) |
+| `gemini-3.1-flash-image-portrait` (ảnh storyboard, mục 9) | **Dùng thật hằng ngày**: 37 ảnh xong, 11 lỗi (phần lớn do tài khoản/CAPTCHA của Flow2API) |
+| Xoá logo Gemini trên ảnh (server, khi `complete`) | Chạy thật trên mọi storyboard Flow |
+| `veo-3.1-fast-r2v-8s-portrait` (Veo 3.1 Fast, 8 giây, 20 credit Flow) | Flow2API đã thử thật; chưa dùng qua autovideo |
+| `veo-3.1-lite-r2v-8s-portrait` (Veo 3.1 Lite, 8 giây, 10 credit) | Suy ra từ bản landscape, chưa thử |
+
+Model chưa dùng qua autovideo (Veo Fast/Lite): lượt đầu nên có người xem kết quả trên web trước khi chạy hàng loạt.
 
 Khác biệt quan trọng so với Muse:
 - **Không có idempotency.** Mỗi POST thành công là một video mới và **trừ credit Google Flow**. Mất kết nối giữa chừng thì video có thể vẫn đang được tạo. Vì vậy mỗi job **chỉ POST đúng một lần**, kể cả khi lỗi mạng.
