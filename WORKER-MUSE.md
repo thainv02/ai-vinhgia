@@ -1,4 +1,4 @@
-# WORKER-MUSE: tạo storyboard và video qua Muse2API (dành cho Codex)
+# WORKER-MUSE: tạo storyboard và video qua Muse2API
 
 File này **thay mục 4.2 (`storyboard`) và 4.3 (`video`) của [WORKER.md](WORKER.md)** khi tạo ảnh/video bằng API Muse2API thay vì điều khiển ChatGPT và Google Flow trên Chrome. **Không mở Chrome, ChatGPT hay Flow.**
 
@@ -10,7 +10,7 @@ Tài liệu gốc của API: `/Users/thainv/code/muse/muse2api/docs/API_GUIDE_VI
 - `provider = "muse"` (hoặc job cũ không có `generator`): làm theo file này.
 - `provider = "flow"`: làm theo [WORKER-FLOW.md](WORKER-FLOW.md). Video: thay mục 5.1–5.4, rồi quay lại 5.5–5.6. Storyboard: mục 9 của file đó (server tự xoá logo Gemini trên ảnh khi `complete`, worker không tự xoá).
 
-Thường đã có **worker nền `media-api-1`** (`npm run worker:media`) tự làm storyboard/video theo đúng các luật dưới đây. Chỉ chạy vòng lặp thủ công khi người dùng yêu cầu (vd worker nền đang tắt hoặc cần người xem chất lượng ảnh).
+**Ai dùng file này.** Từ 05/11/2026 worker nền `media-api-1` (`npm run worker:media`, mã `worker/src/media/media.ts`) tự làm mọi job storyboard/video theo đúng các luật dưới đây, trừ việc xem và chấm chất lượng: worker nền không gửi `verdict`, người dùng chấm trên web. Các khối lệnh curl/python bên dưới dành cho vòng lặp tay của Codex/Claude, chỉ chạy khi người dùng yêu cầu (vd worker nền đang tắt hoặc cần người xem chất lượng ảnh). Server giao mỗi job cho đúng một worker, nhưng tài khoản Muse chỉ chạy một task một lúc nên chạy song song với worker nền dễ gặp `no_account_available`.
 
 ## 0. Hiện trạng đã kiểm chứng (đọc trước)
 
@@ -25,6 +25,7 @@ Thường đã có **worker nền `media-api-1`** (`npm run worker:media`) tự 
 | Khung 9:16, độ dài 10 giây | Muse2API tự diễn đạt `size` và `duration` vào prompt (`parameters_enforced=false`). Chỉ gửi hai trường này, không sửa prompt; đọc kích thước thật từ file |
 | Video dài hơn 10 giây | Muse từ chối 15 giây; giữ đúng 10 giây |
 | Thời gian | Ảnh khoảng 1 phút; video khoảng 1,5–3 phút |
+| Worker nền `media-api-1` (từ 05/11/2026) | Storyboard Muse: 5 job xong. Video Muse: 2 xong, 1 lỗi. Phần lớn job sau đó chạy qua Google Flow (WORKER-FLOW.md) |
 
 Mỗi tài khoản Muse chạy **một task một lúc**. Làm tuần tự từng job: chờ task trước xong (hoặc lỗi) rồi mới POST task tiếp. Gửi ảnh khi video khác đang chạy trên cùng tài khoản có thể lỗi `no_account_available`.
 
@@ -32,8 +33,8 @@ Mỗi tài khoản Muse chạy **một task một lúc**. Làm tuần tự từn
 
 Người dùng chuẩn bị các điều kiện dưới đây. Codex chỉ kiểm tra, **không tự sửa `.env`, không khởi động lại server hay worker**.
 
-1. **Muse2API đang chạy** ở `http://127.0.0.1:18610`, có tài khoản Muse đã đăng nhập trong dashboard, driver `browser`.
-2. **Job `storyboard` và `video` giao cho worker legacy (Codex):** cả hai **không** nằm trong `MANAGED_JOB_TYPES` của `.env` (kiểm tra bằng lệnh `ping` bên dưới). Nếu `storyboard` còn trong danh sách thì managed worker vẫn đang nhận nó: báo người dùng, Codex chỉ nhận `video`.
+1. **Muse2API đang chạy** ở `http://127.0.0.1:18610` (container Docker `muse2api-muse2api-1`), có tài khoản Muse đã đăng nhập trong dashboard, driver `browser`.
+2. **Job `storyboard` và `video` thuộc làn legacy:** cả hai **không** nằm trong `MANAGED_JOB_TYPES` của `.env` (kiểm tra bằng lệnh `ping` bên dưới). Nếu `storyboard` còn trong danh sách thì managed worker vẫn đang nhận nó: báo người dùng, vòng lặp tay chỉ nhận `video`.
 3. Server autovideo ở `http://127.0.0.1:8787`, có `ffmpeg`, `ffprobe`, `jq`, `curl`, `python3`.
 
 Kiểm tra (không tạo gì, không tốn hạn mức):

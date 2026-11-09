@@ -2,6 +2,8 @@
 
 Mốc local: `before-account-pool-20261021` → commit `fbde9e2`, nhánh `main`.
 
+> **Mốc này đã rất cũ.** Từ đó tới nay DB đã lên migration 019 và có thêm bản hoàn chỉnh, trang LAN, thùng rác, màu, Highlight, worker nền ảnh/video. Quay về mốc này là mất toàn bộ các tính năng đó và phải dùng DB snapshot cũ (mọi dự án tạo sau 21/10/2026 không có trong đó). Để quay lại một bước gần hơn, dùng commit tương ứng trên `feat/multi-provider-account-pool` cùng bản DB do server tự sao lưu trước mỗi lần migrate (`data/backup/app-<timestamp>.db`, giữ 20 bản mới nhất) hoặc các bản sao lưu tay đặt tên theo đợt trong cùng thư mục (vd `app-truoc-018-…`, `app-before-019-…`).
+
 Đã lưu trước khi sửa mã:
 
 - Mã nguồn, package lock, ảnh mockup và font trong Git.

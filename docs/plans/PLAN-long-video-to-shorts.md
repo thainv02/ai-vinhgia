@@ -1,5 +1,7 @@
 # Kế hoạch code: Cắt video dài thành clip ngắn (long video → shorts)
 
+> **Kế hoạch gốc của tính năng Highlight.** P1–P3 và LAN đã làm (27–29/10/2026); P4 (bám mặt) và P5 (chỉnh màu riêng cho clip) chưa làm, xem [docs/ai/BACKLOG.md](../ai/BACKLOG.md). Hành vi hiện tại: [docs/ai/OPERATIONS.md](../ai/OPERATIONS.md) mục Highlight và [server/API.md](../../server/API.md) mục 14.
+
 Ngày lập: 26/10/2026. Nguồn tham khảo: đọc code `imgly/videoclipper`, `SamurAIGPT/AI-Youtube-Shorts-Generator`, `ClipsAI/clipsai`, `louisedesadeleer/clipify`, `linzzzzzz/openclip`; đọc code và tài liệu `ggroup-ai-lab/gipformer` và sherpa-onnx. Báo cáo chi tiết nằm trong scratchpad của phiên lập plan, không thuộc repo; phần cần dùng đã chép vào đây.
 
 > **Cập nhật 27/10/2026:** ASR dùng **dịch vụ STT nội bộ Omnix**, chạy gipformer 1.5 trên GPU:

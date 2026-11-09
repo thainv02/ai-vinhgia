@@ -1,8 +1,21 @@
-# Việc tạm hoãn
+# Việc tạm hoãn và giới hạn đã biết
+
+Ghi theo đợt, mới nhất ở đầu. Mục đã xong được gạch hoặc ghi "Đã xử lý".
+
+## Worker nền ảnh/video, LAN Autovideo và Flow2API (05–09/11/2026)
+
+- Mô tả dịch vụ trong `server/src/services/generators.ts` (hiện trên giao diện) đã cũ: Flow image ghi "Chưa chạy thật qua autovideo", Omni ghi "Bản dọc kèm ảnh chưa được thử thật", trong khi cả hai đã chạy thật hằng ngày từ 05/11/2026. Veo 3.1 Fast/Lite vẫn chưa dùng qua autovideo.
+- Thông báo lỗi trong `server/src/routes/ai.ts` vẫn bảo người dùng "Mở lại trang Tài khoản AI", trang này đã bỏ (29/10/2026).
+- Hai worker (`worker:start`, `worker:media`) phải khởi động tay sau khi máy khởi động lại; chưa có supervisor.
+- Flow2API chạy bản có bản sửa reCAPTCHA (PR #195 của upstream, chưa được merge, nhánh `feat/flow2api-upstream-20261108` trong repo muse). Khi upstream merge bản sửa chính thức thì rebase và dựng lại image.
+- Worker nền không chấm chất lượng ảnh/video; người dùng chấm trên web. Chưa có kiểm tra tự động (vd nhãn sản phẩm bị vẽ sai).
+
 
 ## Managed worker tạo video trên Google Flow (hoãn 22/10/2026)
 
-**Trạng thái hiện tại:** video chỉ do Claude worker (legacy, `WORKER.md`) làm. Trong `.env`, `MANAGED_JOB_TYPES` và `WORKER_TYPES` không có `video`. Managed worker (Antigravity, `gemini-3.8-flash-high`) làm analyze_brief, revise_prompt, edit_plan và storyboard.
+**Đã thay thế (05/11/2026):** storyboard và video do worker nền `media-api-1` làm qua Muse2API/Flow2API, không qua trình duyệt. Managed worker chỉ nhận việc văn bản (`analyze_brief`, `revise_prompt`, `edit_plan`, `clip_plan`). Phần dưới chỉ còn giá trị nếu muốn bật lại executor trình duyệt.
+
+**Trạng thái lúc hoãn (22/10/2026):** video do Claude worker (legacy, `WORKER.md`) làm. Trong `.env`, `MANAGED_JOB_TYPES` và `WORKER_TYPES` không có `video`. Managed worker (Antigravity, `gemini-3.8-flash-high`) làm analyze_brief, revise_prompt, edit_plan và storyboard.
 
 **Kết quả thử thật:**
 - Job #37 (storyboard, ChatGPT, `gemini-3-flash`): xong sau một lần đối soát `retry_download`.
@@ -96,14 +109,14 @@ Chạy thử có giám sát trên một cảnh trước khi bật `video` trong 
 
 ## Highlight từ video dài: việc còn lại (27/10/2026)
 
-Đợt 1 (P1–P3 + LAN cơ bản) đã xong: nhận dạng qua STT nội bộ, AI chọn đoạn (`clip_plan`), duyệt/sửa điểm cắt trên lời thoại, dựng 9:16 `center`/`fit` có phụ đề ASS chạy theo từng từ, ZIP, LAN. Chưa làm (theo `PLAN-long-video-to-shorts.md`):
+Đợt 1 (P1–P3 + LAN cơ bản) đã xong: nhận dạng qua STT nội bộ, AI chọn đoạn (`clip_plan`), duyệt/sửa điểm cắt trên lời thoại, dựng 9:16 `center`/`fit` có phụ đề ASS chạy theo từng từ, ZIP, LAN. Chưa làm (theo `docs/plans/PLAN-long-video-to-shorts.md`):
 
 - **P4 – Reframe bám mặt/người nói** (MediaPipe Face Detection + Face Mesh, tracker IoU tất định, chọn người nói theo cử động miệng + năng lượng âm, vùng chết + làm mượt, cắt cứng ở chuyển cảnh `scdet`, kẹp cả 4 cạnh, `sendcmd` trong cùng một lượt ffmpeg, xem trước khung cắt, chế độ `manual`). Dữ liệu đã chừa chỗ: `clip_cuts.reframe` là JSON `{mode, ...}`.
 - **P5 – Chỉnh màu / màu theo ảnh mẫu / góp ý AI cho từng clip** (`clip_revise`, dùng lại `grade.ts`, `color-match.ts`): cột `clip_cuts.grade`, `parent_id`, `feedback` đã có sẵn nhưng chưa dùng.
 - **Chế độ video ít lời** (`speech_ratio` < 0.3): chọn đoạn theo hình (cảnh từ `scdet` + lưới khung hình như `edit_plan`). Hiện chỉ có `speech_ratio` trong `source` để giao diện cảnh báo; `clip_plan` vẫn chạy theo lời thoại (kết quả kém, thậm chí `NO_SPEECH`).
 - **Đổi số đọc thành chữ → chữ số** trong phụ đề ("hai mươi phần trăm" → "20%"). Hiện giữ nguyên chữ ASR vì đổi sẽ làm mất ánh xạ từ ↔ mốc thời gian (phần khôi phục dấu câu bắt buộc giữ nguyên dãy từ). Cần cơ chế gộp mốc nhiều từ thành một từ hiển thị (đã có cho từ ẩn: thời gian cộng vào từ đứng trước).
 - **Chuẩn hoá tên riêng/thuật ngữ sau nhận dạng**: hiện chỉ truyền `stt_terms` làm `prompt` cho STT và cho AI chọn đoạn; sửa lỗi nghe nhầm ("a tiso" → "Actiso") làm tay ở ô sửa phụ đề.
-- **ffmpeg có libass chưa có trên máy chạy thật**: ffmpeg Homebrew hiện tại không có bộ lọc `subtitles`; cần `brew install ffmpeg-full` (hoặc đặt `CLIP_FFMPEG_PATH`) thì "Dựng clip" mới cháy được phụ đề. Nên thêm bước kiểm tra này vào hướng dẫn cài đặt.
+- ~~**ffmpeg có libass chưa có trên máy chạy thật**~~ Đã xử lý: `.env` đặt `CLIP_FFMPEG_PATH` tới ffmpeg của conda env `lab-adsvideo` (có `subtitles`, `boxblur`, `overlay`). Máy mới vẫn cần bước này (xem OPERATIONS.md mục Highlight).
 - **Phục hồi video gốc LAN đã xoá**: sau `LAN_CLIP_SOURCE_RETENTION_DAYS` ngày không dựng/chọn đoạn mới được; chưa có "tải lại đúng file để khôi phục" (tải lại cùng hash khi đã có clip hiện báo `SOURCE_EXISTS`).
 - **Sửa lỗi AI chọn 0 clip đã có test hồi quy**: đo khoảng lặng thật (RMS tự điều chỉnh + silencedetect), câu mịn ≤12 s/30 từ, câu trích đầu/cuối → chỉ số từ (worker/server dùng chung bộ dò), sửa trong cùng ID, retry mạng/timeout tối đa 2 lần và viết hoa phụ đề thận trọng. Có fixture transcript 318 từ + khoảng lặng đo từ video thử trước; gateway giả kiểm chứng cả kiểm định ảnh, sửa và khôi phục dấu câu. Không đổi ID của transcript/clip cũ.
 - **Kiểm định AI chưa nghiệm thu lại với Gemini thật**: prompt, cách tính `keep/standalone_score`, sửa một lần, khôi phục dấu câu mới được test bằng gateway giả. Cần chạy thử trên 1–2 video thật (livestream bán hàng và podcast) rồi chỉnh prompt; mục tiêu nghiệm thu của plan: ≥ 3/5 clip "dùng được", ≥ 80% clip mở đầu hiểu được khi không có ngữ cảnh.

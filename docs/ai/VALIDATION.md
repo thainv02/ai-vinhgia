@@ -1,13 +1,15 @@
-# Kiểm chứng ngày 21/10/2026
+# Nhật ký kiểm chứng
 
-## Mốc khôi phục
+Ghi theo đợt và theo ngày; mỗi mục phản ánh trạng thái tại thời điểm ghi. Hiện trạng vận hành: [OPERATIONS.md](OPERATIONS.md) mục Hiện trạng.
+
+## Mốc khôi phục (account pool, 21/10/2026)
 
 - Baseline: `fbde9e2`, tag `before-account-pool-20261021`, nhánh `main`; 217 test pass trước thay đổi.
 - Archive workspace và SQLite snapshot nhất quán nằm trong `../autovideo-local-backups/before-account-pool-20261021/`, quyền owner-only.
 - `after-account-pool.db` cùng thư mục là snapshot sau triển khai, gồm metadata hai tài khoản mới. Credential OAuth nằm riêng ngoài repo; không nằm trong Git.
 - Thử migration 005 trên bản sao DB baseline thật: giữ nguyên dữ liệu của 11 bảng gốc, `foreign_key_check` sạch, `integrity_check=ok`. Migration 006 chỉ bổ sung fingerprint identity; các test runner kiểm tra thứ tự và tính idempotent.
 
-## Gateway và tài khoản thật
+## Gateway và tài khoản thật (account pool, 21/10/2026)
 
 - Cài CLIProxyAPI v8.0.37, commit `ce07d189`, darwin aarch64; `--help` và local API hoạt động.
 - Archive SHA256 được kiểm tra với checksums release: `7f2432cf34e587bc0e49e8e96247e797928dc6219b5f76b6f2b85835bd64c42f`.
@@ -17,7 +19,7 @@
 - Bài thử `npm run ai:smoke -- 2 --fallback`: gateway A giả lập trả 429/quota, account 02 thực hiện inference thật và hoàn thành job. Bằng chứng attempts: `quota_exhausted → ok → ok` (lượt ok thứ hai sửa định dạng JSON). Không cố đốt hết quota của tài khoản thật để kích hoạt lỗi.
 - API/database của smoke được tạo tạm và xóa khi xong; không thêm cảnh thử vào dự án đang chạy. Báo cáo local gần nhất: `.ai-local/last-smoke.json` (ignored).
 
-## Kiểm tra tự động và giao diện
+## Kiểm tra tự động và giao diện (account pool, 21/10/2026)
 
 - `npm test`: 235 tests, gồm các test cũ và kiểm tra failover, shared quota scope, lease fencing, checkpoint, action intent, complete idempotent, chống ghi credit hai lần, duplicate login, bảo vệ admin session và chống click Generate qua tool upload/download.
 - `npm run typecheck`: server, web, worker.
@@ -25,7 +27,7 @@
 - Headless Chrome mở `/accounts` ở 1440px và 390px; trang tải được hai account, không có lỗi JavaScript. Form responsive; bảng dùng cuộn ngang ở màn hình nhỏ.
 - Các kiểm tra Shotcut/FFmpeg/watermark hiện có vẫn chạy trong bộ test.
 
-## Phạm vi chưa xác nhận bằng chạy thật
+## Phạm vi chưa xác nhận bằng chạy thật (account pool, 21/10/2026)
 
 - Codex: đã có adapter, CLI login/device flow và store riêng; chưa đăng nhập/chạy inference Codex thật trong phiên triển khai này.
 - Claude: giữ đường worker native legacy; gateway/API credential bên ngoài có contract hỗ trợ. Không chạy thử proxy subscription Claude.
@@ -35,7 +37,9 @@
 - Khả năng quota độc lập giữa hai Google accounts chưa được khẳng định. Nếu provider dùng chung quota scope, cần cấu hình scope tương ứng.
 - Refresh token dài hạn sau nhiều giờ/ngày và qua hết một chu kỳ reset quota chưa được nghiệm thu.
 
-## Trạng thái vận hành hiện tại
+## Trạng thái vận hành ngày 21/10/2026 (đã cũ)
+
+> Đã thay đổi: inference đi qua AI API dùng chung, trang `/accounts` đã bỏ, storyboard/video do worker nền `media-api-1` làm qua API. Đoạn dưới giữ làm lịch sử.
 
 Web có trang `/accounts`; hai account Antigravity có proxy hoạt động. Sau khi xác nhận hàng đợi trống, đã chuyển server dự án chính sang `WORKER_MODE=managed`, dừng poller Claude cũ và chạy `antigravity-worker-1`. Antigravity 01 dùng trước, 02 dự phòng; cả hai chọn `gemini-3-flash`. Bài smoke phân tích trên API/DB tạm chạy thành công sau khi chuyển chế độ.
 
@@ -43,7 +47,7 @@ Người dùng đã đăng nhập ChatGPT và Flow trong profile media riêng. K
 
 Khi khởi động lại máy, chạy server/web, `npm run ai:pool` và `npm run worker:start`. Mở browser bằng `npm run ai:browser` nếu chưa có CDP trên cổng 9222; xem `OPERATIONS.md`. Cấu hình local `.env` giữ chế độ managed và danh sách job đã bật.
 
-## Bổ sung thanh quota
+## Bổ sung thanh quota (account pool, 21/10/2026)
 
 - Migration 007 thêm cache telemetry, không thay đổi dữ liệu quota/routing cũ.
 - Đã đọc quota thật của Antigravity 01/02 qua proxy management, không tạo request inference. Tại lần kiểm tra, Gemini 3 Flash báo 100% còn lại; reset theo timestamp upstream, hiển thị múi giờ máy người dùng.
@@ -135,3 +139,19 @@ Kết quả hoàn tất 2026-10-28:
 - Regression API trên DB/media tạm: tiến độ theo storyboard/video LAN, loại asset nội bộ, phục vụ thumbnail đúng quyền; bản hoàn chỉnh cũ trở thành stale sau đổi lựa chọn, không tạo job sản xuất. Thêm xử lý lỗi mutation cho LAN để lỗi duyệt/dựng được hiển thị.
 - `AUTOVIDEO_TEST_LIBASS_FFMPEG=… npm test -- -- --maxWorkers=4`: **68 file, 879 đạt, 1 bỏ qua**. `npm run typecheck`, `npm run build`, `git diff --check` đạt. Không gọi inference/Flow thật, không thêm migration.
 - Sau cập nhật và khởi động lại web/server: kiểm tra đọc trên cả sáu trang LAN, metadata thật, mở timeline, dẫn tới cảnh tiếp theo và đổi chiều rộng; không lỗi JavaScript, không request ghi. Ảnh desktop: `/private/tmp/autovideo-desktop-ux-results-live/`.
+
+## Worker nền ảnh/video chạy thật (05–09/11/2026)
+
+Đối chiếu bảng `jobs` của DB chạy thật ngày 09/11/2026 (chỉ đọc). Mọi job storyboard/video từ 05/11/2026 do `media-api-1` nhận; việc văn bản do `antigravity-worker-1` (AI API).
+
+| Loại | Dịch vụ / model | Xong | Lỗi |
+|---|---|---|---|
+| storyboard | Flow · `gemini-3.1-flash-image-portrait` | 37 | 11 |
+| storyboard | Muse · `muse-image` | 5 | 0 |
+| video | Flow · `omni-1.1-flash-10s-portrait` | 29 | 3 |
+| video | Muse · `muse-video` | 2 | 1 |
+
+- Video Omni mất khoảng 2 phút mỗi job (vd job 244: 116 giây).
+- Veo 3.1 Fast/Lite chưa chạy qua autovideo.
+- 05/11/2026: lần chạy Flow đầu tiên lỗi `LOGIN_REQUIRED` vì mọi tài khoản trong Flow2API bị tắt/hết hạn. Sau đó worker có cơ chế chờ, gửi lại trước khi Flow nhận lệnh và tự bật lại hàng đợi khi `/health` của Flow2API có tài khoản hoạt động (test `server/test/media-worker.test.ts`).
+- 09/11/2026: mọi job Flow lỗi CAPTCHA ("Failed to obtain reCAPTCHA token for image upload") do Flow đổi frontend. Flow2API được cập nhật lên upstream + PR #195; một yêu cầu ảnh có ảnh tham chiếu chạy thật thành công trong 60 giây, hàng đợi chạy lại bình thường.
