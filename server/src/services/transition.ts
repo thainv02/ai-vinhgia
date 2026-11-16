@@ -16,14 +16,15 @@ export const ALLOWED_TRANSITIONS: Record<SceneStatus, SceneStatus[]> = {
   // claim → running; hủy job → storyboard_review (đã có storyboard) | awaiting_approval; fail → failed
   storyboard_queued: ['storyboard_running', 'storyboard_review', 'awaiting_approval', 'failed'],
   storyboard_running: ['storyboard_queued', 'storyboard_review', 'awaiting_approval', 'failed'],
-  storyboard_review: ['storyboard_queued', 'video_queued', 'needs_revision'],
+  // → done: chọn lại một video ĐÃ CÓ sau khi tạo lại storyboard (không thì cảnh hết lượt video bị kẹt)
+  storyboard_review: ['storyboard_queued', 'video_queued', 'needs_revision', 'done'],
   // claim → running; hủy job → video_review (đã có video) | storyboard_review; fail → failed | blocked_budget
   video_queued: ['video_running', 'video_review', 'storyboard_review', 'failed', 'blocked_budget'],
   video_running: ['video_queued', 'video_review', 'storyboard_review', 'failed', 'blocked_budget'],
   video_review: ['done', 'video_queued', 'storyboard_queued', 'needs_revision'],
   done: ['video_queued', 'storyboard_queued', 'video_review', 'needs_revision'],
   needs_revision: ['awaiting_approval', 'failed'],
-  failed: ['storyboard_queued', 'video_queued', 'awaiting_approval', 'needs_revision'],
+  failed: ['storyboard_queued', 'video_queued', 'awaiting_approval', 'needs_revision', 'done'],
   blocked_budget: ['storyboard_queued', 'video_queued', 'awaiting_approval'],
   cancelled: [],
 };

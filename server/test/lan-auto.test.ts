@@ -117,6 +117,28 @@ describe('tab Autovideo của trang LAN', () => {
     expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/select`, { asset_id: d2.scenes[1].videos[0].id })).status).toBe(400);
   });
 
+  it('tạo lại storyboard sau khi đã có video: vẫn chọn được video cũ (không kẹt khi hết lượt video)', async () => {
+    const id = await makeAuto(1, { storyboard_generator: 'flow-image' });
+    const s1 = (await detail(id)).scenes[0];
+    expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/storyboard`)).status).toBe(201);
+    expect((await finish(sc(), (await nextMedia()).body)).status).toBe(200);
+    expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/video`, {})).status).toBe(201);
+    expect((await finish(sc(), (await nextMedia()).body)).status).toBe(200);
+    expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/storyboard`)).status).toBe(201);
+    // còn việc storyboard đang chạy: chưa chọn được
+    const q = (await detail(id)).scenes[0];
+    expect(q.status).toBe('storyboard_queued');
+    expect(q.blocks.select).not.toBeNull();
+    expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/select`, { asset_id: q.videos[0].id })).body.error.code).toBe('INVALID_STATE');
+    expect((await finish(sc(), (await nextMedia()).body)).status).toBe(200);
+
+    const d = (await detail(id)).scenes[0];
+    expect([d.status, d.storyboard.attempt, d.videos.length, d.blocks.select]).toEqual(['storyboard_review', 2, 1, null]);
+    expect((await c.post(`/lan/api/auto/projects/${id}/scenes/${s1.id}/select`, { asset_id: d.videos[0].id })).status).toBe(200);
+    const e = (await detail(id)).scenes[0];
+    expect([e.status, e.videos[0].selected]).toEqual(['done', true]);
+  });
+
   it('việc của chủ máy được worker nhận trước storyboard/video của Autovideo', async () => {
     const id = await makeAuto(1);
     const s1 = (await detail(id)).scenes[0];

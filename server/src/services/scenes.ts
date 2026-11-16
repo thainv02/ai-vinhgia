@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { badRequest, conflict } from '../lib/errors.js';
-import type { SceneRow } from '../db/types.js';
+import type { SceneRow, SceneStatus } from '../db/types.js';
 import { maybeAutoFinalCut } from './final-cuts.js';
 import { insertJob } from './jobs.js';
 import { nextStoryboardAttempt } from './payload.js';
@@ -37,11 +37,18 @@ export function editPrompt(ctx: AppContext, sceneId: number, prompt: string, rea
 }
 
 /** Chọn bản video chính thức. video_review → done; ở trạng thái done thì chỉ đổi video được chọn. */
+/**
+ * Trạng thái cho phép chọn một video ĐÃ CÓ của cảnh. Ngoài video_review/done còn gồm storyboard_review và failed:
+ * tạo lại storyboard (hoặc lượt sau lỗi) không làm video cũ mất giá trị, và nếu cảnh đã hết lượt video thì
+ * đây là cách duy nhất để hoàn tất cảnh. Các trạng thái *_queued/*_running bị loại (còn việc đang chạy).
+ */
+export const VIDEO_SELECTABLE: readonly SceneStatus[] = ['video_review', 'done', 'storyboard_review', 'failed'];
+
 export function selectVideo(ctx: AppContext, sceneId: number, assetId?: number): SceneRow {
   return ctx.tx(() => {
     const scene = getScene(ctx, sceneId);
-    if (scene.status !== 'video_review' && scene.status !== 'done') {
-      throw conflict('INVALID_STATE', `Cảnh ${scene.code} đang ở trạng thái ${statusLabel(scene.status)}; chỉ chọn video khi đang xem video hoặc đã hoàn tất`);
+    if (!VIDEO_SELECTABLE.includes(scene.status)) {
+      throw conflict('INVALID_STATE', `Cảnh ${scene.code} đang ở trạng thái ${statusLabel(scene.status)}; chỉ chọn video khi cảnh có video và không còn việc đang chạy`);
     }
     let id = assetId;
     if (id === undefined) {
@@ -60,7 +67,7 @@ export function selectVideo(ctx: AppContext, sceneId: number, assetId?: number):
       type: 'scene.video_selected',
       message: `${scene.code}: chọn video lượt ${asset.attempt} (asset #${asset.id})`,
     });
-    if (scene.status === 'video_review') transition(ctx, scene.id, 'done', `người dùng chọn video lượt ${asset.attempt}`);
+    if (scene.status !== 'done') transition(ctx, scene.id, 'done', `người dùng chọn video lượt ${asset.attempt}`);
     else emitScene(ctx, scene.id, scene.project_id);
     // Mọi cảnh đã `done` có video được chọn → tự tạo bản dựng hoàn chỉnh + job edit_plan (idempotent theo chữ ký lựa chọn)
     maybeAutoFinalCut(ctx, scene.project_id);

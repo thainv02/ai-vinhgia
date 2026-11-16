@@ -22,13 +22,14 @@ describe('bảng chuyển trạng thái của cảnh (transition) không đổi'
       awaiting_approval: ['storyboard_queued', 'video_queued', 'needs_revision'],
       storyboard_queued: ['storyboard_running', 'storyboard_review', 'awaiting_approval', 'failed'],
       storyboard_running: ['storyboard_queued', 'storyboard_review', 'awaiting_approval', 'failed'],
-      storyboard_review: ['storyboard_queued', 'video_queued', 'needs_revision'],
+      // 2026-11-13: thêm → done cho cả app lẫn LAN (chọn lại video đã có sau khi tạo lại storyboard / sau lỗi)
+      storyboard_review: ['storyboard_queued', 'video_queued', 'needs_revision', 'done'],
       video_queued: ['video_running', 'video_review', 'storyboard_review', 'failed', 'blocked_budget'],
       video_running: ['video_queued', 'video_review', 'storyboard_review', 'failed', 'blocked_budget'],
       video_review: ['done', 'video_queued', 'storyboard_queued', 'needs_revision'],
       done: ['video_queued', 'storyboard_queued', 'video_review', 'needs_revision'],
       needs_revision: ['awaiting_approval', 'failed'],
-      failed: ['storyboard_queued', 'video_queued', 'awaiting_approval', 'needs_revision'],
+      failed: ['storyboard_queued', 'video_queued', 'awaiting_approval', 'needs_revision', 'done'],
       blocked_budget: ['storyboard_queued', 'video_queued', 'awaiting_approval'],
       cancelled: [],
     });

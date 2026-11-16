@@ -23,7 +23,7 @@ import { createProject } from './projects.js';
 import { emitProject } from './project-view.js';
 import { getProject, getScene, logEvent, parseJson, projectRefs } from './repo.js';
 import { PROMPT_EDITABLE, activeJobOf, storyboardApproveError, videoApproveError, videoImageCount } from './rules.js';
-import { editPrompt, selectVideo } from './scenes.js';
+import { VIDEO_SELECTABLE, editPrompt, selectVideo } from './scenes.js';
 import { projectDeleteBlocks } from './trash.js';
 import { getWorkerRow, isOnline } from './worker.js';
 
@@ -262,7 +262,7 @@ function sceneJson(ctx: AppContext, p: ProjectRow, scene: SceneRow, refs: Map<nu
     blocks: {
       storyboard: disabled ?? sErr?.message ?? null,
       video: disabled ?? vErr?.message ?? null,
-      select: scene.status === 'video_review' || scene.status === 'done' ? null : 'Chỉ chọn video khi cảnh đã có video và không còn việc đang chạy',
+      select: videos.length && VIDEO_SELECTABLE.includes(scene.status) ? null : 'Chỉ chọn video khi cảnh đã có video và không còn việc đang chạy',
       prompt: job ? 'Cảnh đang có việc chạy' : PROMPT_EDITABLE.includes(scene.status) ? null : `Không sửa prompt khi cảnh ở trạng thái ${SCENE_STATUS_LABEL[scene.status]}`,
     },
   };
